@@ -1,0 +1,1490 @@
+{
+  "info": {
+    "name": "PharmaBag API",
+    "description": "B2B Pharmaceutical Marketplace API — Complete endpoint collection.\n\nBase URL: {{baseUrl}} (default http://localhost:3000/api)\nSwagger Docs: http://localhost:3000/api/docs\n\nTest credentials:\n- Buyer: 7777777777\n- Seller: 8888888888\n- Admin: 9999999999\n\nOTP in dev mode is logged to console. Retrieve from Redis: redis-cli GET otp:<phone>",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:3000/api" },
+    { "key": "accessToken", "value": "" },
+    { "key": "buyerToken", "value": "" },
+    { "key": "sellerToken", "value": "" },
+    { "key": "adminToken", "value": "" },
+    { "key": "productId", "value": "" },
+    { "key": "orderId", "value": "" },
+    { "key": "paymentId", "value": "" },
+    { "key": "cartItemId", "value": "" },
+    { "key": "ticketId", "value": "" },
+    { "key": "settlementId", "value": "" },
+    { "key": "notificationId", "value": "" },
+    { "key": "userId", "value": "" },
+    { "key": "blogPostId", "value": "" },
+    { "key": "blogAuthorId", "value": "" },
+    { "key": "blogCategoryId", "value": "" },
+    { "key": "blogSlug", "value": "" },
+    { "key": "categoryId", "value": "" },
+    { "key": "subCategoryId", "value": "" }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }]
+  },
+  "item": [
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/health",
+            "auth": { "type": "noauth" }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Send OTP",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/auth/send-otp",
+            "auth": { "type": "noauth" },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"7777777777\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Verify OTP",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const res = pm.response.json();",
+                  "if (res.accessToken) {",
+                  "  pm.collectionVariables.set('accessToken', res.accessToken);",
+                  "  const phone = JSON.parse(pm.request.body.raw).phone;",
+                  "  if (phone === '7777777777') pm.collectionVariables.set('buyerToken', res.accessToken);",
+                  "  if (phone === '8888888888') pm.collectionVariables.set('sellerToken', res.accessToken);",
+                  "  if (phone === '9999999999') pm.collectionVariables.set('adminToken', res.accessToken);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/auth/verify-otp",
+            "auth": { "type": "noauth" },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"7777777777\",\n  \"otp\": \"123456\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Refresh Token",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/auth/refresh",
+            "auth": { "type": "noauth" },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"your-refresh-token-here\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Get Current User",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/auth/me"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Buyers",
+      "item": [
+        {
+          "name": "Create Buyer Profile",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/buyers/profile",
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{buyerToken}}" }] },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"legalName\": \"MedPlus Pharmacy Pvt Ltd\",\n  \"gstNumber\": \"27AABCU9603R1ZM\",\n  \"panNumber\": \"ABCDE1234F\",\n  \"drugLicenseNumber\": \"DL-MH-2024-001234\",\n  \"drugLicenseUrl\": \"https://example.com/drug-license.pdf\",\n  \"address\": \"123 MG Road\",\n  \"city\": \"Mumbai\",\n  \"state\": \"Maharashtra\",\n  \"pincode\": \"400001\",\n  \"latitude\": 19.076,\n  \"longitude\": 72.8777\n}"
+            }
+          }
+        },
+        {
+          "name": "Get Buyer Profile",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/buyers/profile",
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{buyerToken}}" }] }
+          }
+        },
+        {
+          "name": "Update Buyer Profile",
+          "request": {
+            "method": "PATCH",
+            "url": "{{baseUrl}}/buyers/profile",
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{buyerToken}}" }] },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"address\": \"456 Updated Road\",\n  \"city\": \"Pune\"\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Sellers",
+      "item": [
+        {
+          "name": "Create Seller Profile",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/sellers/profile",
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{sellerToken}}" }] },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"companyName\": \"PharmaCorp Distributors\",\n  \"gstNumber\": \"27AABCU9603R1ZM\",\n  \"panNumber\": \"ABCDE1234F\",\n  \"drugLicenseNumber\": \"DL-MH-2024-005678\",\n  \"drugLicenseUrl\": \"https://example.com/drug-license.pdf\",\n  \"address\": \"456 Industrial Area\",\n  \"city\": \"Delhi\",\n  \"state\": \"Delhi\",\n  \"pincode\": \"110001\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Get Seller Profile",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/sellers/profile",
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{sellerToken}}" }] }
+          }
+        },
+        {
+          "name": "Update Seller Profile",
+          "request": {
+            "method": "PATCH",
+            "url": "{{baseUrl}}/sellers/profile",
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{sellerToken}}" }] },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"companyName\": \"PharmaCorp Updated\"\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Categories (Admin)",
+      "description": "Admin-only category & subcategory management. Includes CRUD, bulk seeding, and name→UUID lookup maps for migration scripts.",
+      "item": [
+        {
+          "name": "Categories",
+          "item": [
+            {
+              "name": "Create Category",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "const res = pm.response.json();",
+                      "if (res.data && res.data.id) pm.collectionVariables.set('categoryId', res.data.id);"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "url": "{{baseUrl}}/admin/categories",
+                "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{adminToken}}" }] },
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Medicines\"\n}"
+                }
+              }
+            },
+            {
+              "name": "List All Categories",
+              "request": {
+                "method": "GET",
+                "url": "{{baseUrl}}/admin/categories",
+                "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{adminToken}}" }] }
+              }
+            },
+            {
+              "name": "Get Category Map (name→UUID)",
+              "request": {
+                "method": "GET",
+                "url": "{{baseUrl}}/admin/categories/map",
+                "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{adminToken}}" }] }
+              }
+            },
+            {
+              "name": "Update Category",
+              "request": {
+                "method": "PATCH",
+                "url": "{{baseUrl}}/admin/categories/{{categoryId}}",
+                "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{adminToken}}" }] },
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Pharmaceutical Medicines\"\n}"
+                }
+              }
+            },
+            {
+              "name": "Delete Category",
+              "request": {
+                "method": "DELETE",
+                "url": "{{baseUrl}}/admin/categories/{{categoryId}}",
+                "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{adminToken}}" }] }
+              }
+            },
+            {
+              "name": "Bulk Create Categories",
+              "request": {
+                "method": "POST",
+                "url": "{{baseUrl}}/admin/categories/bulk",
+                "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{adminToken}}" }] },
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"categories\": [\n    { \"name\": \"Medicines\" },\n    { \"name\": \"Medical Devices\" },\n    { \"name\": \"Ayurvedic\" },\n    { \"name\": \"Surgical\" },\n    { \"name\": \"OTC\" }\n  ]\n}"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "Subcategories",
+          "item": [
+            {
+              "name": "Create Subcategory",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "const res = pm.response.json();",
+                      "if (res.data && res.data.id) pm.collectionVariables.set('subCategoryId', res.data.id);"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "url": "{{baseUrl}}/admin/subcategories",
+                "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{adminToken}}" }] },
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Tablets\",\n  \"categoryId\": \"{{categoryId}}\"\n}"
+                }
+              }
+            },
+            {
+              "name": "List Subcategories",
+              "request": {
+                "method": "GET",
+                "url": {
+                  "raw": "{{baseUrl}}/admin/subcategories?categoryId={{categoryId}}",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["admin", "subcategories"],
+                  "query": [
+                    { "key": "categoryId", "value": "{{categoryId}}" }
+                  ]
+                },
+                "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{adminToken}}" }] }
+              }
+            },
+            {
+              "name": "Get Subcategory Map (Category::SubCat→UUID)",
+              "request": {
+                "method": "GET",
+                "url": "{{baseUrl}}/admin/subcategories/map",
+                "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{adminToken}}" }] }
+              }
+            },
+            {
+              "name": "Update Subcategory",
+              "request": {
+                "method": "PATCH",
+                "url": "{{baseUrl}}/admin/subcategories/{{subCategoryId}}",
+                "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{adminToken}}" }] },
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Capsules\"\n}"
+                }
+              }
+            },
+            {
+              "name": "Delete Subcategory",
+              "request": {
+                "method": "DELETE",
+                "url": "{{baseUrl}}/admin/subcategories/{{subCategoryId}}",
+                "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{adminToken}}" }] }
+              }
+            },
+            {
+              "name": "Bulk Create Subcategories",
+              "request": {
+                "method": "POST",
+                "url": "{{baseUrl}}/admin/subcategories/bulk",
+                "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{adminToken}}" }] },
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"subcategories\": [\n    { \"name\": \"Tablets\", \"categoryId\": \"{{categoryId}}\" },\n    { \"name\": \"Syrups\", \"categoryId\": \"{{categoryId}}\" },\n    { \"name\": \"Injections\", \"categoryId\": \"{{categoryId}}\" }\n  ]\n}"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Products",
+      "item": [
+        {
+          "name": "List Products (Public)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/products?page=1&limit=20&sortBy=createdAt&sortOrder=desc",
+              "host": ["{{baseUrl}}"],
+              "path": ["products"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "limit", "value": "20" },
+                { "key": "sortBy", "value": "createdAt" },
+                { "key": "sortOrder", "value": "desc" },
+                { "key": "search", "value": "", "disabled": true },
+                { "key": "categoryId", "value": "", "disabled": true },
+                { "key": "subCategoryId", "value": "", "disabled": true },
+                { "key": "manufacturer", "value": "", "disabled": true }
+              ]
+            },
+            "auth": { "type": "noauth" }
+          }
+        },
+        {
+          "name": "Get Categories",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/products/categories",
+            "auth": { "type": "noauth" }
+          }
+        },
+        {
+          "name": "Get Product by ID",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/products/{{productId}}",
+            "auth": { "type": "noauth" }
+          }
+        },
+        {
+          "name": "Create Product (Seller)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const res = pm.response.json();",
+                  "if (res.id) pm.collectionVariables.set('productId', res.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/products",
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{sellerToken}}" }] },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Paracetamol 500mg\",\n  \"categoryId\": \"{{categoryId}}\",\n  \"subCategoryId\": \"{{subCategoryId}}\",\n  \"manufacturer\": \"Cipla Ltd\",\n  \"chemicalComposition\": \"Paracetamol IP 500mg\",\n  \"description\": \"Analgesic and antipyretic tablet\",\n  \"mrp\": 25.50,\n  \"gstPercent\": 12,\n  \"minimumOrderQuantity\": 10,\n  \"maximumOrderQuantity\": 1000,\n  \"stock\": 500,\n  \"expiryDate\": \"2026-12-31\",\n  \"images\": [\"https://example.com/paracetamol-front.jpg\", \"https://example.com/paracetamol-back.jpg\"],\n  \"discountType\": \"SAME_PRODUCT_BONUS\",\n  \"discountMeta\": { \"buy\": 10, \"get\": 2 }\n}"
+            }
+          }
+        },
+        {
+          "name": "Bulk Create Products (Seller)",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/products/bulk",
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{sellerToken}}" }] },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"products\": [\n    {\n      \"name\": \"Amoxicillin 500mg\",\n      \"categoryId\": \"{{categoryId}}\",\n      \"subCategoryId\": \"{{subCategoryId}}\",\n      \"manufacturer\": \"Cipla Ltd\",\n      \"chemicalComposition\": \"Amoxicillin Trihydrate IP 500mg\",\n      \"mrp\": 85.00,\n      \"gstPercent\": 12,\n      \"stock\": 200,\n      \"expiryDate\": \"2027-06-30\",\n      \"externalId\": \"507f1f77bcf86cd799439011\",\n      \"isMigration\": true,\n      \"discountType\": \"PTR_DISCOUNT\",\n      \"discountMeta\": { \"ptrPercent\": 15 }\n    },\n    {\n      \"name\": \"Azithromycin 250mg\",\n      \"categoryId\": \"{{categoryId}}\",\n      \"subCategoryId\": \"{{subCategoryId}}\",\n      \"manufacturer\": \"Sun Pharma\",\n      \"chemicalComposition\": \"Azithromycin Dihydrate IP 250mg\",\n      \"mrp\": 120.00,\n      \"gstPercent\": 12,\n      \"stock\": 150,\n      \"expiryDate\": \"2027-03-31\",\n      \"externalId\": \"507f1f77bcf86cd799439012\",\n      \"isMigration\": true\n    }\n  ]\n}"
+            }
+          }
+        },
+        {
+          "name": "Get Seller's Own Products",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/products/seller/own?page=1&limit=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["products", "seller", "own"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "limit", "value": "20" }
+              ]
+            },
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{sellerToken}}" }] }
+          }
+        },
+        {
+          "name": "Update Product (Seller)",
+          "request": {
+            "method": "PATCH",
+            "url": "{{baseUrl}}/products/{{productId}}",
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{sellerToken}}" }] },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Paracetamol 650mg\",\n  \"mrp\": 30.00,\n  \"stock\": 450,\n  \"images\": [\"https://example.com/paracetamol-650-front.jpg\"],\n  \"discountType\": \"PTR_DISCOUNT\",\n  \"discountMeta\": { \"ptrPercent\": 10 }\n}"
+            }
+          }
+        },
+        {
+          "name": "Delete Product (Seller)",
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/products/{{productId}}",
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{sellerToken}}" }] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Cart",
+      "item": [
+        {
+          "name": "Add to Cart",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const res = pm.response.json();",
+                  "if (res.id) pm.collectionVariables.set('cartItemId', res.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/cart/add",
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{buyerToken}}" }] },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"productId\": \"{{productId}}\",\n  \"quantity\": 5\n}"
+            }
+          }
+        },
+        {
+          "name": "Get Cart",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/cart",
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{buyerToken}}" }] }
+          }
+        },
+        {
+          "name": "Update Cart Item",
+          "request": {
+            "method": "PATCH",
+            "url": "{{baseUrl}}/cart/item/{{cartItemId}}",
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{buyerToken}}" }] },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"quantity\": 10\n}"
+            }
+          }
+        },
+        {
+          "name": "Remove Cart Item",
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/cart/item/{{cartItemId}}",
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{buyerToken}}" }] }
+          }
+        },
+        {
+          "name": "Clear Cart",
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/cart",
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{buyerToken}}" }] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Orders",
+      "item": [
+        {
+          "name": "Create Order (Checkout)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const res = pm.response.json();",
+                  "if (res.id) pm.collectionVariables.set('orderId', res.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/orders",
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{buyerToken}}" }] },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Raj Pharmacy\",\n  \"phone\": \"7777777777\",\n  \"address\": \"123 MG Road\",\n  \"city\": \"Mumbai\",\n  \"state\": \"Maharashtra\",\n  \"pincode\": \"400001\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Get Buyer Orders",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/orders",
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{buyerToken}}" }] }
+          }
+        },
+        {
+          "name": "Get Seller Orders",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/orders/seller",
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{sellerToken}}" }] }
+          }
+        },
+        {
+          "name": "Get Order by ID",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/orders/{{orderId}}",
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{buyerToken}}" }] }
+          }
+        },
+        {
+          "name": "Update Order Status (Seller)",
+          "request": {
+            "method": "PATCH",
+            "url": "{{baseUrl}}/orders/{{orderId}}/status",
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{sellerToken}}" }] },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"ACCEPTED\"\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Payments",
+      "item": [
+        {
+          "name": "Create Payment",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const res = pm.response.json();",
+                  "if (res.id) pm.collectionVariables.set('paymentId', res.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/payments",
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{buyerToken}}" }] },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"orderId\": \"{{orderId}}\",\n  \"amount\": 1000.00,\n  \"method\": \"UPI\",\n  \"referenceNumber\": \"UPI-REF-12345\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Upload Payment Proof",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/payments/{{paymentId}}/proof",
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{buyerToken}}" }] },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"proofUrl\": \"https://s3.amazonaws.com/pharmabag-images/payment-proof.jpg\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Get Payments for Order",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/payments/order/{{orderId}}",
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{buyerToken}}" }] }
+          }
+        },
+        {
+          "name": "Confirm Payment (Admin)",
+          "request": {
+            "method": "PATCH",
+            "url": "{{baseUrl}}/payments/{{paymentId}}/confirm",
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{adminToken}}" }] },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"remarks\": \"Payment verified against bank statement\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Reject Payment (Admin)",
+          "request": {
+            "method": "PATCH",
+            "url": "{{baseUrl}}/payments/{{paymentId}}/reject",
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{adminToken}}" }] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Storage",
+      "item": [
+        {
+          "name": "Upload Product Image",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/storage/product-image",
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{sellerToken}}" }] },
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "file", "type": "file", "src": "" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Upload Payment Proof File",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/storage/payment-proof",
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{buyerToken}}" }] },
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "file", "type": "file", "src": "" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Upload KYC Document",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/storage/kyc",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "file", "type": "file", "src": "" }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Notifications",
+      "item": [
+        {
+          "name": "Get My Notifications",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/notifications"
+          }
+        },
+        {
+          "name": "Mark Notification as Read",
+          "request": {
+            "method": "PATCH",
+            "url": "{{baseUrl}}/notifications/{{notificationId}}/read"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Reviews",
+      "item": [
+        {
+          "name": "Create Review",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/reviews",
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{buyerToken}}" }] },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"productId\": \"{{productId}}\",\n  \"rating\": 5,\n  \"comment\": \"Excellent product quality and fast delivery\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Get Product Reviews",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/reviews/product/{{productId}}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Tickets",
+      "item": [
+        {
+          "name": "Create Support Ticket",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const res = pm.response.json();",
+                  "if (res.id) pm.collectionVariables.set('ticketId', res.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/tickets",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"subject\": \"Order delivery delayed\",\n  \"message\": \"My order #12345 has been pending for 5 days. Please look into this.\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Get My Tickets",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/tickets"
+          }
+        },
+        {
+          "name": "Add Message to Ticket",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/tickets/{{ticketId}}/messages",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message\": \"Any update on this issue?\"\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Settlements",
+      "item": [
+        {
+          "name": "Get Seller Settlements",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/settlements/seller",
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{sellerToken}}" }] }
+          }
+        },
+        {
+          "name": "Get Settlement Summary",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/settlements/summary",
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{sellerToken}}" }] }
+          }
+        },
+        {
+          "name": "Get Settlement History",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/settlements/history",
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{sellerToken}}" }] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Admin",
+      "item": [
+        {
+          "name": "Dashboard",
+          "item": [
+            {
+              "name": "Get Dashboard Stats",
+              "request": {
+                "method": "GET",
+                "url": "{{baseUrl}}/admin/dashboard",
+                "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{adminToken}}" }] }
+              }
+            }
+          ]
+        },
+        {
+          "name": "User Management",
+          "item": [
+            {
+              "name": "Get All Users",
+              "request": {
+                "method": "GET",
+                "url": {
+                  "raw": "{{baseUrl}}/admin/users?page=1&limit=20",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["admin", "users"],
+                  "query": [
+                    { "key": "page", "value": "1" },
+                    { "key": "limit", "value": "20" },
+                    { "key": "role", "value": "BUYER", "disabled": true },
+                    { "key": "status", "value": "APPROVED", "disabled": true },
+                    { "key": "search", "value": "", "disabled": true }
+                  ]
+                },
+                "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{adminToken}}" }] }
+              }
+            },
+            {
+              "name": "Get Pending Users",
+              "request": {
+                "method": "GET",
+                "url": "{{baseUrl}}/admin/users/pending",
+                "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{adminToken}}" }] }
+              }
+            },
+            {
+              "name": "Get User by ID",
+              "request": {
+                "method": "GET",
+                "url": "{{baseUrl}}/admin/users/{{userId}}",
+                "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{adminToken}}" }] }
+              }
+            },
+            {
+              "name": "Approve User",
+              "request": {
+                "method": "PATCH",
+                "url": "{{baseUrl}}/admin/users/{{userId}}/approve",
+                "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{adminToken}}" }] }
+              }
+            },
+            {
+              "name": "Reject User",
+              "request": {
+                "method": "PATCH",
+                "url": "{{baseUrl}}/admin/users/{{userId}}/reject",
+                "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{adminToken}}" }] }
+              }
+            },
+            {
+              "name": "Block User",
+              "request": {
+                "method": "PATCH",
+                "url": "{{baseUrl}}/admin/users/{{userId}}/block",
+                "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{adminToken}}" }] }
+              }
+            },
+            {
+              "name": "Unblock User",
+              "request": {
+                "method": "PATCH",
+                "url": "{{baseUrl}}/admin/users/{{userId}}/unblock",
+                "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{adminToken}}" }] }
+              }
+            }
+          ]
+        },
+        {
+          "name": "Product Management",
+          "item": [
+            {
+              "name": "Get All Products",
+              "request": {
+                "method": "GET",
+                "url": {
+                  "raw": "{{baseUrl}}/admin/products?page=1&limit=20",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["admin", "products"],
+                  "query": [
+                    { "key": "page", "value": "1" },
+                    { "key": "limit", "value": "20" },
+                    { "key": "sellerId", "value": "", "disabled": true },
+                    { "key": "categoryId", "value": "", "disabled": true },
+                    { "key": "isActive", "value": "true", "disabled": true },
+                    { "key": "search", "value": "", "disabled": true }
+                  ]
+                },
+                "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{adminToken}}" }] }
+              }
+            },
+            {
+              "name": "Get Product by ID",
+              "request": {
+                "method": "GET",
+                "url": "{{baseUrl}}/admin/products/{{productId}}",
+                "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{adminToken}}" }] }
+              }
+            },
+            {
+              "name": "Disable Product",
+              "request": {
+                "method": "PATCH",
+                "url": "{{baseUrl}}/admin/products/{{productId}}/disable",
+                "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{adminToken}}" }] }
+              }
+            },
+            {
+              "name": "Enable Product",
+              "request": {
+                "method": "PATCH",
+                "url": "{{baseUrl}}/admin/products/{{productId}}/enable",
+                "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{adminToken}}" }] }
+              }
+            },
+            {
+              "name": "Soft Delete Product",
+              "request": {
+                "method": "DELETE",
+                "url": "{{baseUrl}}/admin/products/{{productId}}",
+                "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{adminToken}}" }] }
+              }
+            }
+          ]
+        },
+        {
+          "name": "Order Management",
+          "item": [
+            {
+              "name": "Get All Orders",
+              "request": {
+                "method": "GET",
+                "url": {
+                  "raw": "{{baseUrl}}/admin/orders?page=1&limit=20",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["admin", "orders"],
+                  "query": [
+                    { "key": "page", "value": "1" },
+                    { "key": "limit", "value": "20" },
+                    { "key": "status", "value": "PLACED", "disabled": true },
+                    { "key": "buyerId", "value": "", "disabled": true },
+                    { "key": "sellerId", "value": "", "disabled": true },
+                    { "key": "dateFrom", "value": "2024-01-01", "disabled": true },
+                    { "key": "dateTo", "value": "2025-12-31", "disabled": true }
+                  ]
+                },
+                "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{adminToken}}" }] }
+              }
+            },
+            {
+              "name": "Get Order by ID",
+              "request": {
+                "method": "GET",
+                "url": "{{baseUrl}}/admin/orders/{{orderId}}",
+                "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{adminToken}}" }] }
+              }
+            },
+            {
+              "name": "Override Order Status",
+              "request": {
+                "method": "PATCH",
+                "url": "{{baseUrl}}/admin/orders/{{orderId}}/status",
+                "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{adminToken}}" }] },
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"status\": \"CANCELLED\"\n}"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "Payment Management",
+          "item": [
+            {
+              "name": "Get All Payments",
+              "request": {
+                "method": "GET",
+                "url": {
+                  "raw": "{{baseUrl}}/admin/payments?page=1&limit=20",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["admin", "payments"],
+                  "query": [
+                    { "key": "page", "value": "1" },
+                    { "key": "limit", "value": "20" },
+                    { "key": "verificationStatus", "value": "PENDING", "disabled": true },
+                    { "key": "orderId", "value": "", "disabled": true }
+                  ]
+                },
+                "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{adminToken}}" }] }
+              }
+            },
+            {
+              "name": "Confirm Payment",
+              "request": {
+                "method": "PATCH",
+                "url": "{{baseUrl}}/admin/payments/{{paymentId}}/confirm",
+                "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{adminToken}}" }] }
+              }
+            },
+            {
+              "name": "Reject Payment",
+              "request": {
+                "method": "PATCH",
+                "url": "{{baseUrl}}/admin/payments/{{paymentId}}/reject",
+                "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{adminToken}}" }] }
+              }
+            }
+          ]
+        },
+        {
+          "name": "Settlement Management",
+          "item": [
+            {
+              "name": "Get All Settlements",
+              "request": {
+                "method": "GET",
+                "url": {
+                  "raw": "{{baseUrl}}/admin/settlements?page=1&limit=20",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["admin", "settlements"],
+                  "query": [
+                    { "key": "page", "value": "1" },
+                    { "key": "limit", "value": "20" },
+                    { "key": "status", "value": "PENDING", "disabled": true },
+                    { "key": "sellerId", "value": "", "disabled": true }
+                  ]
+                },
+                "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{adminToken}}" }] }
+              }
+            },
+            {
+              "name": "Mark Settlement as Paid",
+              "request": {
+                "method": "PATCH",
+                "url": "{{baseUrl}}/admin/settlements/{{settlementId}}/mark-paid",
+                "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{adminToken}}" }] },
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"payoutReference\": \"NEFT-REF-20240101-001\"\n}"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "Ticket Management",
+          "item": [
+            {
+              "name": "Get All Tickets",
+              "request": {
+                "method": "GET",
+                "url": {
+                  "raw": "{{baseUrl}}/admin/tickets?page=1&limit=20",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["admin", "tickets"],
+                  "query": [
+                    { "key": "page", "value": "1" },
+                    { "key": "limit", "value": "20" },
+                    { "key": "status", "value": "OPEN", "disabled": true }
+                  ]
+                },
+                "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{adminToken}}" }] }
+              }
+            },
+            {
+              "name": "Get Ticket by ID",
+              "request": {
+                "method": "GET",
+                "url": "{{baseUrl}}/admin/tickets/{{ticketId}}",
+                "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{adminToken}}" }] }
+              }
+            },
+            {
+              "name": "Reply to Ticket",
+              "request": {
+                "method": "POST",
+                "url": "{{baseUrl}}/admin/tickets/{{ticketId}}/reply",
+                "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{adminToken}}" }] },
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"message\": \"Thank you for reaching out. We are looking into this issue.\"\n}"
+                }
+              }
+            },
+            {
+              "name": "Update Ticket Status",
+              "request": {
+                "method": "PATCH",
+                "url": "{{baseUrl}}/admin/tickets/{{ticketId}}/status",
+                "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{adminToken}}" }] },
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"status\": \"RESOLVED\"\n}"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Blog (Admin)",
+      "description": "Admin CMS endpoints for managing blog posts, authors, and categories. Requires ADMIN role.",
+      "item": [
+        {
+          "name": "Posts",
+          "item": [
+            {
+              "name": "Create Blog Post",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "const res = pm.response.json();",
+                      "if (res.data && res.data.id) {",
+                      "  pm.collectionVariables.set('blogPostId', res.data.id);",
+                      "  pm.collectionVariables.set('blogSlug', res.data.slug);",
+                      "}"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "url": "{{baseUrl}}/admin/blogs",
+                "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{adminToken}}" }] },
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"title\": \"Best Medicines for Cold in India\",\n  \"slug\": \"best-medicines-for-cold-india\",\n  \"excerpt\": \"Discover effective medicines for cold relief in India.\",\n  \"content\": { \"blocks\": [{ \"type\": \"paragraph\", \"data\": { \"text\": \"Cold and flu are common ailments. Here are the best medicines available in India.\" } }] },\n  \"featuredImage\": \"https://example.com/cold-medicine.jpg\",\n  \"authorId\": \"{{blogAuthorId}}\",\n  \"categoryId\": \"{{blogCategoryId}}\",\n  \"tags\": [\"cold\", \"medicine\", \"india\"],\n  \"status\": \"DRAFT\",\n  \"metaTitle\": \"Best Cold Medicines in India | Pharmabag\",\n  \"metaDescription\": \"Top medicines for cold relief available across India.\",\n  \"metaKeywords\": [\"cold medicine india\", \"flu tablets\"],\n  \"canonicalUrl\": \"https://pharmabag.com/blog/best-medicines-for-cold-india\",\n  \"ogImage\": \"https://example.com/cold-medicine-og.jpg\"\n}"
+                }
+              }
+            },
+            {
+              "name": "Get All Blog Posts (Admin)",
+              "request": {
+                "method": "GET",
+                "url": {
+                  "raw": "{{baseUrl}}/admin/blogs?page=1&limit=10",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["admin", "blogs"],
+                  "query": [
+                    { "key": "page", "value": "1" },
+                    { "key": "limit", "value": "10" },
+                    { "key": "status", "value": "DRAFT", "disabled": true },
+                    { "key": "category", "value": "health", "disabled": true },
+                    { "key": "search", "value": "cold", "disabled": true }
+                  ]
+                },
+                "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{adminToken}}" }] }
+              }
+            },
+            {
+              "name": "Get Blog Post by ID",
+              "request": {
+                "method": "GET",
+                "url": "{{baseUrl}}/admin/blogs/{{blogPostId}}",
+                "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{adminToken}}" }] }
+              }
+            },
+            {
+              "name": "Update Blog Post",
+              "request": {
+                "method": "PUT",
+                "url": "{{baseUrl}}/admin/blogs/{{blogPostId}}",
+                "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{adminToken}}" }] },
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"title\": \"Best Medicines for Cold in India — Updated Guide\",\n  \"excerpt\": \"Updated: Discover the most effective cold medicines in India for 2026.\",\n  \"metaTitle\": \"Best Cold Medicines in India 2026 | Pharmabag\"\n}"
+                }
+              }
+            },
+            {
+              "name": "Publish / Unpublish Blog Post",
+              "request": {
+                "method": "PATCH",
+                "url": "{{baseUrl}}/admin/blogs/{{blogPostId}}/status",
+                "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{adminToken}}" }] },
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"status\": \"PUBLISHED\"\n}"
+                }
+              }
+            },
+            {
+              "name": "Delete Blog Post",
+              "request": {
+                "method": "DELETE",
+                "url": "{{baseUrl}}/admin/blogs/{{blogPostId}}",
+                "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{adminToken}}" }] }
+              }
+            }
+          ]
+        },
+        {
+          "name": "Authors",
+          "item": [
+            {
+              "name": "Create Blog Author",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "const res = pm.response.json();",
+                      "if (res.data && res.data.id) {",
+                      "  pm.collectionVariables.set('blogAuthorId', res.data.id);",
+                      "}"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "url": "{{baseUrl}}/admin/blogs/authors",
+                "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{adminToken}}" }] },
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Dr. Priya Sharma\",\n  \"bio\": \"Pharmaceutical expert with 10+ years of experience in clinical research.\",\n  \"avatar\": \"https://example.com/avatar-priya.jpg\"\n}"
+                }
+              }
+            },
+            {
+              "name": "Get All Authors",
+              "request": {
+                "method": "GET",
+                "url": "{{baseUrl}}/admin/blogs/authors",
+                "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{adminToken}}" }] }
+              }
+            },
+            {
+              "name": "Get Author by ID",
+              "request": {
+                "method": "GET",
+                "url": "{{baseUrl}}/admin/blogs/authors/{{blogAuthorId}}",
+                "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{adminToken}}" }] }
+              }
+            },
+            {
+              "name": "Update Author",
+              "request": {
+                "method": "PUT",
+                "url": "{{baseUrl}}/admin/blogs/authors/{{blogAuthorId}}",
+                "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{adminToken}}" }] },
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"bio\": \"Senior pharmaceutical researcher and health writer.\"\n}"
+                }
+              }
+            },
+            {
+              "name": "Delete Author",
+              "request": {
+                "method": "DELETE",
+                "url": "{{baseUrl}}/admin/blogs/authors/{{blogAuthorId}}",
+                "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{adminToken}}" }] }
+              }
+            }
+          ]
+        },
+        {
+          "name": "Categories",
+          "item": [
+            {
+              "name": "Create Blog Category",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "const res = pm.response.json();",
+                      "if (res.data && res.data.id) {",
+                      "  pm.collectionVariables.set('blogCategoryId', res.data.id);",
+                      "}"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "url": "{{baseUrl}}/admin/blogs/categories",
+                "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{adminToken}}" }] },
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Health\",\n  \"slug\": \"health\"\n}"
+                }
+              }
+            },
+            {
+              "name": "Get All Blog Categories",
+              "request": {
+                "method": "GET",
+                "url": "{{baseUrl}}/admin/blogs/categories",
+                "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{adminToken}}" }] }
+              }
+            },
+            {
+              "name": "Update Blog Category",
+              "request": {
+                "method": "PUT",
+                "url": "{{baseUrl}}/admin/blogs/categories/{{blogCategoryId}}",
+                "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{adminToken}}" }] },
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Health & Wellness\"\n}"
+                }
+              }
+            },
+            {
+              "name": "Delete Blog Category",
+              "request": {
+                "method": "DELETE",
+                "url": "{{baseUrl}}/admin/blogs/categories/{{blogCategoryId}}",
+                "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{adminToken}}" }] }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Blog (Public)",
+      "description": "Public blog endpoints. No authentication required.",
+      "item": [
+        {
+          "name": "Get Published Blogs",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/blogs?page=1&limit=10",
+              "host": ["{{baseUrl}}"],
+              "path": ["blogs"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "limit", "value": "10" },
+                { "key": "category", "value": "health", "disabled": true },
+                { "key": "tag", "value": "cold", "disabled": true },
+                { "key": "search", "value": "medicine", "disabled": true }
+              ]
+            },
+            "auth": { "type": "noauth" }
+          }
+        },
+        {
+          "name": "Get Trending Blogs",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/blogs/trending?limit=10",
+              "host": ["{{baseUrl}}"],
+              "path": ["blogs", "trending"],
+              "query": [
+                { "key": "limit", "value": "10" }
+              ]
+            },
+            "auth": { "type": "noauth" }
+          }
+        },
+        {
+          "name": "Get Blog Categories",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/blogs/categories",
+            "auth": { "type": "noauth" }
+          }
+        },
+        {
+          "name": "Get Blogs by Tag",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/blogs/tag/cold?page=1&limit=10",
+              "host": ["{{baseUrl}}"],
+              "path": ["blogs", "tag", "cold"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "limit", "value": "10" }
+              ]
+            },
+            "auth": { "type": "noauth" }
+          }
+        },
+        {
+          "name": "Get Blog Post by Slug",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/blogs/{{blogSlug}}",
+            "auth": { "type": "noauth" }
+          }
+        },
+        {
+          "name": "Increment Blog View",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/blogs/{{blogSlug}}/view",
+            "auth": { "type": "noauth" }
+          }
+        },
+        {
+          "name": "Get Sitemap XML",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/sitemap.xml",
+            "auth": { "type": "noauth" }
+          }
+        }
+      ]
+    }
+  ]
+}
