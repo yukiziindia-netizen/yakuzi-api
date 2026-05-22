@@ -48,7 +48,8 @@ export class SellersService {
         userId,
         companyName: dto.companyName,
         gstNumber: dto.gstNumber,
-        panNumber: dto.panNumber,
+        panNumber: dto.panNumber ?? null,
+        aadhaarNumber: dto.aadhaarNumber ?? null,
         drugLicenseNumber: dto.drugLicenseNumber,
         drugLicenseUrl: dto.drugLicenseUrl,
         drugLicenseExpiry: dto.drugLicenseExpiry ? new Date(dto.drugLicenseExpiry) : null,
@@ -68,7 +69,7 @@ export class SellersService {
         // @ts-ignore
         cancelCheck: dto.cancelCheck,
         gstPanResponse,
-        verificationStatus: gstPanResponse ? 'PENDING' : 'UNVERIFIED',
+        verificationStatus: (gstPanResponse || dto.aadhaarNumber) ? 'PENDING' : 'UNVERIFIED',
         rating: 0,
       },
     });

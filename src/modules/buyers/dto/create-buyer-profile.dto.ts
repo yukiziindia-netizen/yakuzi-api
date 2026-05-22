@@ -49,6 +49,14 @@ export class CreateBuyerProfileDto {
   })
   panNumber?: string;
 
+  @ApiPropertyOptional({ example: '123456789012', description: '12-digit Aadhaar Card number' })
+  @IsOptional()
+  @IsString()
+  @Matches(/^\d{12}$/, {
+    message: 'aadhaarNumber must be a valid 12-digit number',
+  })
+  aadhaarNumber?: string;
+
   @ApiProperty({ example: 'DL-MH-123456' })
   @IsString()
   @IsNotEmpty()

@@ -9,8 +9,6 @@ import {
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { IdfyService } from './idfy.service';
 import { VerifyGstPanDto, VerificationType } from './dto/verify-gst-pan.dto';
-import { IdfyVerificationResponseDto } from './dto/idfy-pan.dto';
-import { IdfyGstVerificationResponseDto } from './dto/idfy-gst.dto';
 
 @ApiTags('Verification')
 @Controller('verification')

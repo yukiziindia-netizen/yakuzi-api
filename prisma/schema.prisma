@@ -42,6 +42,7 @@ model BuyerProfile {
   legalName          String
   gstNumber          String?
   panNumber          String?
+  aadhaarNumber      String?
   drugLicenseNumber  String?
   drugLicenseUrl     String?
   city               String?
@@ -83,7 +84,8 @@ model SellerProfile {
   userId             String             @unique
   companyName        String
   gstNumber          String
-  panNumber          String
+  panNumber          String?
+  aadhaarNumber      String?
   drugLicenseNumber  String
   drugLicenseUrl     String
   address            String

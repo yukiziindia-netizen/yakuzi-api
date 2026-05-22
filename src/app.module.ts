@@ -31,6 +31,7 @@ import { MigrationModule } from './modules/migration/migration.module';
 import { VerificationModule } from './modules/verification/verification.module';
 import { ReferralModule } from './modules/referrals/referral.module';
 import { CustomOrdersModule } from './modules/custom-orders/custom-orders.module';
+import { ChatbotModule } from './modules/chatbot/chatbot.module';
 
 @Module({
   imports: [
@@ -42,6 +43,7 @@ import { CustomOrdersModule } from './modules/custom-orders/custom-orders.module
         PORT: Joi.number().default(3000),
         DATABASE_URL: Joi.string().required(),
         JWT_SECRET: Joi.string().required(),
+        REDIS_URL: Joi.string().allow('').optional(),
         REDIS_HOST: Joi.string().default('localhost'),
         REDIS_PORT: Joi.number().default(6379),
         AWS_ACCESS_KEY: Joi.string().allow('').default(''),
@@ -52,6 +54,12 @@ import { CustomOrdersModule } from './modules/custom-orders/custom-orders.module
           'http://localhost:3000,http://localhost:3001,http://localhost:3002,http://localhost:3003,http://localhost:5173,https://pharmabag-web-admin.vercel.app,https://pharmabag-web-seller.vercel.app,https://pharmabag-web-buyer.vercel.app,https://seller.pharmabag.com,https://admin.pharmabag.com,https://pharmabag-api.onrender.com/api,https://pharmabag-api.onrender.com,https://pharmabag.in,https://www.pharmabag.in,https://admin.pharmabag.in,https://seller.pharmabag.in,http://api.pharmabag.in,api.pharmabag.in',
         ),
         PLATFORM_COMMISSION_RATE: Joi.number().default(0.05),
+        IDFY_ACCOUNT_ID: Joi.string().allow('').optional(),
+        IDFY_API_KEY: Joi.string().allow('').optional(),
+        IDFY_MOCK_MODE: Joi.string().allow('').optional(),
+        GEMINI_API_KEY: Joi.string().allow('').optional(),
+        COGNITO_USER_POOL_ID: Joi.string().allow('').optional(),
+        COGNITO_CLIENT_ID: Joi.string().allow('').optional(),
       }),
       validationOptions: { abortEarly: true },
     }),
@@ -107,6 +115,7 @@ import { CustomOrdersModule } from './modules/custom-orders/custom-orders.module
     VerificationModule,
     ReferralModule,
     CustomOrdersModule,
+    ChatbotModule,
   ],
   providers: [
     // Apply throttler guard globally

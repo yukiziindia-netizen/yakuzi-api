@@ -47,6 +47,14 @@ export class UpdateSellerProfileDto {
   })
   panNumber?: string;
 
+  @ApiPropertyOptional({ example: '123456789012' })
+  @IsOptional()
+  @IsString()
+  @Matches(/^\d{12}$/, {
+    message: 'aadhaarNumber must be a valid 12-digit number',
+  })
+  aadhaarNumber?: string;
+
   @ApiPropertyOptional({ example: 'DL-MH-2024-005678' })
   @IsOptional()
   @IsString()

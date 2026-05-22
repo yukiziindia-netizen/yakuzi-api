@@ -38,12 +38,20 @@ export class BuyersService {
       throw new ConflictException('Buyer profile already exists');
     }
 
-    if (!dto.gstNumber && !dto.panNumber) {
-      throw new BadRequestException('Either GST number or PAN number is required');
+    if (!dto.gstNumber && !dto.panNumber && !dto.aadhaarNumber) {
+      throw new BadRequestException('Either GST number, Aadhaar number, or PAN number is required');
     }
 
     // Use pre-verified response if provided, otherwise verify via IDFY
     let gstPanResponse: any = dto.gstPanResponse ?? null;
+
+    if (dto.aadhaarNumber && !gstPanResponse) {
+      gstPanResponse = {
+        status: true,
+        message: 'Aadhaar number provided directly without API verification',
+        verifiedDocumentType: 'ind_aadhaar_card',
+      };
+    }
 
     if (!gstPanResponse && this.idfyService.isConfigured()) {
       if (dto.gstNumber) {
@@ -61,9 +69,9 @@ export class BuyersService {
       }
     }
 
-    if (!gstPanResponse || !gstPanResponse.status) {
+    if (!gstPanResponse || (!gstPanResponse.status && !gstPanResponse.success)) {
       throw new BadRequestException(
-        'IDFY verification is required. Please verify GST or PAN before submitting.',
+        'IDFY verification is required. Please verify GST, Aadhaar, or PAN before submitting.',
       );
     }
 
@@ -92,6 +100,7 @@ export class BuyersService {
       legalName: dto.legalName,
       gstNumber: dto.gstNumber ?? null,
       panNumber: dto.panNumber ?? null,
+      aadhaarNumber: dto.aadhaarNumber ?? null,
       drugLicenseNumber: dto.drugLicenseNumber ?? null,
       drugLicenseUrl: dto.drugLicenseUrl ?? null,
       drugLicenseExpiry: dto.drugLicenseExpiry ? new Date(dto.drugLicenseExpiry) : null,
@@ -140,13 +149,23 @@ export class BuyersService {
    * Returns the created buyer profile.
    */
   async onboardBuyer(sellerId: string, dto: CreateBuyerProfileDto) {
-    if (!dto.gstNumber && !dto.panNumber) {
-      throw new BadRequestException('Either GST number or PAN number is required');
+    if (!dto.gstNumber && !dto.panNumber && !dto.aadhaarNumber) {
+      throw new BadRequestException('Either GST number, Aadhaar number, or PAN number is required');
     }
 
-    if (!dto.gstPanResponse || !dto.gstPanResponse.status) {
+    let gstPanResponse = dto.gstPanResponse;
+    if (dto.aadhaarNumber && !gstPanResponse) {
+      gstPanResponse = {
+        status: true,
+        message: 'Aadhaar number provided directly without API verification',
+        verifiedDocumentType: 'ind_aadhaar_card',
+      };
+      dto.gstPanResponse = gstPanResponse;
+    }
+
+    if (!gstPanResponse || (!gstPanResponse.status && !gstPanResponse.success)) {
       throw new BadRequestException(
-        'IDFY verification is required. Verify GST or PAN before submitting.',
+        'IDFY verification is required. Verify GST, Aadhaar, or PAN before submitting.',
       );
     }
 
@@ -209,6 +228,7 @@ export class BuyersService {
         legalName: dto.legalName,
         gstNumber: dto.gstNumber ?? null,
         panNumber: dto.panNumber ?? null,
+        aadhaarNumber: dto.aadhaarNumber ?? null,
         drugLicenseNumber: dto.drugLicenseNumber ?? null,
         drugLicenseUrl: dto.drugLicenseUrl ?? null,
         drugLicenseExpiry: dto.drugLicenseExpiry ? new Date(dto.drugLicenseExpiry) : null,

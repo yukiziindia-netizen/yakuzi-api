@@ -41,13 +41,21 @@ export class CreateSellerProfileDto {
   })
   gstNumber: string;
 
-  @ApiProperty({ example: 'ABCDE1234F', description: '10-char PAN' })
+  @ApiPropertyOptional({ example: 'ABCDE1234F', description: '10-char PAN' })
   @IsString()
-  @IsNotEmpty()
+  @IsOptional()
   @Matches(/^[A-Z]{5}\d{4}[A-Z]{1}$/, {
     message: 'panNumber must be a valid 10-character PAN',
   })
-  panNumber: string;
+  panNumber?: string;
+
+  @ApiPropertyOptional({ example: '123456789012', description: '12-digit Aadhaar Card number' })
+  @IsOptional()
+  @IsString()
+  @Matches(/^\d{12}$/, {
+    message: 'aadhaarNumber must be a valid 12-digit number',
+  })
+  aadhaarNumber?: string;
 
   @ApiProperty({ example: 'DL-MH-654321' })
   @IsString()
