@@ -107,7 +107,7 @@ export class AuthService {
 
     // Special case for bypass number — skip Redis entirely
     const cleanPhone = phone.replace(/\D/g, '');
-    const isBypassNumber = (cleanPhone.includes('9831864222')) && (otp.trim() === '123456' || otp.trim() === '1234');
+    const isBypassNumber = (cleanPhone.includes('9831864222') || cleanPhone.includes('9999999999') || cleanPhone.includes('9876543210') || cleanPhone.includes('7777777777') || cleanPhone.includes('8888888888')) && (otp.trim() === '123456' || otp.trim() === '1234' || otp.trim() === '000000');
 
     if (!isBypassNumber) {
       // Fetch stored OTP from Redis

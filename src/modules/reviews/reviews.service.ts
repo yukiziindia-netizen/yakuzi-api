@@ -19,11 +19,11 @@ export class ReviewsService {
    * One review per user per product (enforced by @@unique([userId, productId])).
    */
   async createReview(userId: string, dto: CreateReviewDto) {
-    const { productId, rating, comment } = dto;
+    const { catalogProductId, rating, comment } = dto;
 
     // Verify product exists
-    const product = await this.prisma.product.findUnique({
-      where: { id: productId },
+    const product = await this.prisma.catalogProduct.findUnique({
+      where: { id: catalogProductId },
     });
 
     if (!product) {
@@ -33,7 +33,7 @@ export class ReviewsService {
     // Verify buyer has purchased this product (in a DELIVERED order)
     const purchased = await this.prisma.orderItem.findFirst({
       where: {
-        productId,
+        sellerOffer: { variant: { catalogProductId } },
         order: {
           buyerId: userId,
           orderStatus: 'DELIVERED',
@@ -49,7 +49,7 @@ export class ReviewsService {
 
     // Check for existing review (Prisma unique constraint will also catch this)
     const existing = await this.prisma.review.findUnique({
-      where: { userId_productId: { userId, productId } },
+      where: { userId_catalogProductId: { userId, catalogProductId } },
     });
 
     if (existing) {
@@ -57,11 +57,11 @@ export class ReviewsService {
     }
 
     const review = await this.prisma.review.create({
-      data: { userId, productId, rating, comment },
+      data: { userId, catalogProductId, sellerOfferId: purchased.sellerOfferId, rating, comment },
       select: {
         id: true,
         userId: true,
-        productId: true,
+        catalogProductId: true,
         rating: true,
         comment: true,
         createdAt: true,
@@ -69,21 +69,21 @@ export class ReviewsService {
     });
 
     // Update seller's average rating
-    await this.updateSellerRating(product.sellerId);
+    await this.updateSellerRating(purchased.sellerId);
 
     this.logger.log(
-      `Review created by user ${userId} for product ${productId}: ${rating}/5`,
+      `Review created by user ${userId} for product ${catalogProductId}: ${rating}/5`,
     );
 
     return review;
   }
 
   /**
-   * Get all reviews for a product.
+   * Get all reviews for a catalogProduct.
    */
-  async getProductReviews(productId: string) {
-    const product = await this.prisma.product.findUnique({
-      where: { id: productId },
+  async getProductReviews(catalogProductId: string) {
+    const product = await this.prisma.catalogProduct.findUnique({
+      where: { id: catalogProductId },
     });
 
     if (!product) {
@@ -91,7 +91,7 @@ export class ReviewsService {
     }
 
     const reviews = await this.prisma.review.findMany({
-      where: { productId },
+      where: { catalogProductId },
       orderBy: { createdAt: 'desc' },
       select: {
         id: true,
@@ -111,15 +111,15 @@ export class ReviewsService {
 
     // Compute average rating
     const avgResult = await this.prisma.review.aggregate({
-      where: { productId },
+      where: { catalogProductId },
       _avg: { rating: true },
-      _count: { id: true },
+      _count: true,
     });
 
     return {
-      productId,
-      averageRating: +(avgResult._avg.rating ?? 0).toFixed(1),
-      totalReviews: avgResult._count.id,
+      catalogProductId,
+      averageRating: +((avgResult._avg && avgResult._avg.rating) || 0).toFixed(1),
+      totalReviews: avgResult._count || 0,
       reviews,
     };
   }
@@ -129,11 +129,11 @@ export class ReviewsService {
    */
   private async updateSellerRating(sellerId: string) {
     const result = await this.prisma.review.aggregate({
-      where: { product: { sellerId } },
+      where: { sellerOffer: { sellerId } },
       _avg: { rating: true },
     });
 
-    const avgRating = +(result._avg.rating ?? 0).toFixed(1);
+    const avgRating = +((result._avg && result._avg.rating) || 0).toFixed(1);
 
     await this.prisma.sellerProfile.update({
       where: { id: sellerId },

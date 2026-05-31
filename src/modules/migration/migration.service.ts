@@ -442,7 +442,7 @@ export class MigrationService {
 
     // Resolve order items
     const resolvedItems: Array<{
-      productId: string;
+      sellerOfferId: string;
       sellerId: string;
       quantity: number;
       unitPrice: number;
@@ -452,8 +452,8 @@ export class MigrationService {
 
     for (const item of legacy.items) {
       // Resolve product via externalId
-      const productId = productIdMap.get(item.legacyProductId);
-      if (!productId) {
+      const sellerOfferId = productIdMap.get(item.legacyProductId);
+      if (!sellerOfferId) {
         throw new Error(`Product not found for legacy ID: ${item.legacyProductId}`);
       }
 
@@ -473,7 +473,7 @@ export class MigrationService {
       }
 
       resolvedItems.push({
-        productId,
+        sellerOfferId,
         sellerId: sellerProfile.id,
         quantity: item.quantity,
         unitPrice: item.unitPrice,
@@ -494,7 +494,7 @@ export class MigrationService {
           ...(legacy.createdAt ? { createdAt: new Date(legacy.createdAt) } : {}),
           items: {
             create: resolvedItems.map((item) => ({
-              productId: item.productId,
+              sellerOfferId: item.sellerOfferId,
               sellerId: item.sellerId,
               quantity: item.quantity,
               unitPrice: item.unitPrice,
@@ -1229,7 +1229,7 @@ export class MigrationService {
    * Products use externalId (not migration ID map) for legacy reference.
    */
   private async loadProductExternalIdMap(): Promise<Map<string, string>> {
-    const products = await this.prisma.product.findMany({
+    const products = await this.prisma.sellerOffer.findMany({
       where: { externalId: { not: null } },
       select: { id: true, externalId: true },
     });

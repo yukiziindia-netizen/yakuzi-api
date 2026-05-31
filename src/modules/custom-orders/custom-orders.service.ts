@@ -15,25 +15,25 @@ export class CustomOrdersService {
       throw new NotFoundException('Buyer profile not found. Please complete onboarding.');
     }
 
-    let finalProductId = dto.productId;
+    let finalProductId = dto.catalogProductId;
 
     // Resolve seller-specific Product ID to its MasterProduct ID if needed
     if (finalProductId) {
       // 1. Check if it's already a MasterProduct ID
-      const masterProduct = await this.prisma.masterProduct.findUnique({
+      const masterProduct = await this.prisma.catalogProduct.findUnique({
         where: { id: finalProductId },
         select: { id: true },
       });
 
       if (!masterProduct) {
         // 2. Try to resolve from seller-specific Product
-        const sellerProduct = await this.prisma.product.findUnique({
+        const sellerProduct = await this.prisma.sellerOffer.findUnique({
           where: { id: finalProductId },
-          select: { masterProductId: true },
+          select: { variant: { select: { catalogProductId: true } } },
         });
 
-        if (sellerProduct?.masterProductId) {
-          finalProductId = sellerProduct.masterProductId;
+        if (sellerProduct?.variant?.catalogProductId) {
+          finalProductId = sellerProduct.variant.catalogProductId;
         } else {
           // 3. Fallback: If ID cannot be resolved to a MasterProduct, 
           // set to undefined to prevent foreign key violation. The message remains.
@@ -45,7 +45,7 @@ export class CustomOrdersService {
     return await this.prisma.customOrder.create({
       data: {
         buyerId: buyerProfile.id,
-        productId: finalProductId,
+        catalogProductId: finalProductId,
         message: dto.message,
       },
       include: {

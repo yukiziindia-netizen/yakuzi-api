@@ -10,5 +10,5 @@ export class CreateCustomOrderDto {
   @ApiProperty({ example: 'uuid-of-product', required: false })
   @IsOptional()
   @IsUUID()
-  productId?: string;
+  catalogProductId?: string;
 }

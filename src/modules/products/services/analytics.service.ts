@@ -15,15 +15,15 @@ export class AnalyticsService {
   /**
    * Initialise an analytics entry when a product is created.
    */
-  async initialise(productId: string) {
+  async initialise(catalogProductId: string) {
     try {
       await this.prisma.productAnalytics.create({
-        data: { productId },
+        data: { catalogProductId },
       });
-      this.logger.debug(`Analytics initialised for product ${productId}`);
+      this.logger.debug(`Analytics initialised for product ${catalogProductId}`);
     } catch (error) {
       this.logger.error(
-        `Failed to initialise analytics for product ${productId}: ${error}`,
+        `Failed to initialise analytics for product ${catalogProductId}: ${error}`,
       );
     }
   }
@@ -32,12 +32,12 @@ export class AnalyticsService {
    * Record a product view. Called when product detail is fetched.
    * Fire-and-forget — failures are logged but don't propagate.
    */
-  async recordView(productId: string) {
+  async recordView(catalogProductId: string) {
     try {
       await this.prisma.productAnalytics.upsert({
-        where: { productId },
+        where: { catalogProductId },
         create: {
-          productId,
+          catalogProductId,
           views: 1,
           lastViewed: new Date(),
         },
@@ -48,7 +48,7 @@ export class AnalyticsService {
       });
     } catch (error) {
       this.logger.error(
-        `Failed to record view for product ${productId}: ${error}`,
+        `Failed to record view for product ${catalogProductId}: ${error}`,
       );
     }
   }
@@ -56,12 +56,12 @@ export class AnalyticsService {
   /**
    * Record a product order (called from order flow in Phase-2+).
    */
-  async recordOrder(productId: string) {
+  async recordOrder(catalogProductId: string) {
     try {
       await this.prisma.productAnalytics.upsert({
-        where: { productId },
+        where: { catalogProductId },
         create: {
-          productId,
+          catalogProductId,
           orders: 1,
           lastOrdered: new Date(),
         },
@@ -72,7 +72,7 @@ export class AnalyticsService {
       });
     } catch (error) {
       this.logger.error(
-        `Failed to record order for product ${productId}: ${error}`,
+        `Failed to record order for product ${catalogProductId}: ${error}`,
       );
     }
   }
@@ -80,14 +80,14 @@ export class AnalyticsService {
   /**
    * Remove analytics entry when a product is deleted.
    */
-  async remove(productId: string) {
+  async remove(catalogProductId: string) {
     try {
       await this.prisma.productAnalytics.delete({
-        where: { productId },
+        where: { catalogProductId },
       });
     } catch (error) {
       this.logger.error(
-        `Failed to remove analytics for product ${productId}: ${error}`,
+        `Failed to remove analytics for product ${catalogProductId}: ${error}`,
       );
     }
   }

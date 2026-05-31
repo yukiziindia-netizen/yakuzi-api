@@ -27,7 +27,7 @@ export class OrdersService {
       include: {
         items: {
           include: {
-            product: {
+            sellerOffer: {
               include: {
                 seller: {
                   select: {
@@ -89,7 +89,7 @@ export class OrdersService {
 
     // 2. Validate every cart item
     for (const item of cart.items) {
-      const { product } = item;
+      const { sellerOffer: product } = item;
 
       if (!product.isActive || product.deletedAt) {
         throw new BadRequestException(
@@ -132,8 +132,8 @@ export class OrdersService {
       // 4b. Create OrderItems
       const orderItemsData = cart.items.map((item) => ({
         orderId: newOrder.id,
-        productId: item.productId,
-        sellerId: item.product.seller.id,
+        sellerOfferId: item.sellerOfferId,
+        sellerId: item.sellerOffer.seller.id,
         quantity: item.quantity,
         unitPrice: item.unitPrice,
         totalPrice: item.quantity * item.unitPrice,
@@ -158,7 +158,7 @@ export class OrdersService {
       for (const item of cart.items) {
         let remaining = item.quantity;
 
-        for (const batch of item.product.batches) {
+        for (const batch of item.sellerOffer.batches) {
           if (remaining <= 0) break;
 
           const deduct = Math.min(remaining, batch.stock);
@@ -182,13 +182,13 @@ export class OrdersService {
       include: {
         items: {
           include: {
-            product: {
+            sellerOffer: {
               select: {
                 id: true,
                 name: true,
                 manufacturer: true,
                 mrp: true,
-                images: { select: { url: true }, take: 1 },
+                
               },
             },
             seller: {
@@ -222,13 +222,13 @@ export class OrdersService {
       include: {
         items: {
           include: {
-            product: {
+            sellerOffer: {
               select: {
                 id: true,
                 name: true,
                 manufacturer: true,
                 mrp: true,
-                images: { select: { url: true }, take: 1 },
+                
               },
             },
             seller: {
@@ -265,7 +265,7 @@ export class OrdersService {
       include: {
         items: {
           include: {
-            product: {
+            sellerOffer: {
               select: {
                 id: true,
                 name: true,
@@ -273,8 +273,7 @@ export class OrdersService {
                 chemicalComposition: true,
                 mrp: true,
                 gstPercent: true,
-                images: { select: { id: true, url: true }, take: 1 },
-              },
+                },
             },
             seller: {
               select: {
@@ -360,13 +359,13 @@ export class OrdersService {
     const orderItems = await this.prisma.orderItem.findMany({
       where,
       include: {
-        product: {
+        sellerOffer: {
           select: {
             id: true,
             name: true,
             manufacturer: true,
             mrp: true,
-            images: { select: { url: true }, take: 1 },
+            
           },
         },
         order: {
@@ -413,7 +412,7 @@ export class OrdersService {
       const entry = ordersMap.get(key)!;
       entry.items.push({
         id: item.id,
-        product: item.product,
+        product: item.sellerOffer,
         quantity: item.quantity,
         unitPrice: item.unitPrice,
         totalPrice: item.totalPrice,
@@ -493,7 +492,7 @@ export class OrdersService {
       include: {
         items: {
           include: {
-            product: {
+            sellerOffer: {
               select: { id: true, name: true },
             },
           },
@@ -541,7 +540,7 @@ export class OrdersService {
       include: {
         items: {
           include: {
-            product: {
+            sellerOffer: {
               include: {
                 batches: {
                   where: { expiryDate: { gt: new Date() } },
@@ -579,9 +578,9 @@ export class OrdersService {
 
       // 4b. Restore stock (to the earliest expiry batch)
       for (const item of order.items) {
-        if (item.product.batches.length > 0) {
+        if (item.sellerOffer.batches.length > 0) {
           await tx.productBatch.update({
-            where: { id: item.product.batches[0].id },
+            where: { id: item.sellerOffer.batches[0].id },
             data: { stock: { increment: item.quantity } },
           });
         }

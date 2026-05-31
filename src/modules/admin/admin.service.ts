@@ -90,7 +90,7 @@ export class AdminService {
         this.prisma.sellerSettlement.count({
           where: { payoutStatus: 'PENDING', ...dateWhere },
         }),
-        this.prisma.product.count({
+        this.prisma.sellerOffer.count({
           where: { deletedAt: null, ...dateWhere },
         }),
         this.prisma.ticket.count({
@@ -406,7 +406,7 @@ export class AdminService {
     const { sellerId, categoryId, subCategoryId, search, isActive, approvalStatus, page = 1, limit = 20 } = query;
     const skip = (page - 1) * limit;
 
-    const where: Prisma.ProductWhereInput = { deletedAt: null };
+    const where: Prisma.SellerOfferWhereInput = { deletedAt: null };
     if (sellerId) where.sellerId = sellerId;
     if (categoryId) where.categoryId = categoryId;
     if (subCategoryId) where.subCategoryId = subCategoryId;
@@ -425,7 +425,7 @@ export class AdminService {
     }
 
     const [data, total] = await Promise.all([
-      this.prisma.product.findMany({
+      this.prisma.sellerOffer.findMany({
         where,
         select: {
           id: true,
@@ -438,12 +438,12 @@ export class AdminService {
           rejectionReason: true,
           createdAt: true,
           updatedAt: true,
-          masterProduct: {
+          variant: { select: { catalogProduct: {
             select: {
               id: true,
-              _count: { select: { products: true } }
+              _count: { select: { productVariants: true } }
             }
-          },
+          } } },
           seller: { select: { id: true, companyName: true, userId: true } },
           category: { select: { id: true, name: true } },
           subCategory: { select: { id: true, name: true } },
@@ -462,21 +462,21 @@ export class AdminService {
         skip,
         take: limit,
       }),
-      this.prisma.product.count({ where }),
+      this.prisma.sellerOffer.count({ where }),
     ]);
 
     return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
   }
 
-  async getProductById(productId: string) {
-    const product = await this.prisma.product.findUnique({
-      where: { id: productId },
+  async getProductById(sellerOfferId: string) {
+    const product = await this.prisma.sellerOffer.findUnique({
+      where: { id: sellerOfferId },
       include: {
         seller: { select: { id: true, companyName: true, userId: true, city: true, state: true } },
         category: { select: { id: true, name: true } },
         subCategory: { select: { id: true, name: true } },
         batches: { orderBy: { expiryDate: 'asc' } },
-        images: { select: { id: true, url: true } },
+        
         inventoryAlerts: { orderBy: { createdAt: 'desc' }, take: 10 },
         _count: { select: { reviews: true, orderItems: true, cartItems: true } },
       },
@@ -486,60 +486,60 @@ export class AdminService {
     return product;
   }
 
-  async disableProduct(productId: string) {
-    const product = await this.prisma.product.findUnique({ where: { id: productId } });
+  async disableProduct(sellerOfferId: string) {
+    const product = await this.prisma.sellerOffer.findUnique({ where: { id: sellerOfferId } });
     if (!product) throw new NotFoundException('Product not found');
     if (!product.isActive) throw new BadRequestException('Product is already disabled');
 
-    const updated = await this.prisma.product.update({
-      where: { id: productId },
+    const updated = await this.prisma.sellerOffer.update({
+      where: { id: sellerOfferId },
       data: { isActive: false },
       select: { id: true, name: true, isActive: true, updatedAt: true },
     });
 
-    this.logger.log(`Product ${productId} disabled by admin`);
+    this.logger.log(`Product ${sellerOfferId} disabled by admin`);
     return updated;
   }
 
-  async enableProduct(productId: string) {
-    const product = await this.prisma.product.findUnique({ where: { id: productId } });
+  async enableProduct(sellerOfferId: string) {
+    const product = await this.prisma.sellerOffer.findUnique({ where: { id: sellerOfferId } });
     if (!product) throw new NotFoundException('Product not found');
     if (product.isActive) throw new BadRequestException('Product is already active');
 
-    const updated = await this.prisma.product.update({
-      where: { id: productId },
+    const updated = await this.prisma.sellerOffer.update({
+      where: { id: sellerOfferId },
       data: { isActive: true },
       select: { id: true, name: true, isActive: true, updatedAt: true },
     });
 
-    this.logger.log(`Product ${productId} enabled by admin`);
+    this.logger.log(`Product ${sellerOfferId} enabled by admin`);
     return updated;
   }
 
-  async softDeleteProduct(productId: string) {
-    const product = await this.prisma.product.findUnique({ where: { id: productId } });
+  async softDeleteProduct(sellerOfferId: string) {
+    const product = await this.prisma.sellerOffer.findUnique({ where: { id: sellerOfferId } });
     if (!product) throw new NotFoundException('Product not found');
     if (product.deletedAt) throw new BadRequestException('Product is already deleted');
 
-    const updated = await this.prisma.product.update({
-      where: { id: productId },
+    const updated = await this.prisma.sellerOffer.update({
+      where: { id: sellerOfferId },
       data: { deletedAt: new Date(), isActive: false },
       select: { id: true, name: true, isActive: true, deletedAt: true },
     });
 
-    this.logger.log(`Product ${productId} soft-deleted by admin`);
+    this.logger.log(`Product ${sellerOfferId} soft-deleted by admin`);
     return updated;
   }
 
-  async approveProduct(productId: string) {
-    const product = await this.prisma.product.findUnique({ where: { id: productId } });
+  async approveProduct(sellerOfferId: string) {
+    const product = await this.prisma.sellerOffer.findUnique({ where: { id: sellerOfferId } });
     if (!product) throw new NotFoundException('Product not found');
     if (product.approvalStatus === ProductApprovalStatus.APPROVED) {
       throw new BadRequestException('Product is already approved');
     }
 
-    const updated = await this.prisma.product.update({
-      where: { id: productId },
+    const updated = await this.prisma.sellerOffer.update({
+      where: { id: sellerOfferId },
       data: {
         approvalStatus: ProductApprovalStatus.APPROVED,
         isActive: true,
@@ -551,19 +551,19 @@ export class AdminService {
       },
     });
 
-    this.logger.log(`Product ${productId} approved by admin`);
+    this.logger.log(`Product ${sellerOfferId} approved by admin`);
     return updated;
   }
 
-  async rejectProduct(productId: string, reason?: string) {
-    const product = await this.prisma.product.findUnique({ where: { id: productId } });
+  async rejectProduct(sellerOfferId: string, reason?: string) {
+    const product = await this.prisma.sellerOffer.findUnique({ where: { id: sellerOfferId } });
     if (!product) throw new NotFoundException('Product not found');
     if (product.approvalStatus === ProductApprovalStatus.REJECTED) {
       throw new BadRequestException('Product is already rejected');
     }
 
-    const updated = await this.prisma.product.update({
-      where: { id: productId },
+    const updated = await this.prisma.sellerOffer.update({
+      where: { id: sellerOfferId },
       data: {
         approvalStatus: ProductApprovalStatus.REJECTED,
         isActive: false,
@@ -575,7 +575,7 @@ export class AdminService {
       },
     });
 
-    this.logger.log(`Product ${productId} rejected by admin${reason ? `: ${reason}` : ''}`);
+    this.logger.log(`Product ${sellerOfferId} rejected by admin${reason ? `: ${reason}` : ''}`);
     return updated;
   }
 
@@ -622,7 +622,7 @@ export class AdminService {
               quantity: true,
               unitPrice: true,
               totalPrice: true,
-              product: { select: { id: true, name: true } },
+              sellerOffer: { select: { id: true, name: true } },
               seller: { select: { id: true, companyName: true } },
               settlement: { select: { id: true, payoutStatus: true } },
             },
@@ -679,7 +679,7 @@ export class AdminService {
         },
         items: {
           include: {
-            product: { select: { id: true, name: true, manufacturer: true, mrp: true } },
+            sellerOffer: { select: { id: true, name: true, manufacturer: true, mrp: true } },
             seller: { select: { id: true, companyName: true } },
           },
         },
@@ -717,7 +717,7 @@ export class AdminService {
         buyer: { select: { phone: true, buyerProfile: { select: { legalName: true } } } },
         items: {
           include: {
-            product: { select: { name: true } },
+            sellerOffer: { select: { name: true } },
             seller: { select: { companyName: true } },
           },
         },
@@ -911,9 +911,9 @@ export class AdminService {
     return this.prisma.marketingProduct.findMany({
       where: slot ? { slot } : {},
       include: {
-        product: {
+        sellerOffer: {
           include: {
-            images: { take: 1 },
+            
             seller: { select: { companyName: true } },
           },
         },
@@ -924,7 +924,7 @@ export class AdminService {
 
   async addMarketingProduct(dto: any) {
     const existing = await this.prisma.marketingProduct.findFirst({
-      where: { productId: dto.productId, slot: dto.slot },
+      where: { catalogProductId: dto.sellerOfferId, slot: dto.slot },
     });
 
     if (existing) {
@@ -936,7 +936,7 @@ export class AdminService {
 
     return this.prisma.marketingProduct.create({
       data: {
-        productId: dto.productId,
+        catalogProductId: dto.sellerOfferId,
         slot: dto.slot,
         priority: dto.priority ?? 0,
       },
@@ -974,7 +974,7 @@ export class AdminService {
               id: true,
               orderId: true,
               totalPrice: true,
-              product: { select: { id: true, name: true } },
+              sellerOffer: { select: { id: true, name: true } },
             },
           },
         },
@@ -1054,7 +1054,7 @@ export class AdminService {
             id: true,
             orderId: true,
             totalPrice: true,
-            product: { select: { id: true, name: true } },
+            sellerOffer: { select: { id: true, name: true } },
           },
         },
       },
@@ -1467,7 +1467,7 @@ export class AdminService {
   }
 
   async getTopProducts(limit: number = 10) {
-    return this.prisma.product.findMany({
+    return this.prisma.sellerOffer.findMany({
       take: Number(limit) || 10,
       orderBy: { createdAt: 'desc' },
       select: { id: true, name: true, mrp: true }
@@ -1565,7 +1565,7 @@ export class AdminService {
     const { search, categoryId, subCategoryId, page = 1, limit = 20, isActive } = query;
     const skip = (page - 1) * limit;
 
-    const where: Prisma.MasterProductWhereInput = { deletedAt: null };
+    const where: Prisma.CatalogProductWhereInput = { deletedAt: null };
     if (categoryId) where.categoryId = categoryId;
     if (subCategoryId) where.subCategoryId = subCategoryId;
     if (isActive === 'true') where.isActive = true;
@@ -1580,7 +1580,7 @@ export class AdminService {
     }
 
     const [data, total] = await Promise.all([
-      this.prisma.masterProduct.findMany({
+      this.prisma.catalogProduct.findMany({
         where,
         include: {
           category: { select: { id: true, name: true } },
@@ -1591,24 +1591,24 @@ export class AdminService {
         skip,
         take: limit,
       }),
-      this.prisma.masterProduct.count({ where }),
+      this.prisma.catalogProduct.count({ where }),
     ]);
 
     return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
   }
 
   async getSuggestionById(id: string) {
-    const suggestion = await this.prisma.masterProduct.findUnique({
+    const suggestion = await this.prisma.catalogProduct.findUnique({
       where: { id },
       include: {
         category: { select: { id: true, name: true } },
         subCategory: { select: { id: true, name: true } },
-        images: { select: { id: true, url: true } },
-        products: {
+        
+        productVariants: { include: { sellerOffers: {
           select: { id: true, seller: { select: { companyName: true } }, mrp: true },
           take: 10,
-        },
-      },
+        } } }
+      }
     });
 
     if (!suggestion) throw new NotFoundException('Suggestion not found');
@@ -1618,7 +1618,7 @@ export class AdminService {
   async createSuggestion(dto: import('./dto/update-suggestion.dto').UpdateSuggestionDto) {
     const slug = slugify(`${dto.name}-${dto.manufacturer}`, { lower: true, strict: true });
     
-    return this.prisma.masterProduct.create({
+    return this.prisma.catalogProduct.create({
       data: {
         name: dto.name || '',
         manufacturer: dto.manufacturer || '',
@@ -1639,10 +1639,10 @@ export class AdminService {
   }
 
   async updateSuggestion(id: string, dto: import('./dto/update-suggestion.dto').UpdateSuggestionDto) {
-    const suggestion = await this.prisma.masterProduct.findUnique({ where: { id } });
+    const suggestion = await this.prisma.catalogProduct.findUnique({ where: { id } });
     if (!suggestion) throw new NotFoundException('Suggestion not found');
 
-    const updated = await this.prisma.masterProduct.update({
+    const updated = await this.prisma.catalogProduct.update({
       where: { id },
       data: {
         ...(dto.name && { name: dto.name }),
@@ -1666,10 +1666,10 @@ export class AdminService {
 
 
   async deleteSuggestion(id: string) {
-    const suggestion = await this.prisma.masterProduct.findUnique({ where: { id } });
+    const suggestion = await this.prisma.catalogProduct.findUnique({ where: { id } });
     if (!suggestion) throw new NotFoundException('Suggestion not found');
 
-    return this.prisma.masterProduct.update({
+    return this.prisma.catalogProduct.update({
       where: { id },
       data: { deletedAt: new Date(), isActive: false },
     });
@@ -1793,7 +1793,7 @@ export class AdminService {
 
                   const slug = slugify(`${productName}-${manufacturer}`, { lower: true, strict: true }) || `p-${Date.now()}-${Math.random()}`;
 
-                  const masterProduct = await this.prisma.masterProduct.upsert({
+                  const masterProduct = await this.prisma.catalogProduct.upsert({
                     where: { externalId: (row.id as string) || slug },
                     update: {
                       name: productName,
@@ -1822,7 +1822,7 @@ export class AdminService {
                   });
 
                   if (imageUrl) {
-                    await this.prisma.masterProductImage.upsert({
+                    await this.prisma.catalogProductImage.upsert({
                       where: { id: `img-${masterProduct.id}` },
                       update: { url: imageUrl },
                       create: {

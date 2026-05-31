@@ -4,7 +4,7 @@ const prisma = new PrismaClient();
 
 async function main() {
   try {
-    const products = await prisma.product.findMany({
+    const products = await prisma.sellerOffer.findMany({
       where: {
         isActive: true,
         deletedAt: null,

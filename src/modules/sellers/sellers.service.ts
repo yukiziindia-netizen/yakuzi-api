@@ -175,8 +175,8 @@ export class SellersService {
       pendingPayouts,
       lowStockItems,
     ] = await Promise.all([
-      this.prisma.product.count({ where: { sellerId: seller.id } }),
-      this.prisma.product.count({
+      this.prisma.sellerOffer.count({ where: { sellerId: seller.id } }),
+      this.prisma.sellerOffer.count({
         where: { sellerId: seller.id, isActive: true, deletedAt: null },
       }),
       this.prisma.orderItem.count({ where: { sellerId: seller.id } }),
@@ -200,7 +200,7 @@ export class SellersService {
         _sum: { amount: true },
       }),
       this.prisma.productBatch.count({
-        where: { product: { sellerId: seller.id }, stock: { lt: 10 } },
+        where: { sellerOffer: { sellerId: seller.id }, stock: { lt: 10 } },
       }),
     ]);
 
@@ -211,7 +211,7 @@ export class SellersService {
       select: {
         quantity: true,
         totalPrice: true,
-        product: { select: { name: true } },
+        sellerOffer: { select: { name: true } },
         order: {
           select: {
             id: true,
@@ -237,7 +237,7 @@ export class SellersService {
       overview: {
         orders: orders.map((item) => ({
           id: item.order.id,
-          productName: item.product.name,
+          productName: item.sellerOffer.name,
           quantity: item.quantity,
           totalPrice: item.totalPrice,
           status: item.order.orderStatus,

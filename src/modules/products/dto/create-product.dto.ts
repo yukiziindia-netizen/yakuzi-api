@@ -142,5 +142,5 @@ export class CreateProductDto {
   })
   @IsString()
   @IsOptional()
-  masterProductId?: string;
+  variantId?: string;
 }

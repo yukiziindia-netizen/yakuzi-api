@@ -23,13 +23,13 @@ export class InventoryService {
    * Phase-2+ will allow multiple batches per product.
    */
   async createDefaultBatch(
-    productId: string,
+    sellerOfferId: string,
     stock: number,
     expiryDate: string,
   ) {
     const batch = await this.prisma.productBatch.create({
       data: {
-        productId,
+        sellerOfferId,
         batchNumber: 'DEFAULT',
         stock,
         expiryDate: new Date(expiryDate),
@@ -37,11 +37,11 @@ export class InventoryService {
     });
 
     this.logger.debug(
-      `Default batch created for product ${productId}: stock=${stock}`,
+      `Default batch created for product ${sellerOfferId}: stock=${stock}`,
     );
 
     // Fire-and-forget: check alerts for the new batch
-    this.checkBatchAlerts(productId, batch.id, stock, new Date(expiryDate));
+    this.checkBatchAlerts(sellerOfferId, batch.id, stock, new Date(expiryDate));
 
     return batch;
   }
@@ -50,20 +50,20 @@ export class InventoryService {
    * Update the default batch stock/expiry (Phase-1 compatibility).
    */
   async updateDefaultBatch(
-    productId: string,
+    sellerOfferId: string,
     stock?: number,
     expiryDate?: string,
   ) {
     const existing = await this.prisma.productBatch.findFirst({
-      where: { productId, batchNumber: 'DEFAULT' },
+      where: { sellerOfferId, batchNumber: 'DEFAULT' },
     });
 
     if (!existing) {
       this.logger.warn(
-        `No default batch found for product ${productId}, creating one`,
+        `No default batch found for product ${sellerOfferId}, creating one`,
       );
       return this.createDefaultBatch(
-        productId,
+        sellerOfferId,
         stock ?? 0,
         expiryDate ?? new Date(Date.now() + 365 * 86400000).toISOString(),
       );
@@ -79,12 +79,12 @@ export class InventoryService {
     });
 
     this.logger.debug(
-      `Default batch updated for product ${productId}: stock=${batch.stock}`,
+      `Default batch updated for product ${sellerOfferId}: stock=${batch.stock}`,
     );
 
     // Fire-and-forget: re-check alerts
     this.checkBatchAlerts(
-      productId,
+      sellerOfferId,
       batch.id,
       batch.stock,
       batch.expiryDate,
@@ -96,9 +96,9 @@ export class InventoryService {
   /**
    * Get aggregated stock across all batches for a product.
    */
-  async getTotalStock(productId: string): Promise<number> {
+  async getTotalStock(sellerOfferId: string): Promise<number> {
     const result = await this.prisma.productBatch.aggregate({
-      where: { productId },
+      where: { sellerOfferId },
       _sum: { stock: true },
     });
     return result._sum.stock ?? 0;
@@ -107,9 +107,9 @@ export class InventoryService {
   /**
    * Get the nearest expiry date across all batches.
    */
-  async getNearestExpiry(productId: string): Promise<Date | null> {
+  async getNearestExpiry(sellerOfferId: string): Promise<Date | null> {
     const batch = await this.prisma.productBatch.findFirst({
-      where: { productId, stock: { gt: 0 } },
+      where: { sellerOfferId, stock: { gt: 0 } },
       orderBy: { expiryDate: 'asc' },
       select: { expiryDate: true },
     });
@@ -121,7 +121,7 @@ export class InventoryService {
    * Runs asynchronously — failures are logged but don't propagate.
    */
   private async checkBatchAlerts(
-    productId: string,
+    sellerOfferId: string,
     batchId: string,
     stock: number,
     expiryDate: Date,
@@ -161,19 +161,19 @@ export class InventoryService {
       if (alerts.length > 0) {
         await this.prisma.inventoryAlert.createMany({
           data: alerts.map((a) => ({
-            productId,
+            sellerOfferId,
             batchId,
             alertType: a.alertType,
             message: a.message,
           })),
         });
         this.logger.log(
-          `Created ${alerts.length} inventory alert(s) for product ${productId}`,
+          `Created ${alerts.length} inventory alert(s) for product ${sellerOfferId}`,
         );
       }
     } catch (error) {
       this.logger.error(
-        `Failed to check batch alerts for product ${productId}: ${error}`,
+        `Failed to check batch alerts for product ${sellerOfferId}: ${error}`,
       );
     }
   }

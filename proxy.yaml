@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: rds-proxy-2
+  namespace: yukizi
+spec:
+  hostNetwork: true
+  containers:
+  - name: socat
+    image: alpine/socat
+    command: ["socat"]
+    args: ["tcp-listen:5432,fork,reuseaddr", "tcp-connect:yukizi-production-postgres.c708m08w68tr.ap-south-1.rds.amazonaws.com:5432"]

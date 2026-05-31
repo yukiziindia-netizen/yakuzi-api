@@ -17,7 +17,7 @@ export class SearchIndexService {
    * Called after product create/update.
    */
   async upsert(
-    productId: string,
+    catalogProductId: string,
     data: {
       name: string;
       manufacturer: string;
@@ -30,9 +30,9 @@ export class SearchIndexService {
       const searchVector = this.buildSearchVector(data);
 
       await this.prisma.productSearchIndex.upsert({
-        where: { productId },
+        where: { catalogProductId },
         create: {
-          productId,
+          catalogProductId,
           name: data.name,
           manufacturer: data.manufacturer,
           chemicalComposition: data.chemicalComposition,
@@ -50,10 +50,10 @@ export class SearchIndexService {
         },
       });
 
-      this.logger.debug(`Search index upserted for product ${productId}`);
+      this.logger.debug(`Search index upserted for product ${catalogProductId}`);
     } catch (error) {
       this.logger.error(
-        `Failed to upsert search index for product ${productId}: ${error}`,
+        `Failed to upsert search index for product ${catalogProductId}: ${error}`,
       );
     }
   }
@@ -61,15 +61,15 @@ export class SearchIndexService {
   /**
    * Remove the search index entry when a product is deleted.
    */
-  async remove(productId: string) {
+  async remove(catalogProductId: string) {
     try {
       await this.prisma.productSearchIndex.delete({
-        where: { productId },
+        where: { catalogProductId },
       });
-      this.logger.debug(`Search index removed for product ${productId}`);
+      this.logger.debug(`Search index removed for product ${catalogProductId}`);
     } catch (error) {
       this.logger.error(
-        `Failed to remove search index for product ${productId}: ${error}`,
+        `Failed to remove search index for product ${catalogProductId}: ${error}`,
       );
     }
   }

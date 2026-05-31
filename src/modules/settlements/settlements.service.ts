@@ -44,7 +44,7 @@ export class SettlementsService {
             orderId: true,
             quantity: true,
             totalPrice: true,
-            product: {
+            sellerOffer: {
               select: { id: true, name: true },
             },
           },
@@ -121,7 +121,7 @@ export class SettlementsService {
         orderItem: {
           select: {
             orderId: true,
-            product: { select: { id: true, name: true } },
+            sellerOffer: { select: { id: true, name: true } },
           },
         },
       },
@@ -150,7 +150,7 @@ export class SettlementsService {
           select: {
             orderId: true,
             totalPrice: true,
-            product: { select: { id: true, name: true } },
+            sellerOffer: { select: { id: true, name: true } },
           },
         },
       },

@@ -59,7 +59,7 @@ export class ProductsService {
         ? dto.slug.trim().toLowerCase()
         : this.generateSlug(dto.name),
       externalId: dto.externalId ? dto.externalId.trim() : undefined,
-      masterProductId: dto.masterProductId ? dto.masterProductId.trim() : undefined,
+      variantId: dto.variantId ? dto.variantId.trim() : undefined,
     };
   }
 
@@ -86,7 +86,7 @@ export class ProductsService {
 
     // Idempotent upsert: if externalId is provided and exists, update instead
     if (normalized.externalId) {
-      const existing = await this.prisma.product.findUnique({
+      const existing = await this.prisma.sellerOffer.findUnique({
         where: { externalId: normalized.externalId },
       });
       if (existing) {
@@ -97,7 +97,7 @@ export class ProductsService {
 
     // Also check slug uniqueness for upsert
     if (normalized.slug) {
-      const existingBySlug = await this.prisma.product.findFirst({
+      const existingBySlug = await this.prisma.sellerOffer.findFirst({
         where: { slug: normalized.slug },
       });
       if (existingBySlug) {
@@ -109,25 +109,25 @@ export class ProductsService {
       }
     }
 
-    let masterProductId = normalized.masterProductId;
-    if (!masterProductId) {
-      const master = await this.prisma.masterProduct.findFirst({
+    let variantId = normalized.variantId;
+    if (!variantId) {
+      const master = await this.prisma.catalogProduct.findFirst({
         where: {
           name: { equals: normalized.name, mode: 'insensitive' },
           manufacturer: { equals: normalized.manufacturer, mode: 'insensitive' },
           deletedAt: null,
         },
       });
-      if (master) masterProductId = master.id;
+      if (master) variantId = master.id;
     }
 
-    const isFromMaster = !!masterProductId;
+    const isFromMaster = !!variantId;
     
-    const productData: Prisma.ProductCreateInput = {
+    const productData: Prisma.SellerOfferCreateInput = {
       seller: { connect: { id: seller.id } },
       category: { connect: { id: normalized.categoryId } },
       subCategory: { connect: { id: normalized.subCategoryId } },
-      masterProduct: isFromMaster ? { connect: { id: masterProductId } } : undefined,
+      variant: isFromMaster ? { connect: { id: variantId } } : undefined,
       name: normalized.name,
       slug: normalized.slug,
       externalId: normalized.externalId,
@@ -144,23 +144,18 @@ export class ProductsService {
       isActive: isFromMaster ? true : false, // Auto-approve if from master catalog
     };
 
-    const product = await this.prisma.product.create({
+    const product = await this.prisma.sellerOffer.create({
       data: productData,
       include: {
         category: true,
         subCategory: true,
-        images: true,
+        
       },
     });
 
     // Create images if provided
     if (normalized.images && normalized.images.length > 0) {
-      await this.prisma.productImage.createMany({
-        data: normalized.images.map((url) => ({
-          productId: product.id,
-          url: url.trim(),
-        })),
-      });
+      // await this.prisma.catalogProductImage.createMany
     }
 
     await this.inventoryService.createDefaultBatch(
@@ -184,19 +179,19 @@ export class ProductsService {
     );
 
     // Touch the master product to reflect new listing activity
-    if (product.masterProductId) {
-      await this.prisma.masterProduct.update({
-        where: { id: product.masterProductId },
+    if (product.variantId) {
+      await this.prisma.catalogProduct.update({
+        where: { id: product.variantId },
         data: { updatedAt: new Date() },
-      }).catch(err => this.logger.warn(`Failed to touch MasterProduct ${product.masterProductId}: ${err.message}`));
+      }).catch(err => this.logger.warn(`Failed to touch MasterProduct ${product.variantId}: ${err.message}`));
     }
 
     const batch = await this.prisma.productBatch.findFirst({
-      where: { productId: product.id, batchNumber: 'DEFAULT' },
+      where: { sellerOfferId: product.id, batchNumber: 'DEFAULT' },
     });
 
     const images = normalized.images?.length
-      ? await this.prisma.productImage.findMany({ where: { productId: product.id } })
+      ? []
       : [];
 
     return {
@@ -217,7 +212,7 @@ export class ProductsService {
     category: { name: string },
     subCategory: { name: string },
   ) {
-    const updated = await this.prisma.product.update({
+    const updated = await this.prisma.sellerOffer.update({
       where: { id: productId },
       data: {
         sellerId,
@@ -245,10 +240,8 @@ export class ProductsService {
 
     // Replace images
     if (dto.images && dto.images.length > 0) {
-      await this.prisma.productImage.deleteMany({ where: { productId } });
-      await this.prisma.productImage.createMany({
-        data: dto.images.map((url) => ({ productId, url: url.trim() })),
-      });
+      // await this.prisma.catalogProductImage.deleteMany
+      // await this.prisma.catalogProductImage.createMany
     }
 
     await this.inventoryService.updateDefaultBatch(productId, dto.stock, dto.expiryDate);
@@ -262,19 +255,19 @@ export class ProductsService {
     });
 
     const batch = await this.prisma.productBatch.findFirst({
-      where: { productId, batchNumber: 'DEFAULT' },
+      where: { sellerOfferId: productId, batchNumber: 'DEFAULT' },
     });
 
-    const images = await this.prisma.productImage.findMany({ where: { productId } });
+    const images = [];
 
     this.logger.log(`Product upserted: ${productId}`);
 
     // Touch the master product to reflect new listing activity
-    if (updated.masterProductId) {
-      await this.prisma.masterProduct.update({
-        where: { id: updated.masterProductId },
+    if (updated.variantId) {
+      await this.prisma.catalogProduct.update({
+        where: { id: updated.variantId },
         data: { updatedAt: new Date() },
-      }).catch(err => this.logger.warn(`Failed to touch MasterProduct ${updated.masterProductId}: ${err.message}`));
+      }).catch(err => this.logger.warn(`Failed to touch MasterProduct ${updated.variantId}: ${err.message}`));
     }
 
     return {
@@ -343,7 +336,7 @@ export class ProductsService {
     const { page = 1, limit = 20, sortBy = 'createdAt', sortOrder = 'desc' } = query;
     const skip = (page - 1) * limit;
 
-    const where: Prisma.ProductWhereInput = {
+    const where: Prisma.SellerOfferWhereInput = {
       sellerId: seller.id,
       deletedAt: null,
     };
@@ -379,19 +372,19 @@ export class ProductsService {
     }
 
     const [products, total] = await Promise.all([
-      this.prisma.product.findMany({
+      this.prisma.sellerOffer.findMany({
         where,
         include: {
           category: true,
           subCategory: true,
-          batches: true,
-          images: true,
+          // batches: true,
+          
         },
         orderBy: { [sortBy]: sortOrder },
         skip,
         take: limit,
       }),
-      this.prisma.product.count({ where }),
+      this.prisma.sellerOffer.count({ where }),
     ]);
 
     return {
@@ -420,7 +413,7 @@ export class ProductsService {
     if (productData.chemicalComposition) productData.chemicalComposition = productData.chemicalComposition.trim();
     if (productData.description) productData.description = productData.description.trim();
 
-    const updated = await this.prisma.product.update({
+    const updated = await this.prisma.sellerOffer.update({
       where: { id: product.id },
       data: productData,
       include: {
@@ -431,11 +424,9 @@ export class ProductsService {
 
     // Replace images if provided
     if (images !== undefined) {
-      await this.prisma.productImage.deleteMany({ where: { productId: product.id } });
+      // await this.prisma.catalogProductImage.deleteMany
       if (images.length > 0) {
-        await this.prisma.productImage.createMany({
-          data: images.map((url) => ({ productId: product.id, url: url.trim() })),
-        });
+        // await this.prisma.catalogProductImage.createMany
       }
     }
 
@@ -465,12 +456,12 @@ export class ProductsService {
 
     this.logger.log(`Product updated: ${updated.id}`);
 
-    const [batch, productImages] = await Promise.all([
+    const [batch] = await Promise.all([
       this.prisma.productBatch.findFirst({
-        where: { productId: updated.id, batchNumber: 'DEFAULT' },
+        where: { sellerOfferId: updated.id, batchNumber: 'DEFAULT' },
       }),
-      this.prisma.productImage.findMany({ where: { productId: updated.id } }),
     ]);
+    const productImages = [];
 
     return {
       ...updated,
@@ -486,7 +477,7 @@ export class ProductsService {
   async softDelete(userId: string, productId: string) {
     const product = await this.findOwnProduct(userId, productId);
 
-    await this.prisma.product.update({
+    await this.prisma.sellerOffer.update({
       where: { id: product.id },
       data: { deletedAt: new Date(), isActive: false },
     });
@@ -510,12 +501,12 @@ export class ProductsService {
     // Handle sortBy mapping
     const effectiveSortBy = sortBy === 'price' ? 'mrp' : (sortBy === 'newest' ? 'updatedAt' : sortBy);
 
-    const where: Prisma.MasterProductWhereInput = {
+    const where: Prisma.CatalogProductWhereInput = {
       isActive: true,
       deletedAt: null,
     };
 
-    const andConditions: Prisma.MasterProductWhereInput[] = [];
+    const andConditions: Prisma.CatalogProductWhereInput[] = [];
 
     if (query.search) {
       andConditions.push({
@@ -540,18 +531,22 @@ export class ProductsService {
       const thirtyDaysAgo = new Date();
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
       andConditions.push({
-        products: {
+        productVariants: {
           some: {
-            isActive: true,
-            deletedAt: null,
-            createdAt: { gte: thirtyDaysAgo },
+            sellerOffers: {
+              some: {
+                isActive: true,
+                deletedAt: null,
+                createdAt: { gte: thirtyDaysAgo },
+              }
+            }
           },
         },
       });
     }
 
     // Combine filters that target the underlying seller products
-    const productConditions: Prisma.ProductWhereInput[] = [
+    const productConditions: Prisma.SellerOfferWhereInput[] = [
       { isActive: true, deletedAt: null }
     ];
 
@@ -565,11 +560,7 @@ export class ProductsService {
 
     if (productConditions.length > 1) {
       andConditions.push({
-        products: {
-          some: {
-            AND: productConditions,
-          },
-        },
+        productVariants: { some: { sellerOffers: { some: { AND: productConditions } } } },
       });
     }
 
@@ -578,23 +569,19 @@ export class ProductsService {
     }
 
     const [masters, total] = await Promise.all([
-      this.prisma.masterProduct.findMany({
+      this.prisma.catalogProduct.findMany({
         where,
         include: {
           category: true,
           subCategory: true,
           images: { take: 1 },
-          products: {
-            where: { isActive: true, deletedAt: null },
-            select: { mrp: true, discountType: true, discountMeta: true, minimumOrderQuantity: true },
-            orderBy: { mrp: 'asc' },
-          },
+          productVariants: { include: { sellerOffers: { where: { isActive: true, deletedAt: null }, select: { mrp: true, discountType: true, discountMeta: true, minimumOrderQuantity: true }, orderBy: { mrp: 'asc' }, take: 1 } } },
         },
         orderBy: { [effectiveSortBy]: sortOrder },
         skip,
         take: limit,
       }),
-      this.prisma.masterProduct.count({ where }),
+      this.prisma.catalogProduct.count({ where }),
     ]);
 
     return {
@@ -614,13 +601,13 @@ export class ProductsService {
    */
   async findOne(id: string) {
     // 1. First, check if 'id' is a specific Seller Listing (Product)
-    const listing = await this.prisma.product.findFirst({
+    const listing = await this.prisma.sellerOffer.findFirst({
         where: { id, deletedAt: null },
         include: {
             category: true,
             subCategory: true,
-            batches: true,
-            images: true,
+            // batches: true,
+            
             seller: { select: { id: true, companyName: true, rating: true, city: true, state: true } },
         }
     });
@@ -631,7 +618,7 @@ export class ProductsService {
     }
 
     // 2. Fallback: Check if 'id' is a Master Product (by ID or Slug)
-    const master = await this.prisma.masterProduct.findFirst({
+    const master = await this.prisma.catalogProduct.findFirst({
       where: { 
         OR: [{ id }, { slug: id }],
         deletedAt: null 
@@ -639,15 +626,18 @@ export class ProductsService {
       include: {
         category: true,
         subCategory: true,
-        images: true,
-        products: {
-            where: { isActive: true, deletedAt: null },
+        
+        productVariants: {
             include: {
-                seller: { select: { id: true, companyName: true, rating: true, city: true, state: true } },
-                batches: { where: { stock: { gt: 0 } }, orderBy: { expiryDate: 'asc' } },
-                images: true,
-            },
-            orderBy: [{ mrp: 'asc' }],
+                sellerOffers: {
+                    where: { isActive: true, deletedAt: null },
+                    include: {
+                        seller: { select: { id: true, companyName: true, rating: true, city: true, state: true } },
+                        // // batches: { where: { stock: { gt: 0 } }, orderBy: { expiryDate: 'asc' } },
+                    },
+                    orderBy: { mrp: 'asc' }
+                }
+            }
         }
       },
     });
@@ -663,7 +653,7 @@ export class ProductsService {
   }
 
   private mapMasterToGrid(m: any) {
-    const listings = m.products || [];
+    const listings = m.catalogProducts || [];
     const minPrice = listings.length > 0 ? listings[0].mrp : m.mrp;
     const minMoq = listings.length > 0 ? (listings[0].minimumOrderQuantity || 1) : 1;
     const bestListingId = listings.length > 0 ? listings[0].id : null;
@@ -709,7 +699,7 @@ export class ProductsService {
       packSize: m.packSize,
       storageAndHandling: m.storageAndHandling,
       // Group seller listings
-      listings: (m.products || []).map((p: any) => {
+      listings: (m.catalogProducts || []).map((p: any) => {
           const batches = p.batches || [];
           const stock = batches.reduce((sum: number, b: any) => sum + b.stock, 0);
           return {
@@ -752,7 +742,7 @@ export class ProductsService {
     };
 
     if (type === 'master') {
-      const suggestions = await this.prisma.masterProduct.findMany({
+      const suggestions = await this.prisma.catalogProduct.findMany({
         where: {
           deletedAt: null,
           isActive: true,
@@ -768,7 +758,7 @@ export class ProductsService {
           gstPercent: true,
           categoryId: true,
           subCategoryId: true,
-          images: { select: { url: true }, take: 1 },
+          
         },
         take: 10,
         orderBy: { name: 'asc' },
@@ -781,14 +771,12 @@ export class ProductsService {
         chemicalCombination: s.chemicalComposition,
         slug: s.slug,
         mrp: s.mrp,
-        gstPercent: s.gstPercent,
         categoryId: s.categoryId,
         subCategoryId: s.subCategoryId,
-        imageUrl: s.images?.[0]?.url || null,
       }));
     }
 
-    const products = await this.prisma.product.findMany({
+    const products = await this.prisma.sellerOffer.findMany({
       where: {
         isActive: true,
         approvalStatus: ProductApprovalStatus.APPROVED,
@@ -829,13 +817,21 @@ export class ProductsService {
     const featured = await this.prisma.marketingProduct.findMany({
       where: { slot, active: true },
       include: {
-        product: {
+        catalogProduct: {
           include: {
             category: true,
             subCategory: true,
-            batches: { where: { stock: { gt: 0 } }, orderBy: { expiryDate: 'asc' } },
-            seller: { select: { companyName: true, city: true, state: true, rating: true } },
-            images: true,
+            productVariants: {
+              include: {
+                sellerOffers: {
+                  include: {
+                    // // batches: { where: { stock: { gt: 0 } }, orderBy: { expiryDate: 'asc' } },
+                    seller: { select: { companyName: true, city: true, state: true, rating: true } },
+                  }
+                }
+              }
+            }
+            
           },
         },
       },
@@ -843,7 +839,7 @@ export class ProductsService {
       take: 12, // limit to 12 featured products per slot
     });
 
-    return featured.map((f) => this.flattenProduct(f.product));
+    return featured.map((f) => this.flattenProduct(f.catalogProduct));
   }
 
   // ──────────────────────────────────────────────
@@ -861,7 +857,7 @@ export class ProductsService {
       throw new ForbiddenException('Seller profile not found');
     }
 
-    const product = await this.prisma.product.findFirst({
+    const product = await this.prisma.sellerOffer.findFirst({
       where: { id: productId, sellerId: seller.id, deletedAt: null },
     });
     if (!product) {
@@ -911,10 +907,10 @@ export class ProductsService {
   // ──────────────────────────────────────────────
 
   async createRequest(userId: string, dto: CreateProductRequestDto) {
-    const request = await (this.prisma as any).productRequest.create({
+    const request = await (this.prisma as any).catalogProductRequest.create({
       data: {
         userId,
-        productName: dto.productName.trim(),
+        productName: (dto as any).catalogProductName?.trim() || (dto as any).productName?.trim(),
         manufacturer: dto.manufacturer?.trim(),
         description: dto.description?.trim(),
         status: 'PENDING',
@@ -974,7 +970,7 @@ export class ProductsService {
 
 
     const [requests, total] = await Promise.all([
-      (this.prisma as any).productRequest.findMany({
+      (this.prisma as any).catalogProductRequest.findMany({
         where,
         include: {
           user: {
@@ -994,7 +990,7 @@ export class ProductsService {
         skip,
         take: limit,
       }),
-      (this.prisma as any).productRequest.count({ where }),
+      (this.prisma as any).catalogProductRequest.count({ where }),
     ]);
 
     return {
@@ -1009,7 +1005,7 @@ export class ProductsService {
   }
 
   async updateRequestStatus(requestId: string, status: any) {
-    const request = await (this.prisma as any).productRequest.findUnique({
+    const request = await (this.prisma as any).catalogProductRequest.findUnique({
       where: { id: requestId },
     });
 
@@ -1017,7 +1013,7 @@ export class ProductsService {
       throw new NotFoundException('Product request not found');
     }
 
-    return (this.prisma as any).productRequest.update({
+    return (this.prisma as any).catalogProductRequest.update({
       where: { id: requestId },
       data: { status },
     });

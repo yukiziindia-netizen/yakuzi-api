@@ -19,42 +19,42 @@ export class CartService {
   // ──────────────────────────────────────────────
 
   async addToCart(userId: string, dto: AddToCartDto) {
-    const { productId, quantity } = dto;
+    const { sellerOfferId, quantity } = dto;
 
     // 1. Validate product exists, is active, and not soft-deleted
-    const product = await this.prisma.product.findFirst({
-      where: { id: productId, isActive: true, deletedAt: null },
+    const sellerOffer = await this.prisma.sellerOffer.findFirst({
+      where: { id: sellerOfferId, isActive: true, deletedAt: null },
       include: {
         seller: { select: { id: true, verificationStatus: true } },
         batches: { where: { stock: { gt: 0 } }, orderBy: { expiryDate: 'asc' } },
       },
     });
 
-    if (!product) {
+    if (!sellerOffer) {
       throw new NotFoundException('Product not found or is no longer available');
     }
 
     // 2. Ensure seller is verified
-    if (product.seller.verificationStatus !== 'VERIFIED') {
+    if (sellerOffer.seller.verificationStatus !== 'VERIFIED') {
       throw new BadRequestException('This product\'s seller is not verified');
     }
 
     // 3. Validate minimum order quantity
-    if (quantity < product.minimumOrderQuantity) {
+    if (quantity < sellerOffer.minimumOrderQuantity) {
       throw new BadRequestException(
-        `Minimum order quantity for this product is ${product.minimumOrderQuantity}`,
+        `Minimum order quantity for this product is ${sellerOffer.minimumOrderQuantity}`,
       );
     }
 
     // 4. Validate maximum order quantity
-    if (product.maximumOrderQuantity && quantity > product.maximumOrderQuantity) {
+    if (sellerOffer.maximumOrderQuantity && quantity > sellerOffer.maximumOrderQuantity) {
       throw new BadRequestException(
-        `Maximum order quantity for this product is ${product.maximumOrderQuantity}`,
+        `Maximum order quantity for this product is ${sellerOffer.maximumOrderQuantity}`,
       );
     }
 
     // 5. Validate stock availability across all batches
-    const totalStock = product.batches.reduce((sum, b) => sum + b.stock, 0);
+    const totalStock = sellerOffer.batches.reduce((sum, b) => sum + b.stock, 0);
     if (quantity > totalStock) {
       throw new BadRequestException(
         `Insufficient stock. Only ${totalStock} units available`,
@@ -75,7 +75,7 @@ export class CartService {
 
     // 7. Check for duplicate product in cart
     const existingItem = await this.prisma.cartItem.findUnique({
-      where: { cartId_productId: { cartId: cart.id, productId } },
+      where: { cartId_sellerOfferId: { cartId: cart.id, sellerOfferId } },
     });
 
     if (existingItem) {
@@ -85,18 +85,18 @@ export class CartService {
     }
 
     // 8. Snapshot the unit price (MRP)
-    const unitPrice = product.mrp;
+    const unitPrice = sellerOffer.mrp;
 
     // 9. Create cart item
     const cartItem = await this.prisma.cartItem.create({
       data: {
         cartId: cart.id,
-        productId,
+        sellerOfferId,
         quantity,
         unitPrice,
       },
       include: {
-        product: {
+        sellerOffer: {
           select: {
             id: true,
             name: true,
@@ -109,7 +109,7 @@ export class CartService {
       },
     });
 
-    this.logger.log(`Item added to cart: product ${productId}, qty ${quantity}`);
+    this.logger.log(`Item added to cart: product ${sellerOfferId}, qty ${quantity}`);
 
     return {
       ...cartItem,
@@ -127,7 +127,7 @@ export class CartService {
       include: {
         items: {
           include: {
-            product: {
+            sellerOffer: {
               select: {
                 id: true,
                 name: true,
@@ -139,7 +139,7 @@ export class CartService {
                 maximumOrderQuantity: true,
                 isActive: true,
                 deletedAt: true,
-                images: { select: { id: true, url: true }, take: 1 },
+                
                 seller: {
                   select: {
                     id: true,
@@ -167,7 +167,7 @@ export class CartService {
 
     const items = cart.items.map((item) => ({
       id: item.id,
-      product: item.product,
+      sellerOffer: item.sellerOffer,
       quantity: item.quantity,
       unitPrice: item.unitPrice,
       totalPrice: item.quantity * item.unitPrice,
@@ -196,7 +196,7 @@ export class CartService {
       where: { id: cartItemId },
       include: {
         cart: { select: { userId: true } },
-        product: {
+        sellerOffer: {
           include: {
             batches: { where: { stock: { gt: 0 } } },
           },
@@ -213,26 +213,26 @@ export class CartService {
     }
 
     // 2. Validate product is still active
-    if (!cartItem.product.isActive || cartItem.product.deletedAt) {
+    if (!cartItem.sellerOffer.isActive || cartItem.sellerOffer.deletedAt) {
       throw new BadRequestException('This product is no longer available');
     }
 
     // 3. Validate minimum order quantity
-    if (quantity < cartItem.product.minimumOrderQuantity) {
+    if (quantity < cartItem.sellerOffer.minimumOrderQuantity) {
       throw new BadRequestException(
-        `Minimum order quantity for this product is ${cartItem.product.minimumOrderQuantity}`,
+        `Minimum order quantity for this product is ${cartItem.sellerOffer.minimumOrderQuantity}`,
       );
     }
 
     // 4. Validate maximum order quantity
-    if (cartItem.product.maximumOrderQuantity && quantity > cartItem.product.maximumOrderQuantity) {
+    if (cartItem.sellerOffer.maximumOrderQuantity && quantity > cartItem.sellerOffer.maximumOrderQuantity) {
       throw new BadRequestException(
-        `Maximum order quantity for this product is ${cartItem.product.maximumOrderQuantity}`,
+        `Maximum order quantity for this product is ${cartItem.sellerOffer.maximumOrderQuantity}`,
       );
     }
 
     // 5. Validate stock
-    const totalStock = cartItem.product.batches.reduce((sum, b) => sum + b.stock, 0);
+    const totalStock = cartItem.sellerOffer.batches.reduce((sum, b) => sum + b.stock, 0);
     if (quantity > totalStock) {
       throw new BadRequestException(
         `Insufficient stock. Only ${totalStock} units available`,
@@ -244,7 +244,7 @@ export class CartService {
       where: { id: cartItemId },
       data: { quantity },
       include: {
-        product: {
+        sellerOffer: {
           select: {
             id: true,
             name: true,

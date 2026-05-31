@@ -5,7 +5,7 @@ export class AddToCartDto {
   @ApiProperty({ example: 'uuid-of-product', description: 'Product UUID' })
   @IsString()
   @IsNotEmpty()
-  productId: string;
+  sellerOfferId: string;
 
   @ApiProperty({ example: 10, description: 'Quantity to add', minimum: 1 })
   @IsInt()

@@ -1,4 +1,4 @@
-import { PrismaClient, Product, Role, UserStatus } from '@prisma/client';
+import { PrismaClient, SellerOffer, Role, UserStatus } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { categories } from './seed-data/categories';
 
@@ -176,11 +176,11 @@ async function seedDemoSeller() {
     },
   ];
 
-  const createdProducts: Product[] = [];
+  const createdProducts: SellerOffer[] = [];
 
   for (const prod of demoProducts) {
     // Use findFirst + create to avoid upsert without a unique constraint on name
-    const existing = await prisma.product.findFirst({
+    const existing = await prisma.sellerOffer.findFirst({
       where: { name: prod.name, sellerId: prod.sellerId, deletedAt: null },
     });
 
@@ -188,13 +188,13 @@ async function seedDemoSeller() {
       console.log(`   ↩️  ${prod.name} (already exists)`);
       createdProducts.push(existing);
     } else {
-      const created = await prisma.product.create({ data: prod });
+      const created = await prisma.sellerOffer.create({ data: prod });
       console.log(`   ✅ ${created.name} — ₹${created.mrp}`);
       createdProducts.push(created);
     }
   }
 
-  // ── Product Batches ────────────────────────
+  // ── SellerOffer Batches ────────────────────────
 
   console.log('📦 Seeding product batches...');
 
@@ -209,25 +209,25 @@ async function seedDemoSeller() {
 
   const batches = [
     {
-      productId: createdProducts[0].id,
+      sellerOfferId: createdProducts[0].id,
       batchNumber: 'BATCH-AMX-2026-A',
       expiryDate: oneYearLater,
       stock: 5000,
     },
     {
-      productId: createdProducts[0].id,
+      sellerOfferId: createdProducts[0].id,
       batchNumber: 'BATCH-AMX-2026-B',
       expiryDate: twoYearsLater,
       stock: 3000,
     },
     {
-      productId: createdProducts[1].id,
+      sellerOfferId: createdProducts[1].id,
       batchNumber: 'BATCH-PCM-2026-A',
       expiryDate: twoYearsLater,
       stock: 10000,
     },
     {
-      productId: createdProducts[2].id,
+      sellerOfferId: createdProducts[2].id,
       batchNumber: 'BATCH-BCS-2026-A',
       expiryDate: sixMonthsLater,
       stock: 2000,
@@ -236,7 +236,7 @@ async function seedDemoSeller() {
 
   for (const batch of batches) {
     const existing = await prisma.productBatch.findFirst({
-      where: { batchNumber: batch.batchNumber, productId: batch.productId },
+      where: { batchNumber: batch.batchNumber, sellerOfferId: batch.sellerOfferId },
     });
 
     if (existing) {
@@ -306,7 +306,7 @@ async function main() {
     categories: await prisma.category.count(),
     subCategories: await prisma.subCategory.count(),
     users: await prisma.user.count(),
-    products: await prisma.product.count(),
+    products: await prisma.sellerOffer.count(),
     batches: await prisma.productBatch.count(),
   };
 
@@ -314,7 +314,7 @@ async function main() {
   console.log(`   Sub-categories:  ${counts.subCategories}`);
   console.log(`   Users:           ${counts.users}`);
   console.log(`   Products:        ${counts.products}`);
-  console.log(`   Product Batches: ${counts.batches}`);
+  console.log(`   SellerOffer Batches: ${counts.batches}`);
   console.log('────────────────────────────────────────\n');
 }
 

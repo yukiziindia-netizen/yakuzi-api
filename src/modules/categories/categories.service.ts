@@ -92,7 +92,7 @@ export class CategoriesService {
   async deleteCategory(id: string) {
     const existing = await this.prisma.category.findUnique({
       where: { id },
-      include: { _count: { select: { products: true, subCategories: true } } },
+      include: { _count: { select: { masterProducts: true, subCategories: true } } },
     });
     if (!existing) throw new NotFoundException('Category not found');
 
@@ -215,7 +215,7 @@ export class CategoriesService {
   async deleteSubCategory(id: string) {
     const existing = await this.prisma.subCategory.findUnique({
       where: { id },
-      include: { _count: { select: { products: true } } },
+      include: { _count: { select: { masterProducts: true } } },
     });
     if (!existing) throw new NotFoundException('SubCategory not found');
 
