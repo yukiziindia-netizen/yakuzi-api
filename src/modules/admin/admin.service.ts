@@ -1629,7 +1629,14 @@ export class AdminService {
         categoryId: dto.categoryId || '',
         subCategoryId: dto.subCategoryId || '',
         slug,
+        options: dto.options ? dto.options : undefined,
         isActive: dto.isActive ?? true,
+        productVariants: dto.variants?.length ? {
+          create: dto.variants.map((v: any) => ({
+            name: v.name,
+            options: { price: v.price, available: v.available }
+          }))
+        } : undefined
       },
       include: {
         category: { select: { id: true, name: true } },
@@ -1653,15 +1660,34 @@ export class AdminService {
         ...(dto.gstPercent !== undefined && { gstPercent: dto.gstPercent }),
         ...(dto.categoryId && { categoryId: dto.categoryId }),
         ...(dto.subCategoryId && { subCategoryId: dto.subCategoryId }),
+        ...(dto.options !== undefined && { options: dto.options }),
         ...(dto.isActive !== undefined && { isActive: dto.isActive }),
       },
       include: {
         category: { select: { id: true, name: true } },
         subCategory: { select: { id: true, name: true } },
       },
-    });
+      });
 
-    return updated;
+      // Handle variants update if provided
+      if (dto.variants) {
+        // Simple approach: delete existing variants and recreate
+        await this.prisma.productVariant.deleteMany({
+          where: { catalogProductId: id }
+        });
+        
+        if (dto.variants.length > 0) {
+          await this.prisma.productVariant.createMany({
+            data: dto.variants.map((v: any) => ({
+              catalogProductId: id,
+              name: v.name,
+              options: { price: v.price, available: v.available }
+            }))
+          });
+        }
+      }
+
+      return updated;
   }
 
 

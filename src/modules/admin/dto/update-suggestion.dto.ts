@@ -46,4 +46,12 @@ export class UpdateSuggestionDto {
   @IsBoolean()
   @IsOptional()
   isActive?: boolean;
+
+  @ApiPropertyOptional({ example: [{ name: 'Size', values: ['Medium', 'Large'] }] })
+  @IsOptional()
+  options?: any[];
+
+  @ApiPropertyOptional({ example: [{ name: 'Medium / Red', price: 100, available: 50 }] })
+  @IsOptional()
+  variants?: any[];
 }

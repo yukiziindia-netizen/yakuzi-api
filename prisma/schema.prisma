@@ -619,6 +619,7 @@ model CatalogProduct {
   safetyAdvice         String?
   packSize             String?
   storageAndHandling   String?
+  options              Json?
   isActive             Boolean               @default(true)
   deletedAt            DateTime?
   createdAt            DateTime              @default(now())

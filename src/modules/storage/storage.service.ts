@@ -18,18 +18,29 @@ export class StorageService {
   private readonly s3: S3Client;
   private readonly bucket: string;
   private readonly region: string;
+  private readonly cdnDomain: string;
 
   constructor(private readonly config: ConfigService) {
     this.region = this.config.get<string>('AWS_REGION', 'ap-south-1');
     this.bucket = this.config.get<string>('AWS_BUCKET', 'pharmabag03');
 
-    this.s3 = new S3Client({
+    const accessKeyId = this.config.get<string>('AWS_ACCESS_KEY_ID') || this.config.get<string>('AWS_ACCESS_KEY', '');
+    const secretAccessKey = this.config.get<string>('AWS_SECRET_ACCESS_KEY') || this.config.get<string>('AWS_ACCESS_SECRET_KEY') || this.config.get<string>('AWS_SECRET_KEY', '');
+
+    const s3Config: any = { 
       region: this.region,
-      credentials: {
-        accessKeyId: this.config.get<string>('AWS_ACCESS_KEY', ''),
-        secretAccessKey: this.config.get<string>('AWS_SECRET_KEY', ''),
-      },
-    });
+      requestChecksumCalculation: 'WHEN_REQUIRED'
+    };
+    
+    // Only pass credentials if they actually exist in the .env, 
+    // otherwise let AWS SDK fallback to ~/.aws/credentials or IAM Role
+    if (accessKeyId && secretAccessKey) {
+      s3Config.credentials = { accessKeyId, secretAccessKey };
+    }
+
+    this.s3 = new S3Client(s3Config);
+
+    this.cdnDomain = this.config.get<string>('CDN_DOMAIN', 'https://dqvwqfh95x9be.cloudfront.net');
   }
 
   private readonly ALLOWED_IMAGE_TYPES = [
@@ -37,6 +48,9 @@ export class StorageService {
     'image/png',
     'image/webp',
     'image/jpg',
+    'video/mp4',
+    'video/webm',
+    'video/quicktime',
   ];
 
   private readonly ALLOWED_DOC_TYPES = [
@@ -95,6 +109,37 @@ export class StorageService {
     return getSignedUrl(this.s3, command, { expiresIn });
   }
 
+  /**
+   * Generate a presigned PUT URL for direct browser uploads to S3
+   */
+  async generateUploadUrl(productId: string | undefined, filename: string, contentType: string) {
+    const id = productId || `tmp-${randomUUID()}`;
+    const folder = contentType.startsWith('video/') ? 'videos' : 'images';
+    
+    // Clean filename
+    const cleanName = filename.replace(/[^a-zA-Z0-9.-]/g, '_');
+    const key = `media/${folder}/${id}/${cleanName}`;
+
+    const command = new PutObjectCommand({
+      Bucket: this.bucket,
+      Key: key,
+      ContentType: contentType,
+    });
+
+    const presignedUrl = await getSignedUrl(this.s3, command, { 
+      expiresIn: 600,
+      signableHeaders: new Set(['content-type', 'host']),
+      unhoistableHeaders: new Set(['x-amz-sdk-checksum-algorithm', 'x-amz-checksum-crc32'])
+    });
+    const cdnUrl = `${this.cdnDomain}/${key}`;
+
+    return {
+      presigned_url: presignedUrl,
+      key,
+      cdn_url: cdnUrl,
+    };
+  }
+
   async uploadBlogImage(file: Express.Multer.File): Promise<string> {
     this.validateFile(file, this.ALLOWED_IMAGE_TYPES);
     const key = await this.upload(file, 'blog-images');
@@ -142,8 +187,16 @@ export class StorageService {
       ContentType: file.mimetype,
     });
 
-    await this.s3.send(command);
-    this.logger.log(`File uploaded to S3: ${key}`);
-    return key;
+    try {
+      await this.s3.send(command);
+      this.logger.log(`File uploaded to S3: ${key}`);
+      return key;
+    } catch (error: any) {
+      this.logger.error(`S3 Upload Error: ${error.message}`, error.stack);
+      if (error.name === 'InvalidAccessKeyId' || error.message.includes('InvalidAccessKeyId')) {
+        throw new BadRequestException('AWS Credentials invalid or expired. Please update your .env file with a valid AWS_ACCESS_KEY.');
+      }
+      throw new BadRequestException(`Failed to upload file: ${error.message}`);
+    }
   }
 }

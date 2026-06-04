@@ -47,7 +47,10 @@ import { ChatbotModule } from './modules/chatbot/chatbot.module';
         REDIS_HOST: Joi.string().default('localhost'),
         REDIS_PORT: Joi.number().default(6379),
         AWS_ACCESS_KEY: Joi.string().allow('').default(''),
+        AWS_ACCESS_KEY_ID: Joi.string().allow('').default(''),
         AWS_SECRET_KEY: Joi.string().allow('').default(''),
+        AWS_SECRET_ACCESS_KEY: Joi.string().allow('').default(''),
+        AWS_ACCESS_SECRET_KEY: Joi.string().allow('').default(''),
         AWS_BUCKET: Joi.string().default('pharmabag-images'),
         AWS_REGION: Joi.string().default('ap-south-1'),
         CORS_ORIGINS: Joi.string().default(

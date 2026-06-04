@@ -136,4 +136,29 @@ export class StorageController {
     const url = await this.storageService.getPresignedUrl(key);
     return { data: { url } };
   }
+
+  @Post('upload-url')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.SELLER, Role.ADMIN)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Generate S3 presigned URL for direct upload' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        product_id: { type: 'string', nullable: true },
+        filename: { type: 'string' },
+        content_type: { type: 'string' }
+      },
+      required: ['filename', 'content_type']
+    }
+  })
+  async generateUploadUrl(
+    @Body('product_id') productId: string,
+    @Body('filename') filename: string,
+    @Body('content_type') contentType: string,
+  ) {
+    const data = await this.storageService.generateUploadUrl(productId, filename, contentType);
+    return { data };
+  }
 }
