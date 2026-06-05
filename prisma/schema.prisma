@@ -169,7 +169,7 @@ model SellerOffer {
   subCategoryId        String
   name                 String
   manufacturer         String
-  chemicalComposition  String
+
   description          String?
   mrp                  Float
   gstPercent           Float
@@ -417,7 +417,7 @@ model ProductSearchIndex {
   catalogProductId    String         @unique
   name                String
   manufacturer        String
-  chemicalComposition String
+
   categoryName        String
   subCategoryName     String
   searchVector        String
@@ -607,7 +607,7 @@ model CatalogProduct {
   slug                 String?               @unique
   externalId           String?               @unique
   manufacturer         String
-  chemicalComposition  String
+
   description          String?
   mrp                  Float?
   gstPercent           Float?

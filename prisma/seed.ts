@@ -138,7 +138,7 @@ async function seedDemoSeller() {
     {
       name: 'Amoxicillin 500mg',
       manufacturer: 'Cipla Ltd.',
-      chemicalComposition: 'Amoxicillin Trihydrate 500mg',
+
       description: 'Broad-spectrum antibiotic used for bacterial infections. Strip of 10 capsules.',
       mrp: 85.0,
       gstPercent: 12.0,
@@ -151,7 +151,7 @@ async function seedDemoSeller() {
     {
       name: 'Paracetamol 650mg',
       manufacturer: 'Sun Pharmaceutical',
-      chemicalComposition: 'Paracetamol 650mg',
+
       description: 'Antipyretic and analgesic for fever and mild to moderate pain. Strip of 15 tablets.',
       mrp: 30.0,
       gstPercent: 12.0,
@@ -164,7 +164,7 @@ async function seedDemoSeller() {
     {
       name: 'Becosules Capsules',
       manufacturer: 'Pfizer Ltd.',
-      chemicalComposition: 'Vitamin B Complex with Vitamin C',
+
       description: 'Multivitamin supplement for daily nutritional support. Strip of 20 capsules.',
       mrp: 42.0,
       gstPercent: 5.0,

@@ -41,7 +41,7 @@ export class UpdateProductDto {
   @ApiPropertyOptional({ example: 'Paracetamol IP 500mg' })
   @IsString()
   @IsOptional()
-  chemicalComposition?: string;
+
 
   @ApiPropertyOptional({ example: 'Analgesic and antipyretic tablet' })
   @IsString()

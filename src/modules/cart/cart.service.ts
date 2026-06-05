@@ -132,7 +132,7 @@ export class CartService {
                 id: true,
                 name: true,
                 manufacturer: true,
-                chemicalComposition: true,
+
                 mrp: true,
                 gstPercent: true,
                 minimumOrderQuantity: true,

@@ -420,7 +420,7 @@ export class AdminService {
       where.OR = [
         { name: { contains: search, mode: 'insensitive' } },
         { manufacturer: { contains: search, mode: 'insensitive' } },
-        { chemicalComposition: { contains: search, mode: 'insensitive' } },
+
       ];
     }
 
@@ -1575,7 +1575,7 @@ export class AdminService {
       where.OR = [
         { name: { contains: search, mode: 'insensitive' } },
         { manufacturer: { contains: search, mode: 'insensitive' } },
-        { chemicalComposition: { contains: search, mode: 'insensitive' } },
+
       ];
     }
 
@@ -1585,7 +1585,8 @@ export class AdminService {
         include: {
           category: { select: { id: true, name: true } },
           subCategory: { select: { id: true, name: true } },
-          images: { select: { id: true, url: true }, take: 1 },
+          images: { select: { id: true, url: true } },
+          productVariants: true,
         },
         orderBy: { name: 'asc' },
         skip,
@@ -1618,16 +1619,45 @@ export class AdminService {
   async createSuggestion(dto: import('./dto/update-suggestion.dto').UpdateSuggestionDto) {
     const slug = slugify(`${dto.name}-${dto.manufacturer}`, { lower: true, strict: true });
     
-    return this.prisma.catalogProduct.create({
+    // Resolve Category by name or use a default
+    let resolvedCategoryId: string;
+    if (dto.categoryId && !dto.categoryId.includes('-')) {
+      let cat = await this.prisma.category.findFirst({ where: { name: { equals: dto.categoryId, mode: 'insensitive' } } });
+      if (!cat) cat = await this.prisma.category.create({ data: { name: dto.categoryId, slug: slugify(dto.categoryId, { lower: true }) } });
+      resolvedCategoryId = cat.id;
+    } else if (!dto.categoryId) {
+      let cat = await this.prisma.category.findFirst({ where: { name: 'Uncategorized' } });
+      if (!cat) cat = await this.prisma.category.create({ data: { name: 'Uncategorized', slug: 'uncategorized' } });
+      resolvedCategoryId = cat.id;
+    } else {
+      resolvedCategoryId = dto.categoryId;
+    }
+
+    // Resolve SubCategory by name or use a default
+    let resolvedSubCategoryId: string;
+    if (dto.subCategoryId && !dto.subCategoryId.includes('-')) {
+      let subCat = await this.prisma.subCategory.findFirst({ where: { name: { equals: dto.subCategoryId, mode: 'insensitive' }, categoryId: resolvedCategoryId } });
+      if (!subCat) subCat = await this.prisma.subCategory.create({ data: { name: dto.subCategoryId, slug: slugify(dto.subCategoryId, { lower: true }), categoryId: resolvedCategoryId } });
+      resolvedSubCategoryId = subCat.id;
+    } else if (!dto.subCategoryId) {
+      let subCat = await this.prisma.subCategory.findFirst({ where: { name: 'General', categoryId: resolvedCategoryId } });
+      if (!subCat) subCat = await this.prisma.subCategory.create({ data: { name: 'General', slug: 'general', categoryId: resolvedCategoryId } });
+      resolvedSubCategoryId = subCat.id;
+    } else {
+      resolvedSubCategoryId = dto.subCategoryId;
+    }
+    
+    const product = await this.prisma.catalogProduct.create({
       data: {
         name: dto.name || '',
         manufacturer: dto.manufacturer || '',
-        chemicalComposition: dto.chemicalComposition || '',
+
         description: dto.description || '',
-        mrp: dto.mrp,
+        mrp: dto.mrp || dto.price,
         gstPercent: dto.gstPercent,
-        categoryId: dto.categoryId || '',
-        subCategoryId: dto.subCategoryId || '',
+        categoryId: resolvedCategoryId,
+        subCategoryId: resolvedSubCategoryId,
+        packSize: dto.packSize,
         slug,
         options: dto.options ? dto.options : undefined,
         isActive: dto.isActive ?? true,
@@ -1636,6 +1666,9 @@ export class AdminService {
             name: v.name,
             options: { price: v.price, available: v.available }
           }))
+        } : undefined,
+        images: dto.images?.length ? {
+          create: dto.images.map(url => ({ url }))
         } : undefined
       },
       include: {
@@ -1643,25 +1676,47 @@ export class AdminService {
         subCategory: { select: { id: true, name: true } },
       },
     });
+    return product;
   }
 
   async updateSuggestion(id: string, dto: import('./dto/update-suggestion.dto').UpdateSuggestionDto) {
     const suggestion = await this.prisma.catalogProduct.findUnique({ where: { id } });
     if (!suggestion) throw new NotFoundException('Suggestion not found');
 
+    let resolvedCategoryId: string | undefined = undefined;
+    if (dto.categoryId && !dto.categoryId.includes('-')) {
+      let cat = await this.prisma.category.findFirst({ where: { name: { equals: dto.categoryId, mode: 'insensitive' } } });
+      if (!cat) cat = await this.prisma.category.create({ data: { name: dto.categoryId, slug: slugify(dto.categoryId, { lower: true }) } });
+      resolvedCategoryId = cat.id;
+    } else if (dto.categoryId) {
+      resolvedCategoryId = dto.categoryId;
+    }
+
+    let resolvedSubCategoryId: string | undefined = undefined;
+    if (dto.subCategoryId && !dto.subCategoryId.includes('-')) {
+      const catId = resolvedCategoryId || suggestion.categoryId;
+      let subCat = await this.prisma.subCategory.findFirst({ where: { name: { equals: dto.subCategoryId, mode: 'insensitive' }, categoryId: catId } });
+      if (!subCat) subCat = await this.prisma.subCategory.create({ data: { name: dto.subCategoryId, slug: slugify(dto.subCategoryId, { lower: true }), categoryId: catId } });
+      resolvedSubCategoryId = subCat.id;
+    } else if (dto.subCategoryId) {
+      resolvedSubCategoryId = dto.subCategoryId;
+    }
+
     const updated = await this.prisma.catalogProduct.update({
       where: { id },
       data: {
-        ...(dto.name && { name: dto.name }),
-        ...(dto.manufacturer && { manufacturer: dto.manufacturer }),
-        ...(dto.chemicalComposition && { chemicalComposition: dto.chemicalComposition }),
-        ...(dto.description !== undefined && { description: dto.description }),
-        ...(dto.mrp !== undefined && { mrp: dto.mrp }),
-        ...(dto.gstPercent !== undefined && { gstPercent: dto.gstPercent }),
-        ...(dto.categoryId && { categoryId: dto.categoryId }),
-        ...(dto.subCategoryId && { subCategoryId: dto.subCategoryId }),
-        ...(dto.options !== undefined && { options: dto.options }),
-        ...(dto.isActive !== undefined && { isActive: dto.isActive }),
+        ...(dto.name ? { name: dto.name } : {}),
+        ...(dto.manufacturer ? { manufacturer: dto.manufacturer } : {}),
+
+        ...(dto.description !== undefined ? { description: dto.description } : {}),
+        ...(dto.mrp !== undefined ? { mrp: dto.mrp } : {}),
+        ...(dto.price !== undefined ? { mrp: dto.price } : {}),
+        ...(dto.packSize !== undefined ? { packSize: dto.packSize } : {}),
+        ...(dto.gstPercent !== undefined ? { gstPercent: dto.gstPercent } : {}),
+        ...(resolvedCategoryId ? { categoryId: resolvedCategoryId } : {}),
+        ...(resolvedSubCategoryId ? { subCategoryId: resolvedSubCategoryId } : {}),
+        ...(dto.options !== undefined ? { options: dto.options } : {}),
+        ...(dto.isActive !== undefined ? { isActive: dto.isActive } : {}),
       },
       include: {
         category: { select: { id: true, name: true } },
@@ -1682,6 +1737,22 @@ export class AdminService {
               catalogProductId: id,
               name: v.name,
               options: { price: v.price, available: v.available }
+            }))
+          });
+        }
+      }
+
+      // Handle images update if provided
+      if (dto.images) {
+        await this.prisma.catalogProductImage.deleteMany({
+          where: { masterProductId: id }
+        });
+        
+        if (dto.images.length > 0) {
+          await this.prisma.catalogProductImage.createMany({
+            data: dto.images.map(url => ({
+              masterProductId: id,
+              url
             }))
           });
         }
@@ -1791,7 +1862,7 @@ export class AdminService {
                 try {
                   const productName = (row['name'] || row['PRODUCT NAME'])?.trim();
                   const manufacturer = (row['manufacturer'] || row['COMPANY NAME'])?.trim() || 'UNKNOWN';
-                  const chemicalComposition = (row['chemicalComposition'] || row['CHEMICAL COMBINATION'])?.trim() || 'N/A';
+
                   const categoryName = (row['category'] || row['Category'])?.trim();
                   const subCategoryName = (row['subCategory'] || row['Sub category'])?.trim();
                   const gstStr = String(row['gstPercent'] || row['GST'] || '0').trim();
@@ -1824,7 +1895,7 @@ export class AdminService {
                     update: {
                       name: productName,
                       manufacturer,
-                      chemicalComposition,
+
                       mrp,
                       description,
                       gstPercent,
@@ -1837,7 +1908,7 @@ export class AdminService {
                       slug,
                       externalId: row.id || slug,
                       manufacturer,
-                      chemicalComposition,
+
                       mrp,
                       description,
                       gstPercent,

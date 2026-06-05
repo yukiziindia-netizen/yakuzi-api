@@ -1,5 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsOptional, IsNumber, IsBoolean, IsUUID } from 'class-validator';
+import { IsString, IsOptional, IsNumber, IsBoolean, IsUUID, IsArray } from 'class-validator';
 
 export class UpdateSuggestionDto {
   @ApiPropertyOptional({ example: 'Baconil 2mg' })
@@ -15,7 +15,7 @@ export class UpdateSuggestionDto {
   @ApiPropertyOptional({ example: 'Nicotine 2mg' })
   @IsString()
   @IsOptional()
-  chemicalComposition?: string;
+
 
   @ApiPropertyOptional({ example: 'Detailed description' })
   @IsString()
@@ -27,18 +27,44 @@ export class UpdateSuggestionDto {
   @IsOptional()
   mrp?: number;
 
+  @ApiPropertyOptional({ example: 90.0 })
+  @IsNumber()
+  @IsOptional()
+  price?: number;
+
+  @ApiPropertyOptional({ example: 'Box' })
+  @IsString()
+  @IsOptional()
+  unit?: string;
+
+  @ApiPropertyOptional({ example: '10x10' })
+  @IsString()
+  @IsOptional()
+  packSize?: string;
+
+  @ApiPropertyOptional({ example: 10 })
+  @IsNumber()
+  @IsOptional()
+  minimumOrderQuantity?: number;
+
+  @ApiPropertyOptional({ example: ['https://example.com/image1.jpg'] })
+  @IsArray()
+  @IsString({ each: true })
+  @IsOptional()
+  images?: string[];
+
   @ApiPropertyOptional({ example: 12.0 })
   @IsNumber()
   @IsOptional()
   gstPercent?: number;
 
   @ApiPropertyOptional({ example: 'uuid-category-id' })
-  @IsUUID()
+  @IsString()
   @IsOptional()
   categoryId?: string;
 
   @ApiPropertyOptional({ example: 'uuid-subcategory-id' })
-  @IsUUID()
+  @IsString()
   @IsOptional()
   subCategoryId?: string;
 

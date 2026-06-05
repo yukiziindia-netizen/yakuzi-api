@@ -21,7 +21,7 @@ async function main() {
             name: offer.name,
             slug,
             manufacturer: offer.manufacturer,
-            chemicalComposition: offer.chemicalComposition || 'Unknown',
+
             mrp: offer.mrp,
             categoryId: offer.categoryId,
             subCategoryId: offer.subCategoryId,

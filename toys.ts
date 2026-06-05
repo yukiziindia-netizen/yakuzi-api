@@ -72,7 +72,7 @@ async function main() {
         name: t.name,
         slug,
         manufacturer: t.manufacturer,
-        chemicalComposition: 'N/A', // Required by schema
+
         description: t.desc,
         mrp: t.price,
         gstPercent: 18,
@@ -99,7 +99,7 @@ async function main() {
         variantId: pv.id,
         name: t.name,
         manufacturer: t.manufacturer,
-        chemicalComposition: 'N/A',
+
         description: t.desc,
         mrp: t.price,
         gstPercent: 18,

@@ -21,7 +21,7 @@ export class SearchIndexService {
     data: {
       name: string;
       manufacturer: string;
-      chemicalComposition: string;
+
       categoryName: string;
       subCategoryName: string;
     },
@@ -35,7 +35,7 @@ export class SearchIndexService {
           catalogProductId,
           name: data.name,
           manufacturer: data.manufacturer,
-          chemicalComposition: data.chemicalComposition,
+
           categoryName: data.categoryName,
           subCategoryName: data.subCategoryName,
           searchVector,
@@ -43,7 +43,7 @@ export class SearchIndexService {
         update: {
           name: data.name,
           manufacturer: data.manufacturer,
-          chemicalComposition: data.chemicalComposition,
+
           categoryName: data.categoryName,
           subCategoryName: data.subCategoryName,
           searchVector,
@@ -81,14 +81,14 @@ export class SearchIndexService {
   private buildSearchVector(data: {
     name: string;
     manufacturer: string;
-    chemicalComposition: string;
+
     categoryName: string;
     subCategoryName: string;
   }): string {
     return [
       data.name,
       data.manufacturer,
-      data.chemicalComposition,
+
       data.categoryName,
       data.subCategoryName,
     ]

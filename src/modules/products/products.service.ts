@@ -53,7 +53,7 @@ export class ProductsService {
       ...dto,
       name: this.normalizeString(dto.name),
       manufacturer: this.normalizeString(dto.manufacturer),
-      chemicalComposition: this.normalizeString(dto.chemicalComposition),
+
       description: dto.description ? this.normalizeString(dto.description) : undefined,
       slug: dto.slug
         ? dto.slug.trim().toLowerCase()
@@ -132,7 +132,7 @@ export class ProductsService {
       slug: normalized.slug,
       externalId: normalized.externalId,
       manufacturer: normalized.manufacturer,
-      chemicalComposition: normalized.chemicalComposition,
+
       description: normalized.description,
       mrp: normalized.mrp,
       gstPercent: normalized.gstPercent,
@@ -167,7 +167,7 @@ export class ProductsService {
     this.searchIndexService.upsert(product.id, {
       name: product.name,
       manufacturer: product.manufacturer,
-      chemicalComposition: product.chemicalComposition,
+
       categoryName: category.name,
       subCategoryName: subCategory.name,
     });
@@ -221,7 +221,7 @@ export class ProductsService {
         name: dto.name,
         slug: dto.slug,
         manufacturer: dto.manufacturer,
-        chemicalComposition: dto.chemicalComposition,
+
         description: dto.description,
         mrp: dto.mrp,
         gstPercent: dto.gstPercent,
@@ -249,7 +249,7 @@ export class ProductsService {
     this.searchIndexService.upsert(productId, {
       name: updated.name,
       manufacturer: updated.manufacturer,
-      chemicalComposition: updated.chemicalComposition,
+
       categoryName: category.name,
       subCategoryName: subCategory.name,
     });
@@ -410,7 +410,7 @@ export class ProductsService {
     // Trim strings
     if (productData.name) productData.name = productData.name.trim();
     if (productData.manufacturer) productData.manufacturer = productData.manufacturer.trim();
-    if (productData.chemicalComposition) productData.chemicalComposition = productData.chemicalComposition.trim();
+
     if (productData.description) productData.description = productData.description.trim();
 
     const updated = await this.prisma.sellerOffer.update({
@@ -441,14 +441,14 @@ export class ProductsService {
     if (
       dto.name ||
       dto.manufacturer ||
-      dto.chemicalComposition ||
+
       dto.categoryId ||
       dto.subCategoryId
     ) {
       this.searchIndexService.upsert(updated.id, {
         name: updated.name,
         manufacturer: updated.manufacturer,
-        chemicalComposition: updated.chemicalComposition,
+
         categoryName: updated.category.name,
         subCategoryName: updated.subCategory.name,
       });
@@ -513,7 +513,7 @@ export class ProductsService {
         OR: [
           { name: { contains: query.search, mode: 'insensitive' } },
           { manufacturer: { contains: query.search, mode: 'insensitive' } },
-          { chemicalComposition: { contains: query.search, mode: 'insensitive' } },
+
         ],
       });
     }
@@ -664,7 +664,7 @@ export class ProductsService {
       name: m.name,
       slug: m.slug,
       manufacturer: m.manufacturer,
-      chemicalComposition: m.chemicalComposition,
+
       mrp: m.mrp,
       price: minPrice,
       moq: minMoq,
@@ -685,7 +685,7 @@ export class ProductsService {
       name: m.name,
       slug: m.slug,
       manufacturer: m.manufacturer,
-      chemicalComposition: m.chemicalComposition,
+
       description: m.description,
       mrp: m.mrp,
       gstPercent: m.gstPercent,
@@ -735,7 +735,7 @@ export class ProductsService {
           OR: [
             { name: { contains: w, mode: 'insensitive' as Prisma.QueryMode } },
             { manufacturer: { contains: w, mode: 'insensitive' as Prisma.QueryMode } },
-            { chemicalComposition: { contains: w, mode: 'insensitive' as Prisma.QueryMode } },
+
           ],
         })),
       };
@@ -753,7 +753,7 @@ export class ProductsService {
           name: true,
           manufacturer: true,
           slug: true,
-          chemicalComposition: true,
+
           mrp: true,
           gstPercent: true,
           categoryId: true,
@@ -768,7 +768,7 @@ export class ProductsService {
         id: s.id,
         productName: s.name,
         companyName: s.manufacturer,
-        chemicalCombination: s.chemicalComposition,
+
         slug: s.slug,
         mrp: s.mrp,
         categoryId: s.categoryId,
