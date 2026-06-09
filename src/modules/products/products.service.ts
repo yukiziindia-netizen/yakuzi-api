@@ -143,39 +143,71 @@ export class ProductsService {
         }
 
         // If from master but no match, could be a new variant not in master, or just a seller override
-        const offerName = dto.variants.length > 1 ? `${normalized.name} - ${v.name}` : normalized.name;
+        const offerName = `${normalized.name} - ${v.name}`;
         const slug = this.generateSlug(offerName) + '-' + Math.random().toString(36).substring(2, 6);
 
-        const productData: Prisma.SellerOfferCreateInput = {
-          seller: { connect: { id: seller.id } },
-          category: { connect: { id: normalized.categoryId } },
-          subCategory: { connect: { id: normalized.subCategoryId } },
-          variant: matchedVariantId ? { connect: { id: matchedVariantId } } : undefined,
-          name: offerName,
-          slug: slug,
-          externalId: normalized.externalId ? `${normalized.externalId}-${v.name}` : undefined,
-          manufacturer: normalized.manufacturer,
-          description: normalized.description,
-          mrp: v.price > 0 ? v.price : normalized.mrp,
-          gstPercent: normalized.gstPercent,
-          minimumOrderQuantity: normalized.minimumOrderQuantity ?? 1,
-          maximumOrderQuantity: normalized.maximumOrderQuantity,
-          discountType: normalized.discountType,
-          discountMeta: normalized.discountMeta ?? undefined,
-          approvalStatus: isFromMaster ? ProductApprovalStatus.APPROVED : ProductApprovalStatus.PENDING,
-          isActive: isFromMaster ? true : false,
-        };
-
-        const product = await this.prisma.sellerOffer.create({
-          data: productData,
-          include: { category: true, subCategory: true }
+        const existingProduct = await this.prisma.sellerOffer.findFirst({
+          where: { sellerId: seller.id, name: offerName, deletedAt: null }
         });
 
-        await this.inventoryService.createDefaultBatch(
-          product.id,
-          v.available > 0 ? v.available : normalized.stock,
-          normalized.expiryDate,
-        );
+        let product;
+        if (existingProduct) {
+          product = await this.prisma.sellerOffer.update({
+            where: { id: existingProduct.id },
+            data: {
+              categoryId: normalized.categoryId,
+              subCategoryId: normalized.subCategoryId,
+              manufacturer: normalized.manufacturer,
+              description: normalized.description,
+              mrp: v.price > 0 ? v.price : normalized.mrp,
+              gstPercent: normalized.gstPercent,
+              minimumOrderQuantity: normalized.minimumOrderQuantity ?? 1,
+              maximumOrderQuantity: normalized.maximumOrderQuantity,
+              discountType: normalized.discountType,
+              discountMeta: normalized.discountMeta ?? undefined,
+              deliveryText: normalized.deliveryText,
+            },
+            include: { category: true, subCategory: true }
+          });
+          
+          await this.inventoryService.updateDefaultBatch(
+            product.id,
+            v.available > 0 ? v.available : normalized.stock,
+            normalized.expiryDate,
+          );
+        } else {
+          const productData: Prisma.SellerOfferCreateInput = {
+            seller: { connect: { id: seller.id } },
+            category: { connect: { id: normalized.categoryId } },
+            subCategory: { connect: { id: normalized.subCategoryId } },
+            variant: matchedVariantId ? { connect: { id: matchedVariantId } } : undefined,
+            name: offerName,
+            slug: slug,
+            externalId: normalized.externalId ? `${normalized.externalId}-${v.name}` : undefined,
+            manufacturer: normalized.manufacturer,
+            description: normalized.description,
+            mrp: v.price > 0 ? v.price : normalized.mrp,
+            gstPercent: normalized.gstPercent,
+            minimumOrderQuantity: normalized.minimumOrderQuantity ?? 1,
+            maximumOrderQuantity: normalized.maximumOrderQuantity,
+            discountType: normalized.discountType,
+            discountMeta: normalized.discountMeta ?? undefined,
+            deliveryText: normalized.deliveryText,
+            approvalStatus: isFromMaster ? ProductApprovalStatus.APPROVED : ProductApprovalStatus.PENDING,
+            isActive: isFromMaster ? true : false,
+          };
+
+          product = await this.prisma.sellerOffer.create({
+            data: productData,
+            include: { category: true, subCategory: true }
+          });
+
+          await this.inventoryService.createDefaultBatch(
+            product.id,
+            v.available > 0 ? v.available : normalized.stock,
+            normalized.expiryDate,
+          );
+        }
 
         this.searchIndexService.upsert(product.id, {
           name: product.name,
@@ -210,46 +242,75 @@ export class ProductsService {
       variantId = catalogProduct.productVariants[0].id;
     }
 
-    const productData: Prisma.SellerOfferCreateInput = {
-      seller: { connect: { id: seller.id } },
-      category: { connect: { id: normalized.categoryId } },
-      subCategory: { connect: { id: normalized.subCategoryId } },
-      variant: variantId ? { connect: { id: variantId } } : undefined,
-      name: normalized.name,
-      slug: normalized.slug,
-      externalId: normalized.externalId,
-      manufacturer: normalized.manufacturer,
-
-      description: normalized.description,
-      mrp: normalized.mrp,
-      gstPercent: normalized.gstPercent,
-      minimumOrderQuantity: normalized.minimumOrderQuantity ?? 1,
-      maximumOrderQuantity: normalized.maximumOrderQuantity,
-      discountType: normalized.discountType,
-      discountMeta: normalized.discountMeta ?? undefined,
-      approvalStatus: isFromMaster ? ProductApprovalStatus.APPROVED : ProductApprovalStatus.PENDING,
-      isActive: isFromMaster ? true : false, // Auto-approve if from master catalog
-    };
-
-    const product = await this.prisma.sellerOffer.create({
-      data: productData,
-      include: {
-        category: true,
-        subCategory: true,
-        
-      },
+    const existingProduct = await this.prisma.sellerOffer.findFirst({
+      where: { sellerId: seller.id, name: normalized.name, deletedAt: null }
     });
+
+    let product;
+    if (existingProduct) {
+      product = await this.prisma.sellerOffer.update({
+        where: { id: existingProduct.id },
+        data: {
+          categoryId: normalized.categoryId,
+          subCategoryId: normalized.subCategoryId,
+          manufacturer: normalized.manufacturer,
+          description: normalized.description,
+          mrp: normalized.mrp,
+          gstPercent: normalized.gstPercent,
+          minimumOrderQuantity: normalized.minimumOrderQuantity ?? 1,
+          maximumOrderQuantity: normalized.maximumOrderQuantity,
+          discountType: normalized.discountType,
+          discountMeta: normalized.discountMeta ?? undefined,
+          deliveryText: normalized.deliveryText,
+        },
+        include: { category: true, subCategory: true }
+      });
+      await this.inventoryService.updateDefaultBatch(
+        product.id,
+        normalized.stock,
+        normalized.expiryDate,
+      );
+    } else {
+      const productData: Prisma.SellerOfferCreateInput = {
+        seller: { connect: { id: seller.id } },
+        category: { connect: { id: normalized.categoryId } },
+        subCategory: { connect: { id: normalized.subCategoryId } },
+        variant: variantId ? { connect: { id: variantId } } : undefined,
+        name: normalized.name,
+        slug: normalized.slug,
+        externalId: normalized.externalId,
+        manufacturer: normalized.manufacturer,
+        description: normalized.description,
+        mrp: normalized.mrp,
+        gstPercent: normalized.gstPercent,
+        minimumOrderQuantity: normalized.minimumOrderQuantity ?? 1,
+        maximumOrderQuantity: normalized.maximumOrderQuantity,
+        discountType: normalized.discountType,
+        discountMeta: normalized.discountMeta ?? undefined,
+        deliveryText: normalized.deliveryText,
+        approvalStatus: isFromMaster ? ProductApprovalStatus.APPROVED : ProductApprovalStatus.PENDING,
+        isActive: isFromMaster ? true : false, // Auto-approve if from master catalog
+      };
+
+      product = await this.prisma.sellerOffer.create({
+        data: productData,
+        include: {
+          category: true,
+          subCategory: true,
+        },
+      });
+
+      await this.inventoryService.createDefaultBatch(
+        product.id,
+        normalized.stock,
+        normalized.expiryDate,
+      );
+    }
 
     // Create images if provided
     if (normalized.images && normalized.images.length > 0) {
       // await this.prisma.catalogProductImage.createMany
     }
-
-    await this.inventoryService.createDefaultBatch(
-      product.id,
-      normalized.stock,
-      normalized.expiryDate,
-    );
 
     this.searchIndexService.upsert(product.id, {
       name: product.name,
@@ -316,6 +377,7 @@ export class ProductsService {
         maximumOrderQuantity: dto.maximumOrderQuantity,
         discountType: dto.discountType,
         discountMeta: dto.discountMeta ?? undefined,
+        deliveryText: dto.deliveryText,
         isActive: true,
         deletedAt: null,
       },
@@ -464,8 +526,7 @@ export class ProductsService {
         include: {
           category: true,
           subCategory: true,
-          // batches: true,
-          
+          batches: true,
         },
         orderBy: { [sortBy]: sortOrder },
         skip,
@@ -645,6 +706,33 @@ export class ProductsService {
       productConditions.push({ analytics: { orders: { gt: 0 } } });
     }
 
+    if (query.minPrice !== undefined || query.maxPrice !== undefined) {
+      productConditions.push({
+        mrp: {
+          ...(query.minPrice !== undefined ? { gte: Number(query.minPrice) } : {}),
+          ...(query.maxPrice !== undefined ? { lte: Number(query.maxPrice) } : {}),
+        }
+      });
+    }
+
+    if (query.location && query.location !== 'All') {
+      productConditions.push({ seller: { city: query.location } });
+    }
+
+    if (query.discountType && query.discountType !== 'All') {
+      let mappedType = null;
+      if (query.discountType === 'Upclom') mappedType = 'PTR_DISCOUNT';
+      else if (query.discountType === 'Fuill') mappedType = 'SAME_PRODUCT_BONUS';
+      else mappedType = query.discountType;
+      
+      productConditions.push({ discountType: mappedType as any });
+    }
+
+    if (query.discountRange && query.discountRange !== 'All') {
+       // Since discount logic depends on various types (PTR, Bonus), we'll do a generic discount check
+       productConditions.push({ discountType: { not: null } });
+    }
+
     if (productConditions.length > 1) {
       andConditions.push({
         productVariants: { some: { sellerOffers: { some: { AND: productConditions } } } },
@@ -662,7 +750,7 @@ export class ProductsService {
           category: true,
           subCategory: true,
           images: { take: 1 },
-          productVariants: { include: { sellerOffers: { where: { isActive: true, deletedAt: null }, select: { mrp: true, discountType: true, discountMeta: true, minimumOrderQuantity: true }, orderBy: { mrp: 'asc' }, take: 1 } } },
+          productVariants: { include: { sellerOffers: { where: { isActive: true, deletedAt: null }, select: { mrp: true, discountType: true, discountMeta: true, deliveryText: true, minimumOrderQuantity: true }, orderBy: { mrp: 'asc' }, take: 1 } } },
         },
         orderBy: { [effectiveSortBy]: sortOrder },
         skip,
@@ -693,7 +781,7 @@ export class ProductsService {
         include: {
             category: true,
             subCategory: true,
-            // batches: true,
+            batches: true,
             
             seller: { select: { id: true, companyName: true, rating: true, city: true, state: true } },
         }
@@ -721,7 +809,7 @@ export class ProductsService {
                     where: { isActive: true, deletedAt: null },
                     include: {
                         seller: { select: { id: true, companyName: true, rating: true, city: true, state: true } },
-                        // // batches: { where: { stock: { gt: 0 } }, orderBy: { expiryDate: 'asc' } },
+                        batches: { where: { stock: { gt: 0 } }, orderBy: { expiryDate: 'asc' } },
                     },
                     orderBy: { mrp: 'asc' }
                 }
@@ -796,6 +884,7 @@ export class ProductsService {
                   price: p.mrp,
                   discountType: p.discountType,
                   discountMeta: p.discountMeta,
+                  deliveryText: p.deliveryText,
                   stock,
                   expiryDate: batches.length > 0 ? batches[0].expiryDate : null,
                   seller: p.seller,
@@ -929,7 +1018,7 @@ export class ProductsService {
               include: {
                 sellerOffers: {
                   include: {
-                    // // batches: { where: { stock: { gt: 0 } }, orderBy: { expiryDate: 'asc' } },
+                    batches: { where: { stock: { gt: 0 } }, orderBy: { expiryDate: 'asc' } },
                     seller: { select: { companyName: true, city: true, state: true, rating: true } },
                   }
                 }

@@ -104,12 +104,17 @@ export class CreateProductDto {
   discountType?: DiscountType;
 
   @ApiPropertyOptional({
-    example: { buy: 10, get: 2 },
-    description: 'JSON metadata for the discount (structure depends on discountType)',
+    example: { discountPercent: 10 },
+    description: 'Configuration for the discount (e.g. buy/get quantities, percentages)',
   })
   @IsObject()
   @IsOptional()
-  discountMeta?: Record<string, any>;
+  discountMeta?: any;
+
+  @ApiPropertyOptional({ example: 'Tomorrow', description: 'Dynamic delivery timeframe text' })
+  @IsString()
+  @IsOptional()
+  deliveryText?: string;
 
   // ── Migration / Idempotency ────────────────────
   @ApiPropertyOptional({

@@ -71,4 +71,27 @@ export class QueryProductDto {
   @IsString()
   @IsOptional()
   status?: string;
+
+  @ApiPropertyOptional({ example: 500 })
+  @IsOptional()
+  minPrice?: number;
+
+  @ApiPropertyOptional({ example: 2500 })
+  @IsOptional()
+  maxPrice?: number;
+
+  @ApiPropertyOptional({ example: '<50+' })
+  @IsString()
+  @IsOptional()
+  discountRange?: string;
+
+  @ApiPropertyOptional({ example: 'Monteria' })
+  @IsString()
+  @IsOptional()
+  location?: string;
+
+  @ApiPropertyOptional({ example: 'Upclom' })
+  @IsString()
+  @IsOptional()
+  discountType?: string;
 }

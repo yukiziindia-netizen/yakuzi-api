@@ -116,4 +116,9 @@ export class UpdateProductDto {
   @IsObject()
   @IsOptional()
   discountMeta?: Record<string, any>;
+
+  @ApiPropertyOptional({ example: 'Tomorrow', description: 'Dynamic delivery timeframe text' })
+  @IsString()
+  @IsOptional()
+  deliveryText?: string;
 }

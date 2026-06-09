@@ -183,6 +183,7 @@ model SellerOffer {
   externalId           String?               @unique
   discountType         DiscountType?
   discountMeta         Json?
+  deliveryText         String?
   approvalStatus       ProductApprovalStatus @default(PENDING)
   rejectionReason      String?
   variantId            String?
