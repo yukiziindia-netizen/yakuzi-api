@@ -1,0 +1,1 @@
+const { PrismaClient } = require('@prisma/client'); const prisma = new PrismaClient(); prisma.productVariant.findFirst({ where: { name: 'Black' } }).then(console.log).finally(() => prisma.$disconnect());

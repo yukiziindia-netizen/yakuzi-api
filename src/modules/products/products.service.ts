@@ -109,25 +109,112 @@ export class ProductsService {
       }
     }
 
-    let variantId = normalized.variantId;
-    if (!variantId) {
-      const master = await this.prisma.catalogProduct.findFirst({
+    let masterProductId = dto.masterProductId;
+    let catalogProduct: any = null;
+    if (masterProductId) {
+      catalogProduct = await this.prisma.catalogProduct.findUnique({
+        where: { id: masterProductId },
+        include: { productVariants: true }
+      });
+    }
+
+    if (!catalogProduct && !normalized.variantId) {
+      catalogProduct = await this.prisma.catalogProduct.findFirst({
         where: {
           name: { equals: normalized.name, mode: 'insensitive' },
           manufacturer: { equals: normalized.manufacturer, mode: 'insensitive' },
           deletedAt: null,
         },
+        include: { productVariants: true }
       });
-      if (master) variantId = master.id;
     }
 
-    const isFromMaster = !!variantId;
-    
+    const isFromMaster = !!catalogProduct;
+
+    // Handle multiple variants
+    if (dto.variants && dto.variants.length > 0) {
+      const createdOffers: any[] = [];
+      for (const v of dto.variants) {
+        // Find matching variant if from master
+        let matchedVariantId = undefined;
+        if (catalogProduct) {
+          const matched = catalogProduct.productVariants.find(pv => pv.name === v.name);
+          if (matched) matchedVariantId = matched.id;
+        }
+
+        // If from master but no match, could be a new variant not in master, or just a seller override
+        const offerName = dto.variants.length > 1 ? `${normalized.name} - ${v.name}` : normalized.name;
+        const slug = this.generateSlug(offerName) + '-' + Math.random().toString(36).substring(2, 6);
+
+        const productData: Prisma.SellerOfferCreateInput = {
+          seller: { connect: { id: seller.id } },
+          category: { connect: { id: normalized.categoryId } },
+          subCategory: { connect: { id: normalized.subCategoryId } },
+          variant: matchedVariantId ? { connect: { id: matchedVariantId } } : undefined,
+          name: offerName,
+          slug: slug,
+          externalId: normalized.externalId ? `${normalized.externalId}-${v.name}` : undefined,
+          manufacturer: normalized.manufacturer,
+          description: normalized.description,
+          mrp: v.price > 0 ? v.price : normalized.mrp,
+          gstPercent: normalized.gstPercent,
+          minimumOrderQuantity: normalized.minimumOrderQuantity ?? 1,
+          maximumOrderQuantity: normalized.maximumOrderQuantity,
+          discountType: normalized.discountType,
+          discountMeta: normalized.discountMeta ?? undefined,
+          approvalStatus: isFromMaster ? ProductApprovalStatus.APPROVED : ProductApprovalStatus.PENDING,
+          isActive: isFromMaster ? true : false,
+        };
+
+        const product = await this.prisma.sellerOffer.create({
+          data: productData,
+          include: { category: true, subCategory: true }
+        });
+
+        await this.inventoryService.createDefaultBatch(
+          product.id,
+          v.available > 0 ? v.available : normalized.stock,
+          normalized.expiryDate,
+        );
+
+        this.searchIndexService.upsert(product.id, {
+          name: product.name,
+          manufacturer: product.manufacturer,
+          categoryName: category.name,
+          subCategoryName: subCategory.name,
+        });
+
+        this.analyticsService.initialise(product.id);
+        this.logger.log(`Product variant created: ${product.id} by seller ${seller.id}`);
+        createdOffers.push(product);
+      }
+
+      if (catalogProduct) {
+        await this.prisma.catalogProduct.update({
+          where: { id: catalogProduct.id },
+          data: { updatedAt: new Date() },
+        }).catch(err => this.logger.warn(`Failed to touch MasterProduct: ${err.message}`));
+      }
+
+      return {
+        ...createdOffers[0],
+        images: normalized.images?.length ? [] : [],
+        stock: dto.variants[0]?.available > 0 ? dto.variants[0].available : normalized.stock,
+        expiryDate: normalized.expiryDate,
+      };
+    }
+
+    // Default flow: single product without specific variants array
+    let variantId = normalized.variantId;
+    if (!variantId && catalogProduct && catalogProduct.productVariants.length > 0) {
+      variantId = catalogProduct.productVariants[0].id;
+    }
+
     const productData: Prisma.SellerOfferCreateInput = {
       seller: { connect: { id: seller.id } },
       category: { connect: { id: normalized.categoryId } },
       subCategory: { connect: { id: normalized.subCategoryId } },
-      variant: isFromMaster ? { connect: { id: variantId } } : undefined,
+      variant: variantId ? { connect: { id: variantId } } : undefined,
       name: normalized.name,
       slug: normalized.slug,
       externalId: normalized.externalId,
@@ -179,11 +266,11 @@ export class ProductsService {
     );
 
     // Touch the master product to reflect new listing activity
-    if (product.variantId) {
+    if (catalogProduct) {
       await this.prisma.catalogProduct.update({
-        where: { id: product.variantId },
+        where: { id: catalogProduct.id },
         data: { updatedAt: new Date() },
-      }).catch(err => this.logger.warn(`Failed to touch MasterProduct ${product.variantId}: ${err.message}`));
+      }).catch(err => this.logger.warn(`Failed to touch MasterProduct: ${err.message}`));
     }
 
     const batch = await this.prisma.productBatch.findFirst({
@@ -626,6 +713,7 @@ export class ProductsService {
       include: {
         category: true,
         subCategory: true,
+        images: true,
         
         productVariants: {
             include: {
@@ -653,10 +741,10 @@ export class ProductsService {
   }
 
   private mapMasterToGrid(m: any) {
-    const listings = m.catalogProducts || [];
-    const minPrice = listings.length > 0 ? listings[0].mrp : m.mrp;
-    const minMoq = listings.length > 0 ? (listings[0].minimumOrderQuantity || 1) : 1;
-    const bestListingId = listings.length > 0 ? listings[0].id : null;
+    const listings = (m.productVariants || []).flatMap((v: any) => v.sellerOffers || []);
+    const minPrice = listings.length > 0 ? Math.min(...listings.map((l: any) => l.mrp)) : m.mrp;
+    const minMoq = listings.length > 0 ? Math.min(...listings.map((l: any) => l.minimumOrderQuantity || 1)) : 1;
+    const bestListingId = listings.length > 0 ? listings.reduce((prev: any, curr: any) => prev.mrp < curr.mrp ? prev : curr).id : null;
     const hasSellers = listings.length > 0;
 
     return {
@@ -699,19 +787,35 @@ export class ProductsService {
       packSize: m.packSize,
       storageAndHandling: m.storageAndHandling,
       // Group seller listings
-      listings: (m.catalogProducts || []).map((p: any) => {
-          const batches = p.batches || [];
-          const stock = batches.reduce((sum: number, b: any) => sum + b.stock, 0);
+      listings: (m.productVariants || []).flatMap((v: any) => 
+          (v.sellerOffers || []).map((p: any) => {
+              const batches = p.batches || [];
+              const stock = batches.reduce((sum: number, b: any) => sum + b.stock, 0);
+              return {
+                  id: p.id,
+                  price: p.mrp,
+                  discountType: p.discountType,
+                  discountMeta: p.discountMeta,
+                  stock,
+                  expiryDate: batches.length > 0 ? batches[0].expiryDate : null,
+                  seller: p.seller,
+                  sellerName: p.seller?.companyName,
+                  images: p.images?.length > 0 ? p.images : m.images, // Fallback to master images
+                  moq: p.minimumOrderQuantity || 1,
+                  variantName: v.name,
+              };
+          })
+      ),
+      options: Array.isArray(m.options) ? m.options.filter((o: any) => o && typeof o === 'object' && !Array.isArray(o) && o.name) : [],
+      variants: (m.productVariants || []).map((v: any) => {
+          const offers = v.sellerOffers || [];
+          const minPrice = offers.length > 0 ? Math.min(...offers.map((o: any) => o.mrp)) : 0;
           return {
-              id: p.id,
-              price: p.mrp,
-              discountType: p.discountType,
-              discountMeta: p.discountMeta,
-              stock,
-              expiryDate: batches.length > 0 ? batches[0].expiryDate : null,
-              seller: p.seller,
-              images: p.images?.length > 0 ? p.images : m.images, // Fallback to master images
-              moq: p.minimumOrderQuantity || 1,
+              id: v.id,
+              name: v.name,
+              price: minPrice.toString(),
+              available: "0",
+              image: null
           };
       })
     };
