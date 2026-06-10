@@ -37,4 +37,9 @@ export class AdminQuerySuggestionsDto {
   @IsOptional()
   @IsString()
   isActive?: string;
+
+  @ApiPropertyOptional({ description: 'Filter by badge type' })
+  @IsOptional()
+  @IsString()
+  badgeType?: string;
 }

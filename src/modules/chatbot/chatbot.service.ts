@@ -17,30 +17,11 @@ export class ChatbotService implements OnModuleInit, OnModuleDestroy {
   }
 
   async onModuleInit() {
-    this.logger.log('Initializing Python Chatbot Sidecar...');
-    
-    // Check if python is available
-    const hasPython = await this.checkPythonInstallation();
-    if (!hasPython) {
-      this.logger.warn(
-        'Python is not installed or not in PATH. Spawning FastAPI chatbot sidecar will be skipped. Falling back to mock responses.',
-      );
-      return;
-    }
-
-    try {
-      await this.setupVirtualEnv();
-      this.startPythonApp();
-    } catch (err) {
-      this.logger.error(`Failed to setup/start Python chatbot sidecar: ${err.message}`);
-    }
+    this.logger.log('Python Chatbot Sidecar is managed externally via concurrently script.');
   }
 
   onModuleDestroy() {
-    if (this.pythonProcess) {
-      this.logger.log('Stopping Python chatbot sidecar...');
-      this.pythonProcess.kill();
-    }
+    // Managed externally
   }
 
   private checkPythonInstallation(): Promise<boolean> {
@@ -121,8 +102,9 @@ export class ChatbotService implements OnModuleInit, OnModuleDestroy {
   async sendMessage(message: string, history: Array<{ role: string; content: string }>): Promise<string> {
     const geminiApiKey = this.configService.get<string>('GEMINI_API_KEY') || '';
     
-    if (!this.pythonProcess || !geminiApiKey) {
-      return `[MOCK MODE] Hello! I am the mock chatbot because the Python sidecar is not active or GEMINI_API_KEY is missing. You said: "${message}"`;
+    // We rely on the external Python sidecar process.
+    if (!geminiApiKey) {
+      this.logger.warn('GEMINI_API_KEY is not set in the environment.');
     }
 
     try {

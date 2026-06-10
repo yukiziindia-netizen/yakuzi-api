@@ -47,7 +47,7 @@ def load_text_file(filename: str, default_val: str) -> str:
 
 # Initialize state
 ACTIVE_SYSTEM_INSTRUCTION = load_text_file(PROMPT_FILE, DEFAULT_PROMPT)
-ACTIVE_MODEL = load_text_file(MODEL_FILE, "gemini-1.5-flash")
+ACTIVE_MODEL = load_text_file(MODEL_FILE, "gemini-2.5-flash")
 
 # ==========================================
 # MODELS

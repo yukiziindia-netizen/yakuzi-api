@@ -38,9 +38,9 @@ async function bootstrap() {
       'CORS_ORIGINS',
       'http://localhost:3000,http://localhost:3001,http://localhost:3002,http://localhost:3003,http://localhost:5173,http://localhost:5174,http://localhost:5175,' +
       'http://127.0.0.1:3000,http://127.0.0.1:3001,http://127.0.0.1:3002,http://127.0.0.1:3003,http://127.0.0.1:5173,http://127.0.0.1:5174,http://127.0.0.1:5175,' +
-      'https://pharmabag-web-admin.vercel.app,https://pharmabag-web-seller.vercel.app,https://pharmabag-web-buyer.vercel.app,' +
-      'https://buyer.pharmabag.com,https://seller.pharmabag.com,https://admin.pharmabag.com,' +
-      'https://www.pharmabag.in,https://admin.pharmabag.in,https://seller.pharmabag.in,https://api.pharmabag.in,'
+      'https://yukizi-web-admin.vercel.app,https://yukizi-web-seller.vercel.app,https://yukizi-web-buyer.vercel.app,' +
+      'https://buyer.yukizi.com,https://seller.yukizi.com,https://admin.yukizi.com,' +
+      'https://www.yukizi.in,https://admin.yukizi.in,https://seller.yukizi.in,https://api.yukizi.in,'
     )
     .split(',')
     .map((o) => o.trim());
@@ -56,9 +56,9 @@ async function bootstrap() {
 
   // Swagger documentation
   const swaggerConfig = new DocumentBuilder()
-    .setTitle('PharmaBag API')
+    .setTitle('Yukizi API')
     .setDescription(
-      'B2B Pharmaceutical Marketplace — REST API documentation.\n\n' +
+      'Yukizi B2B Marketplace — REST API documentation.\n\n' +
       '**Auth:** Phone OTP → JWT Bearer token.\n' +
       '**Roles:** BUYER, SELLER, ADMIN.\n' +
       'Attach the JWT token using the **Authorize** button.',
@@ -96,7 +96,7 @@ async function bootstrap() {
   const port = configService.get<number>('PORT') || 3000;
 
   await app.listen(port, '0.0.0.0');
-  logger.log(`🚀 PharmaBag API is running on: http://0.0.0.0:${port}/api`);
+  logger.log(`🚀 Yukizi API is running on: http://0.0.0.0:${port}/api`);
   logger.log(`📚 Swagger docs available at: http://0.0.0.0:${port}/api/docs`);
 }
 bootstrap();

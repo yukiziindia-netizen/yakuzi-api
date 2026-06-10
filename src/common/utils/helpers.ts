@@ -1,5 +1,5 @@
 /**
- * Utility helper functions for PharmaBag API
+ * Utility helper functions for Yukizi API
  * Add shared utility functions here as the project grows.
  */
 

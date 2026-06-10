@@ -1,16 +1,34 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
+import { IsString, IsOptional, IsBoolean, IsInt } from 'class-validator';
 
 export class CreateBrandDto {
+  @IsString()
   name: string;
+
+  @IsString()
   imageUrl: string;
+
+  @IsOptional()
+  @IsInt()
   order?: number;
 }
 
 export class UpdateBrandDto {
+  @IsOptional()
+  @IsString()
   name?: string;
+
+  @IsOptional()
+  @IsString()
   imageUrl?: string;
+
+  @IsOptional()
+  @IsBoolean()
   isActive?: boolean;
+
+  @IsOptional()
+  @IsInt()
   order?: number;
 }
 

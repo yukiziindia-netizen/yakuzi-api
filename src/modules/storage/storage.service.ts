@@ -48,6 +48,7 @@ export class StorageService {
     'image/png',
     'image/webp',
     'image/jpg',
+    'image/svg+xml',
     'video/mp4',
     'video/webm',
     'video/quicktime',
@@ -57,6 +58,7 @@ export class StorageService {
     'image/jpeg',
     'image/png',
     'image/webp',
+    'image/svg+xml',
     'application/pdf',
   ];
 
@@ -65,7 +67,7 @@ export class StorageService {
   async uploadProductImage(file: Express.Multer.File): Promise<string> {
     this.validateFile(file, this.ALLOWED_IMAGE_TYPES);
     const key = await this.upload(file, 'product-images');
-    return `https://${this.bucket}.s3.${this.region}.amazonaws.com/${key}`;
+    return `${this.cdnDomain}/${key}`;
   }
 
   async uploadDrugLicense(file: Express.Multer.File): Promise<string> {
@@ -143,13 +145,13 @@ export class StorageService {
   async uploadBlogImage(file: Express.Multer.File): Promise<string> {
     this.validateFile(file, this.ALLOWED_IMAGE_TYPES);
     const key = await this.upload(file, 'blog-images');
-    return `https://${this.bucket}.s3.${this.region}.amazonaws.com/${key}`;
+    return `${this.cdnDomain}/${key}`;
   }
 
   async uploadSettlementProof(file: Express.Multer.File): Promise<string> {
     this.validateFile(file, this.ALLOWED_DOC_TYPES);
     const key = await this.upload(file, 'settlement-proofs');
-    return `https://${this.bucket}.s3.${this.region}.amazonaws.com/${key}`;
+    return `${this.cdnDomain}/${key}`;
   }
 
   private validateFile(
