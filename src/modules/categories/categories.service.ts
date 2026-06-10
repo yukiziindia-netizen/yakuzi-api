@@ -39,7 +39,7 @@ export class CategoriesService {
 
     try {
       const category = await this.prisma.category.create({
-        data: { name, slug },
+        data: { name, slug, image: dto.image },
       });
       this.logger.log(`Category created: ${category.id} - ${name}`);
       return category;
@@ -69,6 +69,9 @@ export class CategoriesService {
     if (dto.name) {
       data.name = dto.name.trim();
       data.slug = this.generateSlug(dto.name);
+    }
+    if (dto.image !== undefined) {
+      data.image = dto.image;
     }
 
     try {

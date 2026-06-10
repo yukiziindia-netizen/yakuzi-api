@@ -134,10 +134,23 @@ model AdminProfile {
   @@map("admin_profiles")
 }
 
+model Brand {
+  id        String   @id @default(uuid())
+  name      String
+  imageUrl  String
+  isActive  Boolean  @default(true)
+  order     Int?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("brands")
+}
+
 model Category {
   id             String           @id @default(uuid())
   name           String           @unique
   slug           String           @unique
+  image          String?
   createdAt      DateTime         @default(now())
   masterProducts CatalogProduct[]
   sellerOffers   SellerOffer[]
