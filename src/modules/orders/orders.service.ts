@@ -9,12 +9,16 @@ import { PrismaService } from '../../database/prisma.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
 import { OrderStatus, Role, PaymentStatus } from '@prisma/client';
+import { ShiprocketService } from './shiprocket.service';
 
 @Injectable()
 export class OrdersService {
   private readonly logger = new Logger(OrdersService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly shiprocketService: ShiprocketService,
+  ) {}
 
   // ──────────────────────────────────────────────
   // CHECKOUT  — Create Order from Cart
@@ -455,6 +459,13 @@ export class OrdersService {
     // 3. Fetch current order
     const order = await this.prisma.order.findUnique({
       where: { id: orderId },
+      include: {
+        buyer: { select: { phone: true, email: true, buyerProfile: { select: { legalName: true } } } },
+        address: true,
+        items: {
+          include: { sellerOffer: true }
+        }
+      }
     });
 
     if (!order) {
@@ -486,9 +497,61 @@ export class OrdersService {
       return this.cancelOrder(userId, orderId, Role.SELLER);
     }
 
+    const updateData: any = { orderStatus: dto.status as OrderStatus };
+
+    // Push to Shiprocket if status is READY_TO_SHIP and it hasn't been pushed yet
+    if (dto.status === OrderStatus.READY_TO_SHIP && !order.shiprocketOrderId) {
+      try {
+        const payload = {
+          order_id: order.id,
+          order_date: order.createdAt.toISOString().replace('T', ' ').substring(0, 16),
+          pickup_location: "Primary",
+          billing_customer_name: order.address?.name || order.buyer.buyerProfile?.legalName || "Buyer",
+          billing_last_name: "",
+          billing_address: order.address?.address || "Address",
+          billing_city: order.address?.city || "City",
+          billing_pincode: order.address?.pincode || "110001",
+          billing_state: order.address?.state || "State",
+          billing_country: "India",
+          billing_email: order.buyer.email || "no-reply@yukizi.com",
+          billing_phone: order.buyer.phone || order.address?.phone || "9999999999",
+          shipping_is_billing: true,
+          order_items: order.items.map(item => ({
+            name: item.sellerOffer.name,
+            sku: item.sellerOffer.id.substring(0, 8), // placeholder sku
+            units: item.quantity,
+            selling_price: item.unitPrice,
+            discount: 0,
+            tax: 0,
+            hsn: null,
+          })),
+          payment_method: order.paymentStatus === 'SUCCESS' ? "Prepaid" : "COD",
+          sub_total: order.totalAmount,
+          length: 10,  // Defaults, should be mapped from product in real scenario
+          breadth: 10,
+          height: 10,
+          weight: 1, // 1 kg default
+        };
+
+        const shiprocketData = await this.shiprocketService.createOrder(payload);
+        
+        // Update data with Shiprocket fields
+        updateData.shiprocketOrderId = shiprocketData.order_id?.toString();
+        updateData.shipmentId = shiprocketData.shipment_id?.toString();
+        updateData.awbCode = shiprocketData.awb_code?.toString();
+        updateData.courierName = shiprocketData.courier_name?.toString();
+        
+        this.logger.log(`Order ${orderId} pushed to Shiprocket: ${shiprocketData.shipment_id}`);
+      } catch (error: any) {
+        this.logger.error(`Failed to push order to Shiprocket: ${error.message}`);
+        // Not failing the transition if Shiprocket fails, or we could throw error.
+        // For robustness we allow transition but log error.
+      }
+    }
+
     const updated = await this.prisma.order.update({
       where: { id: orderId },
-      data: { orderStatus: dto.status as OrderStatus },
+      data: updateData,
       include: {
         items: {
           include: {

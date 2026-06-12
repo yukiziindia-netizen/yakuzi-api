@@ -19,6 +19,7 @@ import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { OrdersService } from './orders.service';
+import { ShiprocketService } from './shiprocket.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
 
@@ -27,7 +28,10 @@ import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
 @Controller('orders')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class OrdersController {
-  constructor(private readonly ordersService: OrdersService) {}
+  constructor(
+    private readonly ordersService: OrdersService,
+    private readonly shiprocketService: ShiprocketService,
+  ) {}
 
   // ──────────────────────────────────────────────
   // BUYER ENDPOINTS
@@ -116,5 +120,29 @@ export class OrdersController {
   ) {
     const data = await this.ordersService.updateOrderStatus(userId, orderId, dto);
     return { message: 'Order status updated successfully', data };
+  }
+
+  // ──────────────────────────────────────────────
+  // TRACKING ENDPOINT
+  // ──────────────────────────────────────────────
+
+  @Get(':id/tracking')
+  @Roles(Role.BUYER, Role.SELLER, Role.ADMIN)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Get order tracking timeline from Shiprocket' })
+  @ApiResponse({ status: 200, description: 'Tracking info returned' })
+  async getOrderTracking(
+    @CurrentUser('id') userId: string,
+    @Param('id', ParseUUIDPipe) orderId: string,
+  ) {
+    // Basic check to ensure order exists and user has access
+    const order = await this.ordersService.getOrderDetail(userId, orderId);
+    
+    if (!order.shiprocketOrderId) {
+      return { message: 'Tracking not available yet (not pushed to Shiprocket)', data: null };
+    }
+
+    const data = await this.shiprocketService.trackOrder(order.shiprocketOrderId);
+    return { message: 'Tracking details retrieved successfully', data };
   }
 }

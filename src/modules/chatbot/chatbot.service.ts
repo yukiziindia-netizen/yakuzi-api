@@ -99,7 +99,7 @@ export class ChatbotService implements OnModuleInit, OnModuleDestroy {
     });
   }
 
-  async sendMessage(message: string, history: Array<{ role: string; content: string }>): Promise<string> {
+  async sendMessage(message: string, history: Array<{ role: string; content?: string; attachments?: any[] }>, attachments?: any[]): Promise<string> {
     const geminiApiKey = this.configService.get<string>('GEMINI_API_KEY') || '';
     
     // We rely on the external Python sidecar process.
@@ -111,6 +111,7 @@ export class ChatbotService implements OnModuleInit, OnModuleDestroy {
       const response = await axios.post(`http://127.0.0.1:${this.port}/chat`, {
         message,
         history,
+        attachments,
       });
       return response.data.response;
     } catch (err) {
