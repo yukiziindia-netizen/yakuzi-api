@@ -850,6 +850,9 @@ export class ProductsService {
       image: m.images?.[0]?.url || null,
       category: m.category,
       subCategory: m.subCategory,
+      isYukiziChoice: m.isYukiziChoice || false,
+      isBestSeller: m.isBestSeller || false,
+      isAd: m.isAd || false,
       createdAt: m.createdAt,
       updatedAt: m.updatedAt,
     };
@@ -874,6 +877,9 @@ export class ProductsService {
       safetyAdvice: m.safetyAdvice,
       packSize: m.packSize,
       storageAndHandling: m.storageAndHandling,
+      isYukiziChoice: m.isYukiziChoice || false,
+      isBestSeller: m.isBestSeller || false,
+      isAd: m.isAd || false,
       // Group seller listings
       listings: (m.productVariants || []).flatMap((v: any) => 
           (v.sellerOffers || []).map((p: any) => {

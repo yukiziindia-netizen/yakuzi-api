@@ -33,6 +33,11 @@ export class AdminQueryProductsDto {
   @IsString()
   approvalStatus?: string;
 
+  @ApiPropertyOptional({ example: 'YUKIZI_CHOICE', description: 'Filter by badge type' })
+  @IsOptional()
+  @IsString()
+  badgeType?: string;
+
   @ApiPropertyOptional({ example: 1, default: 1, description: 'Page number' })
   @IsOptional()
   @Type(() => Number)

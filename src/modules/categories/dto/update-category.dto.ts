@@ -7,4 +7,9 @@ export class UpdateCategoryDto {
   @IsOptional()
   @MaxLength(255)
   name?: string;
+
+  @ApiPropertyOptional({ example: 'https://cdn.example.com/image.jpg' })
+  @IsString()
+  @IsOptional()
+  image?: string;
 }

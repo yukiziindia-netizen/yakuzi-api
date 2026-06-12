@@ -134,10 +134,23 @@ model AdminProfile {
   @@map("admin_profiles")
 }
 
+model Brand {
+  id        String   @id @default(uuid())
+  name      String
+  imageUrl  String
+  isActive  Boolean  @default(true)
+  order     Int?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("brands")
+}
+
 model Category {
   id             String           @id @default(uuid())
   name           String           @unique
   slug           String           @unique
+  image          String?
   createdAt      DateTime         @default(now())
   masterProducts CatalogProduct[]
   sellerOffers   SellerOffer[]
@@ -254,12 +267,16 @@ model Order {
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
   legacyId       String?       @unique
-  referralCodeId String?
-  address        OrderAddress?
-  items          OrderItem[]
-  buyer          User          @relation(fields: [buyerId], references: [id], onDelete: Cascade)
-  referralCode   ReferralCode? @relation(fields: [referralCodeId], references: [id])
-  payments       Payment[]
+  referralCodeId    String?
+  shiprocketOrderId String?
+  shipmentId        String?
+  awbCode           String?
+  courierName       String?
+  address           OrderAddress?
+  items             OrderItem[]
+  buyer             User          @relation(fields: [buyerId], references: [id], onDelete: Cascade)
+  referralCode      ReferralCode? @relation(fields: [referralCodeId], references: [id])
+  payments          Payment[]
 
   @@index([buyerId])
   @@index([orderStatus])
@@ -622,6 +639,9 @@ model CatalogProduct {
   storageAndHandling   String?
   options              Json?
   isActive             Boolean               @default(true)
+  isYukiziChoice       Boolean               @default(false)
+  isBestSeller         Boolean               @default(false)
+  isAd                 Boolean               @default(false)
   deletedAt            DateTime?
   createdAt            DateTime              @default(now())
   updatedAt            DateTime              @updatedAt
@@ -757,6 +777,26 @@ model ProductVariant {
   @@index([catalogProductId])
   @@index([sku])
   @@map("product_variants")
+}
+
+model SystemSetting {
+  key       String   @id
+  value     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("system_settings")
+}
+
+model ChatbotJob {
+  id        String   @id @default(uuid())
+  jobId     String
+  status    String
+  history   Json?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("chatbot_jobs")
 }
 
 enum MarketingSlot {

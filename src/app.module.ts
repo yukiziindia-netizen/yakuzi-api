@@ -32,6 +32,7 @@ import { VerificationModule } from './modules/verification/verification.module';
 import { ReferralModule } from './modules/referrals/referral.module';
 import { CustomOrdersModule } from './modules/custom-orders/custom-orders.module';
 import { ChatbotModule } from './modules/chatbot/chatbot.module';
+import { BrandsModule } from './modules/brands/brands.module';
 
 @Module({
   imports: [
@@ -119,6 +120,7 @@ import { ChatbotModule } from './modules/chatbot/chatbot.module';
     ReferralModule,
     CustomOrdersModule,
     ChatbotModule,
+    BrandsModule,
   ],
   providers: [
     // Apply throttler guard globally

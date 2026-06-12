@@ -1562,7 +1562,7 @@ export class AdminService {
   // ═══════════════════════════════════════════════════
 
   async getSuggestions(query: AdminQuerySuggestionsDto) {
-    const { search, categoryId, subCategoryId, page = 1, limit = 20, isActive } = query;
+    const { search, categoryId, subCategoryId, page = 1, limit = 20, isActive, badgeType } = query;
     const skip = (page - 1) * limit;
 
     const where: Prisma.CatalogProductWhereInput = { deletedAt: null };
@@ -1570,6 +1570,10 @@ export class AdminService {
     if (subCategoryId) where.subCategoryId = subCategoryId;
     if (isActive === 'true') where.isActive = true;
     if (isActive === 'false') where.isActive = false;
+
+    if (badgeType === 'YUKIZI_CHOICE') where.isYukiziChoice = true;
+    if (badgeType === 'BEST_SELLER') where.isBestSeller = true;
+    if (badgeType === 'AD') where.isAd = true;
 
     if (search) {
       where.OR = [
@@ -1661,6 +1665,9 @@ export class AdminService {
         slug,
         options: dto.options ? dto.options : undefined,
         isActive: dto.isActive ?? true,
+        isYukiziChoice: dto.isYukiziChoice ?? false,
+        isBestSeller: dto.isBestSeller ?? false,
+        isAd: dto.isAd ?? false,
         productVariants: dto.variants?.length ? {
           create: dto.variants.map((v: any) => ({
             name: v.name,
@@ -1717,6 +1724,9 @@ export class AdminService {
         ...(resolvedSubCategoryId ? { subCategoryId: resolvedSubCategoryId } : {}),
         ...(dto.options !== undefined ? { options: dto.options } : {}),
         ...(dto.isActive !== undefined ? { isActive: dto.isActive } : {}),
+        ...(dto.isYukiziChoice !== undefined ? { isYukiziChoice: dto.isYukiziChoice } : {}),
+        ...(dto.isBestSeller !== undefined ? { isBestSeller: dto.isBestSeller } : {}),
+        ...(dto.isAd !== undefined ? { isAd: dto.isAd } : {}),
       },
       include: {
         category: { select: { id: true, name: true } },

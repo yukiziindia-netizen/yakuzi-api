@@ -1,4 +1,4 @@
-import { IsString, IsNotEmpty, MaxLength } from 'class-validator';
+import { IsString, IsNotEmpty, MaxLength, IsOptional } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
 export class CreateCategoryDto {
@@ -7,4 +7,9 @@ export class CreateCategoryDto {
   @IsNotEmpty()
   @MaxLength(255)
   name: string;
+
+  @ApiProperty({ example: 'https://cdn.example.com/image.jpg', required: false })
+  @IsString()
+  @IsOptional()
+  image?: string;
 }
