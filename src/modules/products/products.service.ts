@@ -720,7 +720,7 @@ export class ProductsService {
     }
 
     if (query.discountType && query.discountType !== 'All') {
-      let mappedType = null;
+      let mappedType: string | null = null;
       if (query.discountType === 'Upclom') mappedType = 'PTR_DISCOUNT';
       else if (query.discountType === 'Fuill') mappedType = 'SAME_PRODUCT_BONUS';
       else mappedType = query.discountType;
