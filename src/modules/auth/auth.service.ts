@@ -12,10 +12,13 @@ import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import Redis from 'ioredis';
 import * as crypto from 'crypto';
+import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../../database/prisma.service';
 import { REDIS_CLIENT } from '../../config/redis.config';
 import { Role, UserStatus } from '@prisma/client';
 import { OtpSmsService } from './services/otp-sms.service';
+import { RegisterBuyerDto } from './dto/register-buyer.dto';
+import { ResetPasswordDto } from './dto/reset-password.dto';
 
 // ─── Constants ───────────────────────────────────────
 
@@ -33,7 +36,7 @@ export interface TokenPair {
 export interface AuthResponse extends TokenPair {
   user: {
     id: string;
-    phone: string;
+    phone: string | null;
     email: string | null;
     role: Role;
     status: UserStatus;
@@ -55,39 +58,49 @@ export class AuthService {
 
   // ─── SEND OTP ──────────────────────────────────────
 
-  async sendOtp(phone: string): Promise<{ message: string }> {
-    // Rate limiting: max 3 OTP requests per minute per phone
-    await this.enforceRateLimit(phone);
+  async sendOtp(contact: string): Promise<{ message: string }> {
+    // Rate limiting: max 3 OTP requests per minute per contact
+    await this.enforceRateLimit(contact);
 
     // Generate 6-digit OTP
     const otp = this.generateOtp();
 
     // Store OTP in Redis with TTL
-    const redisKey = `otp:${phone}`;
+    const redisKey = `otp:${contact}`;
     await this.redis.setex(redisKey, OTP_TTL_SECONDS, otp);
 
     // Increment rate limit counter
-    const rateLimitKey = `otp_rate:${phone}`;
+    const rateLimitKey = `otp_rate:${contact}`;
     const currentCount = await this.redis.incr(rateLimitKey);
     if (currentCount === 1) {
       await this.redis.expire(rateLimitKey, OTP_RATE_LIMIT_WINDOW);
     }
 
+    const isEmail = contact.includes('@');
+
+    if (isEmail) {
+      // Mock email sending for now
+      console.log(`[AUTH-SERVICE] OTP service NOT configured for email. Using dev mode...`);
+      console.log(`\n=== EMAIL OTP ===\nTo: ${contact}\nOTP: ${otp}\n=================\n`);
+      this.logger.warn(`[AUTH-SERVICE] Email OTP logged for development only to ${contact}`);
+      return { message: 'OTP sent to email successfully' };
+    }
+
     // Send OTP via Nimbus IT SMS service
     try {
-      console.log(`[AUTH-SERVICE] sendOtp called for phone: ${phone}`);
+      console.log(`[AUTH-SERVICE] sendOtp called for phone: ${contact}`);
       console.log(`[AUTH-SERVICE] Checking if OTP service is configured...`);
       
       if (this.otpSmsService.isConfigured()) {
         // Production: Send via Nimbus IT SMS API
         console.log(`[AUTH-SERVICE] OTP service IS configured. Attempting to send SMS...`);
-        await this.otpSmsService.sendOtp(phone, otp);
+        await this.otpSmsService.sendOtp(contact, otp);
         console.log(`[AUTH-SERVICE] OTP sent successfully via Nimbus IT SMS`);
-        this.logger.log(`[AUTH-SERVICE] OTP sent to ${phone} via Nimbus IT SMS`);
+        this.logger.log(`[AUTH-SERVICE] OTP sent to ${contact} via Nimbus IT SMS`);
       } else {
         // Development: Log OTP without sending
         console.log(`[AUTH-SERVICE] OTP service NOT configured. Using dev mode...`);
-        this.otpSmsService.logOtpForDevelopment(phone, otp);
+        this.otpSmsService.logOtpForDevelopment(contact, otp);
         this.logger.warn('[AUTH-SERVICE] OTP service not configured. OTP logged for development only.');
       }
     } catch (error) {
@@ -248,6 +261,175 @@ export class AuthService {
     };
   }
 
+  // ─── REGISTER BUYER ────────────────────────────────
+  async registerBuyer(dto: RegisterBuyerDto): Promise<AuthResponse> {
+    const { contact, otp, realName, password, dob, gender, username } = dto;
+    const isEmail = contact.includes('@');
+    const redisKey = `otp:${contact}`;
+
+    // Verify OTP using Redis
+    const storedOtp = await this.redis.get(redisKey);
+    if (!storedOtp) {
+      throw new BadRequestException('OTP expired or not found. Please request a new OTP.');
+    }
+    const normalizedOtp = otp.trim();
+    const normalizedStoredOtp = storedOtp.trim();
+
+    if (
+      normalizedOtp.length !== normalizedStoredOtp.length ||
+      !crypto.timingSafeEqual(Buffer.from(normalizedOtp), Buffer.from(normalizedStoredOtp))
+    ) {
+      throw new BadRequestException('Invalid OTP');
+    }
+
+    // Delete OTP from Redis
+    await this.redis.del(redisKey);
+
+    // Hash password
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    const dobDate = dob ? new Date(dob) : null;
+
+    let user;
+    let isNewUser = false;
+
+    // Use transaction to ensure both user and profile are created
+    await this.prisma.$transaction(async (prisma) => {
+      // Check if user exists
+      user = await prisma.user.findFirst({
+        where: isEmail ? { email: contact } : { phone: contact },
+      });
+
+      if (!user) {
+        isNewUser = true;
+        // Check if username is taken
+        if (username) {
+          const existingUsername = await prisma.user.findUnique({ where: { username } });
+          if (existingUsername) {
+            throw new BadRequestException('Username is already taken');
+          }
+        }
+
+        user = await prisma.user.create({
+          data: {
+            phone: isEmail ? null : contact,
+            email: isEmail ? contact : null,
+            username: username || null,
+            password: hashedPassword,
+            gender: gender || null,
+            dob: dobDate,
+            role: Role.BUYER,
+            status: UserStatus.APPROVED,
+          },
+        });
+
+        await prisma.buyerProfile.create({
+          data: {
+            userId: user.id,
+            legalName: realName,
+            address: '',
+            city: '',
+            state: '',
+            pincode: '',
+          },
+        });
+      } else {
+        // Update existing user
+        if (username && username !== user.username) {
+          const existingUsername = await prisma.user.findUnique({ where: { username } });
+          if (existingUsername) {
+            throw new BadRequestException('Username is already taken');
+          }
+        }
+
+        user = await prisma.user.update({
+          where: { id: user.id },
+          data: {
+            username: username || user.username,
+            password: hashedPassword,
+            gender: gender || user.gender,
+            dob: dobDate || user.dob,
+            status: UserStatus.APPROVED,
+          },
+        });
+
+        // Update profile
+        const profile = await prisma.buyerProfile.findUnique({ where: { userId: user.id } });
+        if (profile) {
+          await prisma.buyerProfile.update({
+            where: { userId: user.id },
+            data: { legalName: realName },
+          });
+        } else {
+          await prisma.buyerProfile.create({
+            data: {
+              userId: user.id,
+              legalName: realName,
+              address: '',
+              city: '',
+              state: '',
+              pincode: '',
+            },
+          });
+        }
+      }
+    });
+
+    const tokens = await this.generateTokens(user.id, user.role);
+
+    return {
+      ...tokens,
+      user: {
+        id: user.id,
+        phone: user.phone,
+        email: user.email,
+        role: user.role,
+        status: user.status,
+      },
+      isNewUser,
+    };
+  }
+
+  // ─── RESET PASSWORD ────────────────────────────────
+  async resetPassword(dto: ResetPasswordDto): Promise<{ message: string }> {
+    const { contact, otp, newPassword } = dto;
+    const isEmail = contact.includes('@');
+    const redisKey = `otp:${contact}`;
+
+    // Verify OTP using Redis
+    const storedOtp = await this.redis.get(redisKey);
+    if (!storedOtp) {
+      throw new BadRequestException('OTP expired or not found. Please request a new OTP.');
+    }
+    const normalizedOtp = otp.trim();
+    const normalizedStoredOtp = storedOtp.trim();
+
+    if (
+      normalizedOtp.length !== normalizedStoredOtp.length ||
+      !crypto.timingSafeEqual(Buffer.from(normalizedOtp), Buffer.from(normalizedStoredOtp))
+    ) {
+      throw new BadRequestException('Invalid OTP');
+    }
+
+    // Delete OTP from Redis
+    await this.redis.del(redisKey);
+
+    // Hash the new password
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+    // Update the user's password
+    const user = await this.prisma.user.updateMany({
+      where: isEmail ? { email: contact } : { OR: [{ phone: contact }, { username: contact }] },
+      data: { password: hashedPassword },
+    });
+
+    if (user.count === 0) {
+      throw new NotFoundException('User not found');
+    }
+
+    return { message: 'Password updated successfully' };
+  }
+
   // ─── LOGIN WITH SIMPLE PASSWORD ───────────────────
 
   async loginWithSimplePassword(password: string): Promise<AuthResponse> {
@@ -284,9 +466,11 @@ export class AuthService {
 
   // ─── LOGIN WITH PASSWORD ───────────────────────────
 
-  async loginWithPassword(phone: string, password: string): Promise<AuthResponse> {
-    const user = await this.prisma.user.findUnique({
-      where: { phone },
+  async loginWithPassword(contact: string, password: string): Promise<AuthResponse> {
+    const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contact);
+    
+    const user = await this.prisma.user.findFirst({
+      where: isEmail ? { email: contact } : { OR: [{ phone: contact }, { username: contact }] },
       select: {
         id: true,
         phone: true,
@@ -301,14 +485,16 @@ export class AuthService {
       throw new UnauthorizedException('Invalid credentials');
     }
 
-    if (user.role !== Role.ADMIN) {
-      throw new UnauthorizedException('Access denied. Admin only.');
+    if (user.role !== Role.BUYER) {
+      throw new UnauthorizedException('Access denied. Buyers only.');
     }
 
-    // Compare plain text password (if that's what's stored, though usually hashed)
-    // Looking at the schema, it's just a string.
-    // If it's hashed, use bcrypt. Let's check for bcrypt.
-    if (user.password !== password) {
+    if (!user.password) {
+      throw new UnauthorizedException('Invalid credentials');
+    }
+
+    const isPasswordValid = await bcrypt.compare(password, user.password);
+    if (!isPasswordValid) {
        throw new UnauthorizedException('Invalid credentials');
     }
 

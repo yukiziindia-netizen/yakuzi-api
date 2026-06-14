@@ -750,7 +750,7 @@ export class ProductsService {
           category: true,
           subCategory: true,
           images: { take: 1 },
-          productVariants: { include: { sellerOffers: { where: { isActive: true, deletedAt: null }, select: { mrp: true, discountType: true, discountMeta: true, deliveryText: true, minimumOrderQuantity: true }, orderBy: { mrp: 'asc' }, take: 1 } } },
+          productVariants: { include: { sellerOffers: { where: { isActive: true, deletedAt: null }, select: { id: true, mrp: true, discountType: true, discountMeta: true, deliveryText: true, minimumOrderQuantity: true }, orderBy: { mrp: 'asc' }, take: 1 } } },
         },
         orderBy: { [effectiveSortBy]: sortOrder },
         skip,
