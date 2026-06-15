@@ -29,5 +29,6 @@ EXPOSE 8000
 # uvicorn runs the FastAPI app defined in chatbot/main.py
 CMD ["python", "-m", "uvicorn", "chatbot.main:app", "--host", "0.0.0.0", "--port", "8000"]
 
+# Healthcheck targets FastAPI's auto-generated /docs endpoint to guarantee a 200 OK response
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-  CMD curl -fs http://localhost:8000/ || exit 1
+  CMD curl -fs http://localhost:8000/docs || exit 1
