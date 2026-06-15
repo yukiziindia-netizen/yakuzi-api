@@ -30,7 +30,8 @@ export class AuthController {
   @ApiResponse({ status: 200, description: 'OTP sent successfully' })
   @ApiResponse({ status: 429, description: 'Too many requests' })
   async sendOtp(@Body() dto: SendOtpDto) {
-    return this.authService.sendOtp(dto.contact);
+    const contactMethod = (dto.phone || dto.contact) as string;
+    return this.authService.sendOtp(contactMethod);
   }
 
   @Post('verify-otp')
@@ -40,7 +41,8 @@ export class AuthController {
   @ApiResponse({ status: 200, description: 'OTP verified, tokens returned' })
   @ApiResponse({ status: 401, description: 'Invalid or expired OTP' })
   async verifyOtp(@Body() dto: VerifyOtpDto) {
-    return this.authService.verifyOtp(dto.phone, dto.otp, dto.role);
+    const phoneNumber = (dto.phone || dto.contact) as string;
+    return this.authService.verifyOtp(phoneNumber, dto.otp, dto.role);
   }
 
   @Post('buyer/register')

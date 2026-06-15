@@ -5,7 +5,7 @@
 FROM node:22-alpine AS deps
 WORKDIR /app
 RUN apk add --no-cache openssl libc6-compat
-RUN corepack enable pnpm
+RUN corepack enable && corepack prepare pnpm@9.15.4 --activate
 
 COPY package.json pnpm-lock.yaml ./
 RUN pnpm install --frozen-lockfile
@@ -14,14 +14,14 @@ RUN pnpm install --frozen-lockfile
 FROM node:22-alpine AS builder
 WORKDIR /app
 RUN apk add --no-cache openssl libc6-compat
-RUN corepack enable pnpm
+RUN corepack enable && corepack prepare pnpm@9.15.4 --activate
 
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
 # Generate Prisma client
 ENV DATABASE_URL="postgresql://placeholder:placeholder@placeholder:5432/placeholder"
-RUN pnpm dlx prisma generate
+RUN npx prisma@6.19.2 generate
 
 # Build NestJS
 RUN pnpm run build
@@ -31,7 +31,7 @@ RUN pnpm run build
 FROM node:22-alpine AS prod-deps
 WORKDIR /app
 RUN apk add --no-cache openssl libc6-compat
-RUN corepack enable pnpm
+RUN corepack enable && corepack prepare pnpm@9.15.4 --activate
 
 COPY package.json pnpm-lock.yaml ./
 RUN pnpm install --prod --frozen-lockfile
@@ -39,7 +39,7 @@ RUN pnpm install --prod --frozen-lockfile
 # Re-generate Prisma in prod-deps so the production node_modules has the Prisma Client
 COPY prisma ./prisma
 ENV DATABASE_URL="postgresql://placeholder:placeholder@placeholder:5432/placeholder"
-RUN pnpm dlx prisma generate
+RUN npx prisma@6.19.2 generate
 
 # ─── Stage 4: runtime ────────────────────────────────────────────────────────
 FROM node:22-alpine AS runtime

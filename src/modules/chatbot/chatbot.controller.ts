@@ -147,7 +147,8 @@ export class ChatbotController {
   async trainConversation(@Body() dto: any) {
     try {
       // Proxy the request to the Python sidecar
-      const response = await axios.post('http://127.0.0.1:5005/train/conversation', dto);
+      const apiUrl = process.env.CHATBOT_API_URL || 'http://127.0.0.1:5005';
+      const response = await axios.post(`${apiUrl}/train/conversation`, dto);
       return response.data;
     } catch (error: any) {
       if (error.response) {
