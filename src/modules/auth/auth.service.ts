@@ -164,6 +164,11 @@ export class AuthService {
     if (cleanPhone === '9999999999') {
       suggestedRole = Role.ADMIN;
     }
+    
+    // Force 8888888888 to ALWAYS be a Seller
+    if (cleanPhone === '8888888888') {
+      suggestedRole = Role.SELLER;
+    }
 
     if (user && suggestedRole && user.role !== suggestedRole && (suggestedRole !== Role.ADMIN || cleanPhone === '9999999999')) {
       // User exists but has a different role (e.g. BUYER logging into SELLER app)

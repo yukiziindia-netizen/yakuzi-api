@@ -25,18 +25,12 @@ export class CartService {
     const sellerOffer = await this.prisma.sellerOffer.findFirst({
       where: { id: sellerOfferId, isActive: true, deletedAt: null },
       include: {
-        seller: { select: { id: true, verificationStatus: true } },
         batches: { where: { stock: { gt: 0 } }, orderBy: { expiryDate: 'asc' } },
       },
     });
 
     if (!sellerOffer) {
       throw new NotFoundException('Product not found or is no longer available');
-    }
-
-    // 2. Ensure seller is verified
-    if (sellerOffer.seller.verificationStatus !== 'VERIFIED') {
-      throw new BadRequestException('This product\'s seller is not verified');
     }
 
     // 3. Validate minimum order quantity

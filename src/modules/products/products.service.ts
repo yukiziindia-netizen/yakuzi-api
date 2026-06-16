@@ -328,6 +328,11 @@ export class ProductsService {
 
     // Touch the master product to reflect new listing activity
     if (catalogProduct) {
+      // Notify waitlisted users
+      await this.notifyWaitlistedUsers(catalogProduct.id).catch(err => {
+        this.logger.error(`Failed to notify waitlisted users for product ${catalogProduct.id}: ${err.message}`);
+      });
+
       await this.prisma.catalogProduct.update({
         where: { id: catalogProduct.id },
         data: { updatedAt: new Date() },
@@ -584,6 +589,20 @@ export class ProductsService {
         stock,
         expiryDate,
       );
+
+      if (stock !== undefined && stock > 0) {
+        const offerWithVariant = await this.prisma.sellerOffer.findUnique({
+          where: { id: product.id },
+          include: { variant: true }
+        });
+        const catalogProductId = offerWithVariant?.variant?.catalogProductId;
+        
+        if (catalogProductId) {
+          await this.notifyWaitlistedUsers(catalogProductId).catch(err => {
+            this.logger.error(`Failed to notify waitlisted users for product ${catalogProductId}: ${err.message}`);
+          });
+        }
+      }
     }
 
     if (
@@ -1215,6 +1234,97 @@ export class ProductsService {
     return (this.prisma as any).catalogProductRequest.update({
       where: { id: requestId },
       data: { status },
+    });
+  }
+
+  // WAITLIST FEATURE
+
+  async addToWaitlist(userId: string, catalogProductId: string) {
+    const product = await this.prisma.catalogProduct.findUnique({
+      where: { id: catalogProductId },
+    });
+    if (!product) {
+      throw new NotFoundException('Product not found');
+    }
+
+    const existing = await this.prisma.productWaitlist.findUnique({
+      where: {
+        userId_catalogProductId: {
+          userId,
+          catalogProductId,
+        },
+      },
+    });
+
+    if (existing) {
+      return existing; // already in waitlist
+    }
+
+    return this.prisma.productWaitlist.create({
+      data: {
+        userId,
+        catalogProductId,
+      },
+    });
+  }
+
+  async removeFromWaitlist(userId: string, catalogProductId: string) {
+    const existing = await this.prisma.productWaitlist.findUnique({
+      where: {
+        userId_catalogProductId: {
+          userId,
+          catalogProductId,
+        },
+      },
+    });
+
+    if (!existing) {
+      return { success: true };
+    }
+
+    await this.prisma.productWaitlist.delete({
+      where: {
+        id: existing.id,
+      },
+    });
+
+    return { success: true };
+  }
+
+  async getMyWaitlist(userId: string) {
+    return this.prisma.productWaitlist.findMany({
+      where: { userId },
+      include: {
+        catalogProduct: {
+          include: {
+            images: true,
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  async notifyWaitlistedUsers(catalogProductId: string) {
+    const waitlisted = await this.prisma.productWaitlist.findMany({
+      where: { catalogProductId, isNotified: false },
+      include: { catalogProduct: true },
+    });
+
+    if (waitlisted.length === 0) return;
+
+    const notifications = waitlisted.map(w => ({
+      userId: w.userId,
+      message: `The product ${w.catalogProduct.name} you were waiting for is now back in stock!`,
+    }));
+
+    await this.prisma.notification.createMany({
+      data: notifications,
+    });
+
+    await this.prisma.productWaitlist.updateMany({
+      where: { id: { in: waitlisted.map(w => w.id) } },
+      data: { isNotified: true },
     });
   }
 }
