@@ -8,6 +8,7 @@ RUN apk add --no-cache openssl libc6-compat
 RUN corepack enable && corepack prepare pnpm@9.15.4 --activate
 
 COPY package.json pnpm-lock.yaml ./
+RUN echo "node-linker=hoisted" > .npmrc
 RUN pnpm install --frozen-lockfile
 
 # ─── Stage 2: builder ────────────────────────────────────────────────────────
@@ -34,6 +35,7 @@ RUN apk add --no-cache openssl libc6-compat
 RUN corepack enable && corepack prepare pnpm@9.15.4 --activate
 
 COPY package.json pnpm-lock.yaml ./
+RUN echo "node-linker=hoisted" > .npmrc
 RUN pnpm install --prod --frozen-lockfile
 
 # Re-generate Prisma in prod-deps so the production node_modules has the Prisma Client
