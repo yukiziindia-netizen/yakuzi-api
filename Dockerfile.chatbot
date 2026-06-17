@@ -1,0 +1,34 @@
+# yakuzi-chatbot (Python FastAPI + Gemini) -- production Dockerfile
+# Build from yakuzi-api repo root:
+#   docker build -f Dockerfile.chatbot -t yakuzi-chatbot:dev .
+# Run:
+#   docker run --env-file .env -p 8000:8000 yakuzi-chatbot:dev
+
+FROM python:3.12-slim AS runtime
+WORKDIR /app
+
+# Build deps for psycopg2-binary and other native packages
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libpq5 \
+    curl \
+    && rm -rf /var/lib/apt/lists/* \
+    && useradd -m -u 1001 chatbot
+
+COPY chatbot/requirements.txt ./requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY chatbot/ ./chatbot/
+
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PORT=8000
+
+USER chatbot
+EXPOSE 8000
+
+# uvicorn runs the FastAPI app defined in chatbot/main.py
+CMD ["python", "-m", "uvicorn", "chatbot.main:app", "--host", "0.0.0.0", "--port", "8000"]
+
+# Healthcheck targets FastAPI's auto-generated /docs endpoint to guarantee a 200 OK response
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD curl -fs http://localhost:8000/docs || exit 1

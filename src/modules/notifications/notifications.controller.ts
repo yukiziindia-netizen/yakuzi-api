@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Patch,
+  Delete,
   Param,
   UseGuards,
   HttpCode,
@@ -48,5 +49,17 @@ export class NotificationsController {
   ) {
     const data = await this.notificationsService.markAsRead(userId, notificationId);
     return { message: 'Notification marked as read', data };
+  }
+
+  @Delete(':id')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Delete a notification' })
+  @ApiResponse({ status: 200, description: 'Notification deleted' })
+  async deleteNotification(
+    @CurrentUser('id') userId: string,
+    @Param('id', ParseUUIDPipe) notificationId: string,
+  ) {
+    const data = await this.notificationsService.deleteNotification(userId, notificationId);
+    return { message: 'Notification deleted', data };
   }
 }

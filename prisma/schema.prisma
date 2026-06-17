@@ -9,9 +9,12 @@ datasource db {
 
 model User {
   id                     String                  @id @default(uuid())
-  phone                  String                  @unique
+  phone                  String?                 @unique
   email                  String?                 @unique
-  password               String
+  username               String?                 @unique
+  password               String?
+  gender                 String?
+  dob                    DateTime?
   role                   Role
   status                 UserStatus              @default(NEW)
   createdAt              DateTime                @default(now())
@@ -25,6 +28,7 @@ model User {
   notifications          Notification[]
   orders                 Order[]
   productRequests        ProductRequest[]
+  productWaitlists       ProductWaitlist[]
   reviews                Review[]
   sellerProfile          SellerProfile?
   tickets                Ticket[]
@@ -640,6 +644,7 @@ model CatalogProduct {
   options              Json?
   isActive             Boolean               @default(true)
   isYukiziChoice       Boolean               @default(false)
+  productWaitlists     ProductWaitlist[]
   isBestSeller         Boolean               @default(false)
   isAd                 Boolean               @default(false)
   deletedAt            DateTime?
@@ -929,4 +934,20 @@ enum ProductRequestStatus {
   PENDING
   APPROVED
   REJECTED
+}
+
+model ProductWaitlist {
+  id               String         @id @default(uuid())
+  userId           String
+  catalogProductId String
+  createdAt        DateTime       @default(now())
+  isNotified       Boolean        @default(false)
+
+  user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  catalogProduct CatalogProduct @relation(fields: [catalogProductId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, catalogProductId])
+  @@index([userId])
+  @@index([catalogProductId])
+  @@map("product_waitlists")
 }

@@ -1,4 +1,4 @@
-import { PrismaClient, SellerOffer, Role, UserStatus } from '@prisma/client';
+﻿import { PrismaClient, SellerOffer, Role, UserStatus } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { categories } from './seed-data/categories';
 
@@ -10,12 +10,12 @@ async function hashPassword(plain: string): Promise<string> {
   return bcrypt.hash(plain, SALT_ROUNDS);
 }
 
-// ──────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // 1. SEED CATEGORIES & SUB-CATEGORIES
-// ──────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 async function seedCategories() {
-  console.log('📁 Seeding categories & sub-categories...');
+  console.log('ðŸ“ Seeding categories & sub-categories...');
 
   for (const cat of categories) {
     const created = await prisma.category.upsert({
@@ -32,20 +32,20 @@ async function seedCategories() {
         },
       },
     });
-    console.log(`   ✅ ${created.name}`);
+    console.log(`   âœ… ${created.name}`);
   }
 
   const categoryCount = await prisma.category.count();
   const subCategoryCount = await prisma.subCategory.count();
-  console.log(`   → ${categoryCount} categories, ${subCategoryCount} sub-categories\n`);
+  console.log(`   â†’ ${categoryCount} categories, ${subCategoryCount} sub-categories\n`);
 }
 
-// ──────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // 2. SEED ADMIN USER
-// ──────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 async function seedAdmin() {
-  console.log('👤 Seeding admin user...');
+  console.log('ðŸ‘¤ Seeding admin user...');
 
   const adminPassword = await hashPassword('Admin@123');
 
@@ -54,7 +54,7 @@ async function seedAdmin() {
     update: {},
     create: {
       phone: '9999999999',
-      email: 'admin@pharmabag.com',
+      email: 'admin@yukizi.com',
       password: adminPassword,
       role: Role.ADMIN,
       status: UserStatus.APPROVED,
@@ -66,17 +66,17 @@ async function seedAdmin() {
       },
     },
   });
-  console.log(`   ✅ Admin: ${admin.phone} (${admin.id})\n`);
+  console.log(`   âœ… Admin: ${admin.phone} (${admin.id})\n`);
 
   return admin;
 }
 
-// ──────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // 3. SEED DEMO SELLER + PRODUCTS + BATCH
-// ──────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 async function seedDemoSeller() {
-  console.log('🏪 Seeding demo seller...');
+  console.log('ðŸª Seeding demo seller...');
 
   const sellerPassword = await hashPassword('Seller@123');
 
@@ -85,17 +85,17 @@ async function seedDemoSeller() {
     update: {},
     create: {
       phone: '8888888888',
-      email: 'seller@demopharma.com',
+      email: 'seller@yukizi.com',
       password: sellerPassword,
       role: Role.SELLER,
       status: UserStatus.APPROVED,
       sellerProfile: {
         create: {
-          companyName: 'Demo Pharma Distributor',
+          companyName: 'Yukizi Distributor',
           gstNumber: '07AAACA1234A1Z5',
           panNumber: 'ABCDE1234F',
           drugLicenseNumber: 'DL-2026-001234',
-          drugLicenseUrl: 'https://placeholder.pharmabag.com/license/demo.pdf',
+          drugLicenseUrl: 'https://placeholder.yukizi.com/license/demo.pdf',
           address: '42, Netaji Subhash Marg, Daryaganj',
           city: 'New Delhi',
           state: 'Delhi',
@@ -107,7 +107,7 @@ async function seedDemoSeller() {
     },
     include: { sellerProfile: true },
   });
-  console.log(`   ✅ Seller: ${sellerUser.phone} — ${sellerUser.sellerProfile?.companyName}`);
+  console.log(`   âœ… Seller: ${sellerUser.phone} â€” ${sellerUser.sellerProfile?.companyName}`);
 
   const sellerId = sellerUser.sellerProfile!.id;
 
@@ -126,13 +126,13 @@ async function seedDemoSeller() {
   });
 
   if (!pharmaCategory || !antibioticsSub || !painReliefSub || !vitaminsSub) {
-    console.log('   ⚠️  Skipping products — categories not found. Run categories seed first.');
+    console.log('   âš ï¸  Skipping products â€” categories not found. Run categories seed first.');
     return;
   }
 
-  // ── Demo Products ──────────────────────────
+  // â”€â”€ Demo Products â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-  console.log('💊 Seeding demo products...');
+  console.log('ðŸ’Š Seeding demo products...');
 
   const demoProducts = [
     {
@@ -185,18 +185,18 @@ async function seedDemoSeller() {
     });
 
     if (existing) {
-      console.log(`   ↩️  ${prod.name} (already exists)`);
+      console.log(`   â†©ï¸  ${prod.name} (already exists)`);
       createdProducts.push(existing);
     } else {
       const created = await prisma.sellerOffer.create({ data: prod });
-      console.log(`   ✅ ${created.name} — ₹${created.mrp}`);
+      console.log(`   âœ… ${created.name} â€” â‚¹${created.mrp}`);
       createdProducts.push(created);
     }
   }
 
-  // ── SellerOffer Batches ────────────────────────
+  // â”€â”€ SellerOffer Batches â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-  console.log('📦 Seeding product batches...');
+  console.log('ðŸ“¦ Seeding product batches...');
 
   const sixMonthsLater = new Date();
   sixMonthsLater.setMonth(sixMonthsLater.getMonth() + 6);
@@ -240,22 +240,22 @@ async function seedDemoSeller() {
     });
 
     if (existing) {
-      console.log(`   ↩️  ${batch.batchNumber} (already exists)`);
+      console.log(`   â†©ï¸  ${batch.batchNumber} (already exists)`);
     } else {
       await prisma.productBatch.create({ data: batch });
-      console.log(`   ✅ ${batch.batchNumber} — stock: ${batch.stock}`);
+      console.log(`   âœ… ${batch.batchNumber} â€” stock: ${batch.stock}`);
     }
   }
 
   console.log('');
 }
 
-// ──────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // 4. SEED DEMO BUYER
-// ──────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 async function seedDemoBuyer() {
-  console.log('🛍️  Seeding demo buyer...');
+  console.log('ðŸ›ï¸  Seeding demo buyer...');
 
   const buyerPassword = await hashPassword('Buyer@123');
 
@@ -264,17 +264,17 @@ async function seedDemoBuyer() {
     update: {},
     create: {
       phone: '7777777777',
-      email: 'buyer@demopharma.com',
+      email: 'buyer@yukizi.com',
       password: buyerPassword,
       role: Role.BUYER,
       status: UserStatus.APPROVED,
       buyerProfile: {
         create: {
-          legalName: 'Demo Pharmacy Store',
+          legalName: 'Yukizi Pharmacy Store',
           gstNumber: '07AAAAA0000A1Z5',
           panNumber: 'AAAAA0000A',
           drugLicenseNumber: 'DL-2026-BUYER',
-          drugLicenseUrl: 'https://placeholder.pharmabag.com/license/buyer-demo.pdf',
+          drugLicenseUrl: 'https://placeholder.yukizi.com/license/buyer-demo.pdf',
           address: 'Shop No. 5, Medical Market, Chembur',
           city: 'Mumbai',
           state: 'Maharashtra',
@@ -284,23 +284,23 @@ async function seedDemoBuyer() {
     },
     include: { buyerProfile: true },
   });
-  console.log(`   ✅ Buyer: ${buyerUser.phone} — ${buyerUser.buyerProfile?.legalName}\n`);
+  console.log(`   âœ… Buyer: ${buyerUser.phone} â€” ${buyerUser.buyerProfile?.legalName}\n`);
 }
 
-// ──────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // MAIN
-// ──────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 async function main() {
-  console.log('🌱 Seeding PharmaBag database...\n');
+  console.log('ðŸŒ± Seeding yukizi database...\n');
 
   await seedCategories();
   await seedAdmin();
   await seedDemoSeller();
   await seedDemoBuyer();
 
-  console.log('────────────────────────────────────────');
-  console.log('📦 Seed complete!');
+  console.log('â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€');
+  console.log('ðŸ“¦ Seed complete!');
 
   const counts = {
     categories: await prisma.category.count(),
@@ -315,12 +315,12 @@ async function main() {
   console.log(`   Users:           ${counts.users}`);
   console.log(`   Products:        ${counts.products}`);
   console.log(`   SellerOffer Batches: ${counts.batches}`);
-  console.log('────────────────────────────────────────\n');
+  console.log('â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\n');
 }
 
 main()
   .catch((e) => {
-    console.error('❌ Seed failed:', e);
+    console.error('âŒ Seed failed:', e);
     process.exit(1);
   })
   .finally(async () => {

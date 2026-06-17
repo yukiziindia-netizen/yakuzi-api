@@ -55,41 +55,11 @@ export class OrdersService {
       throw new BadRequestException('Cart is empty. Add products before checkout.');
     }
 
-    // 1b. Verify buyer profile is approved
+    // 1b. Fetch buyer profile for referral code (KYC checks removed)
     const buyerProfile = await this.prisma.buyerProfile.findUnique({
       where: { userId },
-      select: { verificationStatus: true, creditTier: true, legalName: true, referralCodeId: true },
+      select: { referralCodeId: true },
     });
-
-    if (!buyerProfile || !buyerProfile.legalName) {
-      throw new ForbiddenException(
-        'Please complete your KYC onboarding before placing orders.',
-      );
-    }
-
-    if (buyerProfile.verificationStatus === 'UNVERIFIED') {
-      throw new ForbiddenException(
-        'Please complete your KYC onboarding before placing orders.',
-      );
-    }
-
-    if (buyerProfile.verificationStatus === 'PENDING') {
-      throw new ForbiddenException(
-        'Your profile is under review. Please wait for admin approval before placing orders.',
-      );
-    }
-
-    if (buyerProfile.verificationStatus === 'REJECTED') {
-      throw new ForbiddenException(
-        'Your profile verification was rejected. Please contact support.',
-      );
-    }
-
-    if (!buyerProfile.creditTier) {
-      throw new ForbiddenException(
-        'Your account is not yet fully approved. Please wait for admin to set your credit tier.',
-      );
-    }
 
     // 2. Validate every cart item
     for (const item of cart.items) {
@@ -101,11 +71,6 @@ export class OrdersService {
         );
       }
 
-      if (product.seller.verificationStatus !== 'VERIFIED') {
-        throw new BadRequestException(
-          `Seller for "${product.name}" is not verified. Please remove it from your cart.`,
-        );
-      }
 
       const totalStock = product.batches.reduce((sum, b) => sum + b.stock, 0);
       if (item.quantity > totalStock) {
@@ -129,7 +94,7 @@ export class OrdersService {
           buyerId: userId,
           totalAmount,
           orderStatus: OrderStatus.PLACED,
-          referralCodeId: buyerProfile.referralCodeId,
+          referralCodeId: buyerProfile?.referralCodeId || null,
         },
       });
 
@@ -274,10 +239,20 @@ export class OrdersService {
                 id: true,
                 name: true,
                 manufacturer: true,
-
                 mrp: true,
                 gstPercent: true,
-                },
+                variant: {
+                  select: {
+                    catalogProduct: {
+                      select: {
+                        images: {
+                          select: { url: true }
+                        }
+                      }
+                    }
+                  }
+                }
+              },
             },
             seller: {
               select: {
@@ -646,6 +621,34 @@ export class OrdersService {
             where: { id: item.sellerOffer.batches[0].id },
             data: { stock: { increment: item.quantity } },
           });
+          
+          // Check if there are waitlisted users to notify
+          const offerWithVariant = await tx.sellerOffer.findUnique({
+            where: { id: item.sellerOffer.id },
+            include: { variant: true }
+          });
+          const catalogProductId = offerWithVariant?.variant?.catalogProductId;
+          
+          if (catalogProductId) {
+            const waitlisted = await tx.productWaitlist.findMany({
+              where: { catalogProductId, isNotified: false },
+              include: { catalogProduct: true },
+            });
+
+            if (waitlisted.length > 0) {
+              const notifications = waitlisted.map(w => ({
+                userId: w.userId,
+                message: `The product ${w.catalogProduct.name} you were waiting for is now back in stock!`,
+              }));
+
+              await tx.notification.createMany({ data: notifications });
+
+              await tx.productWaitlist.updateMany({
+                where: { id: { in: waitlisted.map(w => w.id) } },
+                data: { isNotified: true },
+              });
+            }
+          }
         }
       }
 

@@ -108,7 +108,8 @@ export class ChatbotService implements OnModuleInit, OnModuleDestroy {
     }
 
     try {
-      const response = await axios.post(`http://127.0.0.1:${this.port}/chat`, {
+      const apiUrl = process.env.CHATBOT_API_URL || `http://127.0.0.1:${this.port}`;
+      const response = await axios.post(`${apiUrl}/chat`, {
         message,
         history,
         attachments,

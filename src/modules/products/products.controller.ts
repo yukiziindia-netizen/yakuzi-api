@@ -227,4 +227,50 @@ export class ProductsController {
     const data = await this.productsService.softDelete(userId, id);
     return data;
   }
+
+  // WAITLIST FEATURE
+
+  @Get('waitlist/me')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.BUYER)
+  @HttpCode(HttpStatus.OK)
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({ summary: 'Get current user waitlist (Notify Me)' })
+  @ApiResponse({ status: 200, description: 'Waitlist retrieved' })
+  async getMyWaitlist(
+    @CurrentUser('id') userId: string,
+  ) {
+    const data = await this.productsService.getMyWaitlist(userId);
+    return { message: 'Waitlist retrieved successfully', data };
+  }
+
+  @Post(':id/notify-me')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.BUYER)
+  @HttpCode(HttpStatus.CREATED)
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({ summary: 'Add product to Notify Me waitlist' })
+  @ApiResponse({ status: 201, description: 'Added to waitlist' })
+  async addToWaitlist(
+    @CurrentUser('id') userId: string,
+    @Param('id') id: string,
+  ) {
+    const data = await this.productsService.addToWaitlist(userId, id);
+    return { message: 'Added to waitlist', data };
+  }
+
+  @Delete(':id/notify-me')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.BUYER)
+  @HttpCode(HttpStatus.OK)
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({ summary: 'Remove product from Notify Me waitlist' })
+  @ApiResponse({ status: 200, description: 'Removed from waitlist' })
+  async removeFromWaitlist(
+    @CurrentUser('id') userId: string,
+    @Param('id') id: string,
+  ) {
+    const data = await this.productsService.removeFromWaitlist(userId, id);
+    return { message: 'Removed from waitlist', data };
+  }
 }
