@@ -817,13 +817,39 @@ export class ProductsService {
             category: true,
             subCategory: true,
             batches: true,
-            
+            variant: true,
             seller: { select: { id: true, companyName: true, rating: true, city: true, state: true } },
         }
     });
 
     if (listing) {
         this.logger.log(`findOne: Found specific listing ${id}`);
+        if (listing.variant?.catalogProductId) {
+            const master = await this.prisma.catalogProduct.findFirst({
+              where: { id: listing.variant.catalogProductId, deletedAt: null },
+              include: {
+                category: true,
+                subCategory: true,
+                images: true,
+                productVariants: {
+                    include: {
+                        sellerOffers: {
+                            where: { deletedAt: null },
+                            include: {
+                                seller: { select: { id: true, companyName: true, rating: true, city: true, state: true } },
+                                batches: { orderBy: { expiryDate: 'asc' } },
+                            },
+                            orderBy: { mrp: 'asc' }
+                        }
+                    }
+                }
+              },
+            });
+            if (master) {
+                this.analyticsService.recordView(master.id);
+                return this.formatMasterDetail(master);
+            }
+        }
         return this.flattenProduct(listing as any);
     }
 
@@ -841,10 +867,10 @@ export class ProductsService {
         productVariants: {
             include: {
                 sellerOffers: {
-                    where: { isActive: true, deletedAt: null },
+                    where: { deletedAt: null },
                     include: {
                         seller: { select: { id: true, companyName: true, rating: true, city: true, state: true } },
-                        batches: { where: { stock: { gt: 0 } }, orderBy: { expiryDate: 'asc' } },
+                        batches: { orderBy: { expiryDate: 'asc' } },
                     },
                     orderBy: { mrp: 'asc' }
                 }
@@ -949,13 +975,14 @@ export class ProductsService {
       options: Array.isArray(m.options) ? m.options.filter((o: any) => o && typeof o === 'object' && !Array.isArray(o) && o.name) : [],
       variants: (m.productVariants || []).map((v: any) => {
           const offers = v.sellerOffers || [];
-          const minPrice = offers.length > 0 ? Math.min(...offers.map((o: any) => o.mrp)) : 0;
+          const minPrice = offers.length > 0 ? Math.min(...offers.map((o: any) => o.mrp)) : (v.options?.price || 0);
+          const totalStock = offers.reduce((sum: number, o: any) => sum + (o.batches || []).reduce((bsum: number, b: any) => bsum + b.stock, 0), 0);
           return {
               id: v.id,
               name: v.name,
               price: minPrice.toString(),
-              available: "0",
-              image: null
+              available: totalStock > 0 ? totalStock.toString() : (v.options?.available ? v.options.available.toString() : "0"),
+              image: v.options?.image || null
           };
       })
     };
@@ -1143,6 +1170,15 @@ export class ProductsService {
       images,
       stock: totalStock,
       expiryDate: nearestExpiry,
+      variants: [
+        {
+          id: product.variant?.id || product.id,
+          name: product.variant?.name || product.name,
+          price: product.mrp.toString(),
+          available: totalStock.toString(),
+          image: images[0] || null
+        }
+      ],
       listings: product.listings || [
         {
           id: product.id,
