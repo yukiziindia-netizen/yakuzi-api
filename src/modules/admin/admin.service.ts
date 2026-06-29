@@ -1,4 +1,4 @@
-﻿import {
+import {
   Injectable,
   NotFoundException,
   BadRequestException,
@@ -1599,7 +1599,22 @@ export class AdminService {
       this.prisma.catalogProduct.count({ where }),
     ]);
 
-    return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
+    const mappedData = data.map((item: any) => {
+      let meta: any = {};
+      if (Array.isArray(item.options)) {
+        const metaObj = item.options.find((o: any) => o && o.isMetadata);
+        if (metaObj) meta = metaObj;
+      }
+      return {
+        ...item,
+        price: meta.price !== undefined ? meta.price : item.mrp,
+        unit: meta.unit !== undefined ? meta.unit : item.unit || "1",
+        minimumOrderQuantity: meta.minimumOrderQuantity !== undefined ? meta.minimumOrderQuantity : item.minimumOrderQuantity || 1,
+        options: Array.isArray(item.options) ? item.options.filter((o: any) => !o || !o.isMetadata) : item.options,
+      };
+    });
+
+    return { data: mappedData, total, page, limit, totalPages: Math.ceil(total / limit) };
   }
 
   async getSuggestionById(id: string) {
@@ -1617,7 +1632,18 @@ export class AdminService {
     });
 
     if (!suggestion) throw new NotFoundException('Suggestion not found');
-    return suggestion;
+    let meta: any = {};
+    if (Array.isArray(suggestion.options)) {
+      const metaObj = (suggestion.options as any[]).find((o: any) => o && o.isMetadata);
+      if (metaObj) meta = metaObj;
+    }
+    return {
+      ...suggestion,
+      price: meta.price !== undefined ? meta.price : suggestion.mrp,
+      unit: meta.unit !== undefined ? meta.unit : (suggestion as any).unit || "1",
+      minimumOrderQuantity: meta.minimumOrderQuantity !== undefined ? meta.minimumOrderQuantity : (suggestion as any).minimumOrderQuantity || 1,
+      options: Array.isArray(suggestion.options) ? (suggestion.options as any[]).filter((o: any) => !o || !o.isMetadata) : suggestion.options,
+    };
   }
 
   async createSuggestion(dto: import('./dto/update-suggestion.dto').UpdateSuggestionDto) {
@@ -1651,19 +1677,28 @@ export class AdminService {
       resolvedSubCategoryId = dto.subCategoryId;
     }
     
+    const meta = {
+      isMetadata: true,
+      price: dto.price !== undefined ? dto.price : (dto.mrp ?? 0),
+      unit: dto.unit ?? "1",
+      minimumOrderQuantity: dto.minimumOrderQuantity ?? 1,
+    };
+    const userOptions = Array.isArray(dto.options) ? dto.options.filter((o: any) => !o || !o.isMetadata) : [];
+    const finalOptions = [meta, ...userOptions];
+
     const product = await this.prisma.catalogProduct.create({
       data: {
         name: dto.name || '',
         manufacturer: dto.manufacturer || '',
 
         description: dto.description || '',
-        mrp: dto.mrp || dto.price,
+        mrp: dto.mrp !== undefined ? dto.mrp : dto.price,
         gstPercent: dto.gstPercent,
         categoryId: resolvedCategoryId,
         subCategoryId: resolvedSubCategoryId,
         packSize: dto.packSize,
         slug,
-        options: dto.options ? dto.options : undefined,
+        options: finalOptions,
         isActive: dto.isActive ?? true,
         isYukiziChoice: dto.isYukiziChoice ?? false,
         isBestSeller: dto.isBestSeller ?? false,
@@ -1671,7 +1706,7 @@ export class AdminService {
         productVariants: dto.variants?.length ? {
           create: dto.variants.map((v: any) => ({
             name: v.name,
-            options: { price: v.price, available: v.available }
+            options: { price: v.price, available: v.available, image: v.image }
           }))
         } : undefined,
         images: dto.images?.length ? {
@@ -1709,6 +1744,29 @@ export class AdminService {
       resolvedSubCategoryId = dto.subCategoryId;
     }
 
+    let existingMeta: any = {};
+    if (Array.isArray(suggestion.options)) {
+      const found = (suggestion.options as any[]).find((o: any) => o && o.isMetadata);
+      if (found) existingMeta = found;
+    }
+
+    const newMeta = {
+      ...existingMeta,
+      isMetadata: true,
+      ...(dto.price !== undefined ? { price: dto.price } : {}),
+      ...(dto.unit !== undefined ? { unit: dto.unit } : {}),
+      ...(dto.minimumOrderQuantity !== undefined ? { minimumOrderQuantity: dto.minimumOrderQuantity } : {}),
+    };
+
+    let newOptions: any[] = [];
+    if (dto.options !== undefined) {
+      newOptions = Array.isArray(dto.options) ? dto.options.filter((o: any) => !o || !o.isMetadata) : [];
+    } else if (Array.isArray(suggestion.options)) {
+      newOptions = (suggestion.options as any[]).filter((o: any) => !o || !o.isMetadata);
+    }
+
+    const finalOptions = [newMeta, ...newOptions];
+
     const updated = await this.prisma.catalogProduct.update({
       where: { id },
       data: {
@@ -1716,13 +1774,12 @@ export class AdminService {
         ...(dto.manufacturer ? { manufacturer: dto.manufacturer } : {}),
 
         ...(dto.description !== undefined ? { description: dto.description } : {}),
-        ...(dto.mrp !== undefined ? { mrp: dto.mrp } : {}),
-        ...(dto.price !== undefined ? { mrp: dto.price } : {}),
+        ...(dto.mrp !== undefined ? { mrp: dto.mrp } : (dto.price !== undefined ? { mrp: dto.price } : {})),
         ...(dto.packSize !== undefined ? { packSize: dto.packSize } : {}),
         ...(dto.gstPercent !== undefined ? { gstPercent: dto.gstPercent } : {}),
         ...(resolvedCategoryId ? { categoryId: resolvedCategoryId } : {}),
         ...(resolvedSubCategoryId ? { subCategoryId: resolvedSubCategoryId } : {}),
-        ...(dto.options !== undefined ? { options: dto.options } : {}),
+        options: finalOptions,
         ...(dto.isActive !== undefined ? { isActive: dto.isActive } : {}),
         ...(dto.isYukiziChoice !== undefined ? { isYukiziChoice: dto.isYukiziChoice } : {}),
         ...(dto.isBestSeller !== undefined ? { isBestSeller: dto.isBestSeller } : {}),
@@ -1746,7 +1803,7 @@ export class AdminService {
             data: dto.variants.map((v: any) => ({
               catalogProductId: id,
               name: v.name,
-              options: { price: v.price, available: v.available }
+              options: { price: v.price, available: v.available, image: v.image }
             }))
           });
         }

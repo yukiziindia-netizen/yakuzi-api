@@ -155,8 +155,8 @@ export class ProductsService {
           product = await this.prisma.sellerOffer.update({
             where: { id: existingProduct.id },
             data: {
-              categoryId: normalized.categoryId,
-              subCategoryId: normalized.subCategoryId,
+              category: { connect: { id: normalized.categoryId } },
+              subCategory: { connect: { id: normalized.subCategoryId } },
               manufacturer: normalized.manufacturer,
               description: normalized.description,
               mrp: v.price > 0 ? v.price : normalized.mrp,
@@ -251,8 +251,8 @@ export class ProductsService {
       product = await this.prisma.sellerOffer.update({
         where: { id: existingProduct.id },
         data: {
-          categoryId: normalized.categoryId,
-          subCategoryId: normalized.subCategoryId,
+          category: { connect: { id: normalized.categoryId } },
+          subCategory: { connect: { id: normalized.subCategoryId } },
           manufacturer: normalized.manufacturer,
           description: normalized.description,
           mrp: normalized.mrp,
@@ -368,9 +368,9 @@ export class ProductsService {
     const updated = await this.prisma.sellerOffer.update({
       where: { id: productId },
       data: {
-        sellerId,
-        categoryId: dto.categoryId,
-        subCategoryId: dto.subCategoryId,
+        seller: { connect: { id: sellerId } },
+        category: { connect: { id: dto.categoryId } },
+        subCategory: { connect: { id: dto.subCategoryId } },
         name: dto.name,
         slug: dto.slug,
         manufacturer: dto.manufacturer,
@@ -558,17 +558,33 @@ export class ProductsService {
   async update(userId: string, productId: string, dto: UpdateProductDto) {
     const product = await this.findOwnProduct(userId, productId);
 
-    const { stock, expiryDate, images, ...productData } = dto;
+    const {
+      stock,
+      expiryDate,
+      images,
+      masterProductId,
+      options,
+      variants,
+      extraFields,
+      categoryId,
+      subCategoryId,
+      ...productData
+    } = dto;
 
     // Trim strings
     if (productData.name) productData.name = productData.name.trim();
     if (productData.manufacturer) productData.manufacturer = productData.manufacturer.trim();
-
     if (productData.description) productData.description = productData.description.trim();
+
+    const updateData: Prisma.SellerOfferUpdateInput = {
+      ...productData,
+      ...(categoryId ? { category: { connect: { id: categoryId } } } : {}),
+      ...(subCategoryId ? { subCategory: { connect: { id: subCategoryId } } } : {}),
+    };
 
     const updated = await this.prisma.sellerOffer.update({
       where: { id: product.id },
-      data: productData,
+      data: updateData,
       include: {
         category: true,
         subCategory: true,
@@ -851,7 +867,8 @@ export class ProductsService {
     const listings = (m.productVariants || []).flatMap((v: any) => v.sellerOffers || []);
     const minPrice = listings.length > 0 ? Math.min(...listings.map((l: any) => l.mrp)) : m.mrp;
     const minMoq = listings.length > 0 ? Math.min(...listings.map((l: any) => l.minimumOrderQuantity || 1)) : 1;
-    const bestListingId = listings.length > 0 ? listings.reduce((prev: any, curr: any) => prev.mrp < curr.mrp ? prev : curr).id : null;
+    const bestListing = listings.length > 0 ? listings.reduce((prev: any, curr: any) => prev.mrp < curr.mrp ? prev : curr) : null;
+    const bestListingId = bestListing ? bestListing.id : null;
     const hasSellers = listings.length > 0;
 
     return {
@@ -864,6 +881,9 @@ export class ProductsService {
       price: minPrice,
       moq: minMoq,
       bestListingId,
+      discountType: bestListing?.discountType || null,
+      discountMeta: bestListing?.discountMeta || null,
+      deliveryText: bestListing?.deliveryText || null,
       hasSellers,
       sellerCount: listings.length,
       image: m.images?.[0]?.url || null,
@@ -878,6 +898,8 @@ export class ProductsService {
   }
 
   private formatMasterDetail(m: any) {
+    const allListings = (m.productVariants || []).flatMap((v: any) => v.sellerOffers || []);
+    const bestListing = allListings.length > 0 ? allListings.reduce((prev: any, curr: any) => prev.mrp < curr.mrp ? prev : curr) : null;
     return {
       id: m.id,
       name: m.name,
@@ -886,6 +908,10 @@ export class ProductsService {
 
       description: m.description,
       mrp: m.mrp,
+      price: bestListing ? bestListing.mrp : m.mrp,
+      discountType: bestListing?.discountType || null,
+      discountMeta: bestListing?.discountMeta || null,
+      deliveryText: bestListing?.deliveryText || null,
       gstPercent: m.gstPercent,
       images: m.images,
       category: m.category,
@@ -1117,6 +1143,23 @@ export class ProductsService {
       images,
       stock: totalStock,
       expiryDate: nearestExpiry,
+      listings: product.listings || [
+        {
+          id: product.id,
+          price: product.mrp,
+          mrp: product.mrp,
+          discountType: product.discountType,
+          discountMeta: product.discountMeta,
+          deliveryText: product.deliveryText,
+          stock: totalStock,
+          expiryDate: nearestExpiry,
+          seller: product.seller,
+          sellerName: product.seller?.companyName,
+          images,
+          moq: product.minimumOrderQuantity || 1,
+          variantName: product.variant?.name || product.name,
+        }
+      ],
     };
   }
 

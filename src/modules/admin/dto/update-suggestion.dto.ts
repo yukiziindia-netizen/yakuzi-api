@@ -15,7 +15,7 @@ export class UpdateSuggestionDto {
   @ApiPropertyOptional({ example: 'Nicotine 2mg' })
   @IsString()
   @IsOptional()
-
+  salt?: string;
 
   @ApiPropertyOptional({ example: 'Detailed description' })
   @IsString()
@@ -25,12 +25,12 @@ export class UpdateSuggestionDto {
   @ApiPropertyOptional({ example: 100.5 })
   @IsNumber()
   @IsOptional()
-  mrp?: number;
+  mrp?: number | null;
 
   @ApiPropertyOptional({ example: 90.0 })
   @IsNumber()
   @IsOptional()
-  price?: number;
+  price?: number | null;
 
   @ApiPropertyOptional({ example: 'Box' })
   @IsString()
@@ -45,7 +45,7 @@ export class UpdateSuggestionDto {
   @ApiPropertyOptional({ example: 10 })
   @IsNumber()
   @IsOptional()
-  minimumOrderQuantity?: number;
+  minimumOrderQuantity?: number | null;
 
   @ApiPropertyOptional({ example: ['https://example.com/image1.jpg'] })
   @IsArray()
@@ -56,7 +56,7 @@ export class UpdateSuggestionDto {
   @ApiPropertyOptional({ example: 12.0 })
   @IsNumber()
   @IsOptional()
-  gstPercent?: number;
+  gstPercent?: number | null;
 
   @ApiPropertyOptional({ example: 'uuid-category-id' })
   @IsString()

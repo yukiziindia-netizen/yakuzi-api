@@ -170,4 +170,11 @@ export class CreateProductDto {
   @IsArray()
   @IsOptional()
   variants?: any[];
+
+  @ApiPropertyOptional({
+    description: 'Custom extra fields from seller product form',
+  })
+  @IsObject()
+  @IsOptional()
+  extraFields?: Record<string, any>;
 }

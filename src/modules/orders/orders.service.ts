@@ -197,7 +197,18 @@ export class OrdersService {
                 name: true,
                 manufacturer: true,
                 mrp: true,
-                
+                gstPercent: true,
+                variant: {
+                  select: {
+                    catalogProduct: {
+                      select: {
+                        images: {
+                          select: { url: true },
+                        },
+                      },
+                    },
+                  },
+                },
               },
             },
             seller: {
