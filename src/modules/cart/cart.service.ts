@@ -19,15 +19,40 @@ export class CartService {
   // ──────────────────────────────────────────────
 
   async addToCart(userId: string, dto: AddToCartDto) {
-    const { sellerOfferId, quantity } = dto;
+    let { sellerOfferId, quantity } = dto;
 
     // 1. Validate product exists, is active, and not soft-deleted
-    const sellerOffer = await this.prisma.sellerOffer.findFirst({
+    let sellerOffer = await this.prisma.sellerOffer.findFirst({
       where: { id: sellerOfferId, isActive: true, deletedAt: null },
       include: {
         batches: { where: { stock: { gt: 0 } }, orderBy: { expiryDate: 'asc' } },
       },
     });
+
+    if (!sellerOffer) {
+      // Fallback: If a CatalogProduct ID was passed, find its best active SellerOffer
+      const catalogProduct = await this.prisma.catalogProduct.findFirst({
+        where: { id: sellerOfferId, deletedAt: null },
+        include: {
+          productVariants: {
+            include: {
+              sellerOffers: {
+                where: { isActive: true, deletedAt: null },
+                include: { batches: { where: { stock: { gt: 0 } }, orderBy: { expiryDate: 'asc' } } },
+                orderBy: { mrp: 'asc' },
+              }
+            }
+          }
+        }
+      });
+      if (catalogProduct && catalogProduct.productVariants.length > 0) {
+        const offers = catalogProduct.productVariants.flatMap((v: any) => v.sellerOffers || []);
+        if (offers.length > 0) {
+          sellerOffer = offers.reduce((prev: any, curr: any) => prev.mrp < curr.mrp ? prev : curr);
+          sellerOfferId = sellerOffer.id;
+        }
+      }
+    }
 
     if (!sellerOffer) {
       throw new NotFoundException('Product not found or is no longer available');
