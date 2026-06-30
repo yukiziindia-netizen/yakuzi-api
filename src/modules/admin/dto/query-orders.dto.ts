@@ -9,6 +9,11 @@ export class AdminQueryOrdersDto {
   @IsEnum(OrderStatus)
   status?: OrderStatus;
 
+  @ApiPropertyOptional({ example: 'order-123', description: 'Search term for orders' })
+  @IsOptional()
+  @IsString()
+  search?: string;
+
   @ApiPropertyOptional({ example: 'uuid-of-seller', description: 'Filter by seller profile ID' })
   @IsOptional()
   @IsUUID()

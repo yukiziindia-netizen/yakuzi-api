@@ -117,11 +117,88 @@ export class ReviewsService {
     });
 
     return {
-      catalogProductId,
+      data: reviews.map(r => ({
+        id: r.id,
+        catalogProductId: catalogProductId,
+        userId: r.user.id,
+        userName: r.user.buyerProfile?.legalName || 'User',
+        rating: r.rating,
+        comment: r.comment || '',
+        createdAt: r.createdAt.toISOString(),
+      })),
+      total: avgResult._count || 0,
       averageRating: +((avgResult._avg && avgResult._avg.rating) || 0).toFixed(1),
-      totalReviews: avgResult._count || 0,
-      reviews,
+      page: 1,
+      limit: 50,
     };
+  }
+
+  /**
+   * Get all reviews for admin dashboard.
+   */
+  async getAdminReviews(page: number = 1, limit: number = 20) {
+    const skip = (page - 1) * limit;
+    
+    const [reviews, total] = await Promise.all([
+      this.prisma.review.findMany({
+        skip,
+        take: limit,
+        orderBy: { createdAt: 'desc' },
+        include: {
+          catalogProduct: { select: { name: true } },
+          user: {
+            select: {
+              id: true,
+              email: true,
+              buyerProfile: { select: { legalName: true } },
+            },
+          },
+        },
+      }),
+      this.prisma.review.count(),
+    ]);
+
+    return {
+      data: reviews.map(r => ({
+        id: r.id,
+        catalogProductId: r.catalogProductId,
+        productName: r.catalogProduct?.name || 'Unknown Product',
+        userId: r.userId,
+        userName: r.user.buyerProfile?.legalName || r.user.email || 'User',
+        rating: r.rating,
+        comment: r.comment || '',
+        createdAt: r.createdAt.toISOString(),
+      })),
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    };
+  }
+
+  /**
+   * Delete a review (Admin).
+   */
+  async deleteReview(reviewId: string) {
+    const review = await this.prisma.review.findUnique({
+      where: { id: reviewId },
+      include: { sellerOffer: true },
+    });
+
+    if (!review) {
+      throw new NotFoundException('Review not found');
+    }
+
+    await this.prisma.review.delete({
+      where: { id: reviewId },
+    });
+
+    if (review.sellerOffer?.sellerId) {
+      await this.updateSellerRating(review.sellerOffer.sellerId);
+    }
+
+    this.logger.log(`Review ${reviewId} deleted by Admin`);
+    return { success: true, message: 'Review deleted successfully' };
   }
 
   /**

@@ -584,13 +584,24 @@ export class AdminService {
   // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
   async getAllOrders(query: AdminQueryOrdersDto) {
-    const { status, sellerId, buyerId, dateFrom, dateTo, page = 1, limit = 20 } = query;
+    const { status, search, sellerId, buyerId, dateFrom, dateTo, page = 1, limit = 20 } = query;
     const skip = (page - 1) * limit;
 
     const where: Prisma.OrderWhereInput = {};
     if (status) where.orderStatus = status;
     if (buyerId) where.buyerId = buyerId;
     if (sellerId) where.items = { some: { sellerId } };
+
+    if (search) {
+      where.OR = [
+        { id: { contains: search, mode: 'insensitive' } },
+        { buyerId: { contains: search, mode: 'insensitive' } },
+        { buyer: { phone: { contains: search, mode: 'insensitive' } } },
+        { address: { name: { contains: search, mode: 'insensitive' } } },
+        { items: { some: { sellerId: { contains: search, mode: 'insensitive' } } } },
+        { items: { some: { seller: { companyName: { contains: search, mode: 'insensitive' } } } } },
+      ];
+    }
 
     if (dateFrom || dateTo) {
       where.createdAt = {};

@@ -49,7 +49,7 @@ export class CartService {
         const offers = catalogProduct.productVariants.flatMap((v: any) => v.sellerOffers || []);
         if (offers.length > 0) {
           sellerOffer = offers.reduce((prev: any, curr: any) => prev.mrp < curr.mrp ? prev : curr);
-          sellerOfferId = sellerOffer.id;
+          sellerOfferId = sellerOffer!.id;
         }
       }
     }
