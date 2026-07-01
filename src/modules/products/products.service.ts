@@ -155,8 +155,8 @@ export class ProductsService {
           product = await this.prisma.sellerOffer.update({
             where: { id: existingProduct.id },
             data: {
-              categoryId: normalized.categoryId,
-              subCategoryId: normalized.subCategoryId,
+              category: { connect: { id: normalized.categoryId } },
+              subCategory: { connect: { id: normalized.subCategoryId } },
               manufacturer: normalized.manufacturer,
               description: normalized.description,
               mrp: v.price > 0 ? v.price : normalized.mrp,
@@ -251,8 +251,8 @@ export class ProductsService {
       product = await this.prisma.sellerOffer.update({
         where: { id: existingProduct.id },
         data: {
-          categoryId: normalized.categoryId,
-          subCategoryId: normalized.subCategoryId,
+          category: { connect: { id: normalized.categoryId } },
+          subCategory: { connect: { id: normalized.subCategoryId } },
           manufacturer: normalized.manufacturer,
           description: normalized.description,
           mrp: normalized.mrp,
@@ -368,9 +368,9 @@ export class ProductsService {
     const updated = await this.prisma.sellerOffer.update({
       where: { id: productId },
       data: {
-        sellerId,
-        categoryId: dto.categoryId,
-        subCategoryId: dto.subCategoryId,
+        seller: { connect: { id: sellerId } },
+        category: { connect: { id: dto.categoryId } },
+        subCategory: { connect: { id: dto.subCategoryId } },
         name: dto.name,
         slug: dto.slug,
         manufacturer: dto.manufacturer,
@@ -558,17 +558,33 @@ export class ProductsService {
   async update(userId: string, productId: string, dto: UpdateProductDto) {
     const product = await this.findOwnProduct(userId, productId);
 
-    const { stock, expiryDate, images, ...productData } = dto;
+    const {
+      stock,
+      expiryDate,
+      images,
+      masterProductId,
+      options,
+      variants,
+      extraFields,
+      categoryId,
+      subCategoryId,
+      ...productData
+    } = dto;
 
     // Trim strings
     if (productData.name) productData.name = productData.name.trim();
     if (productData.manufacturer) productData.manufacturer = productData.manufacturer.trim();
-
     if (productData.description) productData.description = productData.description.trim();
+
+    const updateData: Prisma.SellerOfferUpdateInput = {
+      ...productData,
+      ...(categoryId ? { category: { connect: { id: categoryId } } } : {}),
+      ...(subCategoryId ? { subCategory: { connect: { id: subCategoryId } } } : {}),
+    };
 
     const updated = await this.prisma.sellerOffer.update({
       where: { id: product.id },
-      data: productData,
+      data: updateData,
       include: {
         category: true,
         subCategory: true,
@@ -801,13 +817,39 @@ export class ProductsService {
             category: true,
             subCategory: true,
             batches: true,
-            
+            variant: true,
             seller: { select: { id: true, companyName: true, rating: true, city: true, state: true } },
         }
     });
 
     if (listing) {
         this.logger.log(`findOne: Found specific listing ${id}`);
+        if (listing.variant?.catalogProductId) {
+            const master = await this.prisma.catalogProduct.findFirst({
+              where: { id: listing.variant.catalogProductId, deletedAt: null },
+              include: {
+                category: true,
+                subCategory: true,
+                images: true,
+                productVariants: {
+                    include: {
+                        sellerOffers: {
+                            where: { deletedAt: null },
+                            include: {
+                                seller: { select: { id: true, companyName: true, rating: true, city: true, state: true } },
+                                batches: { orderBy: { expiryDate: 'asc' } },
+                            },
+                            orderBy: { mrp: 'asc' }
+                        }
+                    }
+                }
+              },
+            });
+            if (master) {
+                this.analyticsService.recordView(master.id);
+                return this.formatMasterDetail(master);
+            }
+        }
         return this.flattenProduct(listing as any);
     }
 
@@ -825,10 +867,10 @@ export class ProductsService {
         productVariants: {
             include: {
                 sellerOffers: {
-                    where: { isActive: true, deletedAt: null },
+                    where: { deletedAt: null },
                     include: {
                         seller: { select: { id: true, companyName: true, rating: true, city: true, state: true } },
-                        batches: { where: { stock: { gt: 0 } }, orderBy: { expiryDate: 'asc' } },
+                        batches: { orderBy: { expiryDate: 'asc' } },
                     },
                     orderBy: { mrp: 'asc' }
                 }
@@ -905,8 +947,9 @@ export class ProductsService {
 
   private mapMasterToGrid(m: any) {
     const listings = (m.productVariants || []).flatMap((v: any) => v.sellerOffers || []);
-    const bestOffer = this.getBestOffer(m);
-    
+    const minPrice = listings.length > 0 ? Math.min(...listings.map((l: any) => l.mrp)) : m.mrp;
+    const minMoq = listings.length > 0 ? Math.min(...listings.map((l: any) => l.minimumOrderQuantity || 1)) : 1;
+    const bestListingId = listings.length > 0 ? listings.reduce((prev: any, curr: any) => prev.mrp < curr.mrp ? prev : curr).id : null;
     const hasSellers = listings.length > 0;
     const minMoq = listings.length > 0 ? Math.min(...listings.map((l: any) => l.minimumOrderQuantity || 1)) : 1;
     
@@ -923,7 +966,7 @@ export class ProductsService {
       gstPercent: bestOffer ? bestOffer.gstPercent : null,
       
       moq: minMoq,
-      bestListingId: bestOffer ? bestOffer.id : null,
+      bestListingId,
       hasSellers,
       sellerCount: listings.length,
       image: m.images?.[0]?.url || null,
@@ -938,6 +981,8 @@ export class ProductsService {
   }
 
   private formatMasterDetail(m: any) {
+    const allListings = (m.productVariants || []).flatMap((v: any) => v.sellerOffers || []);
+    const bestListing = allListings.length > 0 ? allListings.reduce((prev: any, curr: any) => prev.mrp < curr.mrp ? prev : curr) : null;
     return {
       id: m.id,
       name: m.name,
@@ -946,6 +991,10 @@ export class ProductsService {
 
       description: m.description,
       mrp: m.mrp,
+      price: bestListing ? bestListing.mrp : m.mrp,
+      discountType: bestListing?.discountType || null,
+      discountMeta: bestListing?.discountMeta || null,
+      deliveryText: bestListing?.deliveryText || null,
       gstPercent: m.gstPercent,
       images: m.images,
       category: m.category,
@@ -985,13 +1034,14 @@ export class ProductsService {
       options: Array.isArray(m.options) ? m.options.filter((o: any) => o && typeof o === 'object' && !Array.isArray(o) && o.name) : [],
       variants: (m.productVariants || []).map((v: any) => {
           const offers = v.sellerOffers || [];
-          const minPrice = offers.length > 0 ? Math.min(...offers.map((o: any) => o.mrp)) : 0;
+          const minPrice = offers.length > 0 ? Math.min(...offers.map((o: any) => o.mrp)) : (v.options?.price || 0);
+          const totalStock = offers.reduce((sum: number, o: any) => sum + (o.batches || []).reduce((bsum: number, b: any) => bsum + b.stock, 0), 0);
           return {
               id: v.id,
               name: v.name,
               price: minPrice.toString(),
-              available: "0",
-              image: null
+              available: totalStock > 0 ? totalStock.toString() : (v.options?.available ? v.options.available.toString() : "0"),
+              image: v.options?.image || null
           };
       })
     };
@@ -1187,8 +1237,6 @@ export class ProductsService {
       images,
       stock: totalStock,
       expiryDate: nearestExpiry,
-      price,
-      mrp,
     };
   }
 

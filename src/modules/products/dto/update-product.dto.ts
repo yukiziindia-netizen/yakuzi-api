@@ -121,4 +121,33 @@ export class UpdateProductDto {
   @IsString()
   @IsOptional()
   deliveryText?: string;
+
+  @ApiPropertyOptional({
+    example: 'uuid-of-master-product-selected',
+    description: 'Master Product ID when adding from catalog',
+  })
+  @IsString()
+  @IsOptional()
+  masterProductId?: string;
+
+  @ApiPropertyOptional({
+    description: 'Variant options configuration',
+  })
+  @IsArray()
+  @IsOptional()
+  options?: any[];
+
+  @ApiPropertyOptional({
+    description: 'List of product variants',
+  })
+  @IsArray()
+  @IsOptional()
+  variants?: any[];
+
+  @ApiPropertyOptional({
+    description: 'Custom extra fields from seller product form',
+  })
+  @IsObject()
+  @IsOptional()
+  extraFields?: Record<string, any>;
 }

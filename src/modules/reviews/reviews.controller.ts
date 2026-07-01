@@ -2,6 +2,7 @@ import {
   Controller,
   Post,
   Get,
+  Delete,
   Body,
   Param,
   ParseUUIDPipe,
@@ -42,5 +43,25 @@ export class ReviewsController {
   @ApiResponse({ status: 200, description: 'Product reviews returned' })
   getProductReviews(@Param('id', ParseUUIDPipe) productId: string) {
     return this.reviewsService.getProductReviews(productId);
+  }
+
+  @Get('admin')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.ADMIN)
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({ summary: 'Get all reviews (admin)' })
+  @ApiResponse({ status: 200, description: 'All reviews returned' })
+  getAdminReviews() {
+    return this.reviewsService.getAdminReviews();
+  }
+
+  @Delete('admin/:id')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.ADMIN)
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({ summary: 'Delete a review (admin)' })
+  @ApiResponse({ status: 200, description: 'Review deleted' })
+  deleteAdminReview(@Param('id', ParseUUIDPipe) reviewId: string) {
+    return this.reviewsService.deleteReview(reviewId);
   }
 }
