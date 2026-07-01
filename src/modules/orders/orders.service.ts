@@ -157,7 +157,17 @@ export class OrdersService {
                 name: true,
                 manufacturer: true,
                 mrp: true,
-                
+                variant: {
+                  select: {
+                    catalogProduct: {
+                      select: {
+                        images: {
+                          select: { url: true }
+                        }
+                      }
+                    }
+                  }
+                }
               },
             },
             seller: {
@@ -173,6 +183,35 @@ export class OrdersService {
         address: true,
       },
     });
+
+    if (fullOrder) {
+      for (const item of fullOrder.items) {
+        if (item.sellerOffer && !item.sellerOffer.variant) {
+          const cleanName = item.sellerOffer.name.replace(/\.\.\./g, '').trim();
+          const catalogProduct = await this.prisma.catalogProduct.findFirst({
+            where: {
+              name: {
+                startsWith: cleanName,
+                mode: 'insensitive'
+              },
+              deletedAt: null
+            },
+            include: {
+              images: {
+                select: { url: true }
+              }
+            }
+          });
+          if (catalogProduct && catalogProduct.images.length > 0) {
+            (item.sellerOffer as any).variant = {
+              catalogProduct: {
+                images: catalogProduct.images
+              }
+            };
+          }
+        }
+      }
+    }
 
     this.logger.log(
       `Order ${order.id} placed by user ${userId} — total ₹${totalAmount}`,
@@ -197,7 +236,17 @@ export class OrdersService {
                 name: true,
                 manufacturer: true,
                 mrp: true,
-                
+                variant: {
+                  select: {
+                    catalogProduct: {
+                      select: {
+                        images: {
+                          select: { url: true }
+                        }
+                      }
+                    }
+                  }
+                }
               },
             },
             seller: {
@@ -209,6 +258,36 @@ export class OrdersService {
       },
       orderBy: { createdAt: 'desc' },
     });
+
+    // Fallback: Populate images if variant is null (e.g. unlinked custom/temporary offers)
+    for (const order of orders) {
+      for (const item of order.items) {
+        if (item.sellerOffer && !item.sellerOffer.variant) {
+          const cleanName = item.sellerOffer.name.replace(/\.\.\./g, '').trim();
+          const catalogProduct = await this.prisma.catalogProduct.findFirst({
+            where: {
+              name: {
+                startsWith: cleanName,
+                mode: 'insensitive'
+              },
+              deletedAt: null
+            },
+            include: {
+              images: {
+                select: { url: true }
+              }
+            }
+          });
+          if (catalogProduct && catalogProduct.images.length > 0) {
+            (item.sellerOffer as any).variant = {
+              catalogProduct: {
+                images: catalogProduct.images
+              }
+            };
+          }
+        }
+      }
+    }
 
     return orders;
   }
@@ -280,6 +359,34 @@ export class OrdersService {
 
     if (!order) {
       throw new NotFoundException('Order not found');
+    }
+
+    // Fallback: Populate images if variant is null
+    for (const item of order.items) {
+      if (item.sellerOffer && !item.sellerOffer.variant) {
+        const cleanName = item.sellerOffer.name.replace(/\.\.\./g, '').trim();
+        const catalogProduct = await this.prisma.catalogProduct.findFirst({
+          where: {
+            name: {
+              startsWith: cleanName,
+              mode: 'insensitive'
+            },
+            deletedAt: null
+          },
+          include: {
+            images: {
+              select: { url: true }
+            }
+          }
+        });
+        if (catalogProduct && catalogProduct.images.length > 0) {
+          (item.sellerOffer as any).variant = {
+            catalogProduct: {
+              images: catalogProduct.images
+            }
+          };
+        }
+      }
     }
 
     // 3. Permission logic

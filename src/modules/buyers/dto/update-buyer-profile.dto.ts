@@ -15,6 +15,21 @@ export class UpdateBuyerProfileDto {
   @IsString()
   legalName?: string;
 
+  @ApiPropertyOptional({ example: 'medplus123' })
+  @IsOptional()
+  @IsString()
+  username?: string;
+
+  @ApiPropertyOptional({ example: 'medplus@example.com' })
+  @IsOptional()
+  @IsString()
+  email?: string;
+
+  @ApiPropertyOptional({ example: '9876543210' })
+  @IsOptional()
+  @IsString()
+  phone?: string;
+
   @ApiPropertyOptional({ example: '27AABCU9603R1ZM' })
   @IsOptional()
   @IsString()

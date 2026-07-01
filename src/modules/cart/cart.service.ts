@@ -98,6 +98,17 @@ export class CartService {
             mrp: true,
             minimumOrderQuantity: true,
             maximumOrderQuantity: true,
+            variant: {
+              select: {
+                catalogProduct: {
+                  select: {
+                    images: {
+                      select: { url: true }
+                    }
+                  }
+                }
+              }
+            }
           },
         },
       },
@@ -107,6 +118,7 @@ export class CartService {
 
     return {
       ...cartItem,
+      sellerOffer: await this.formatCartItemOffer(cartItem.sellerOffer),
       totalPrice: cartItem.quantity * cartItem.unitPrice,
     };
   }
@@ -133,7 +145,17 @@ export class CartService {
                 maximumOrderQuantity: true,
                 isActive: true,
                 deletedAt: true,
-                
+                variant: {
+                  select: {
+                    catalogProduct: {
+                      select: {
+                        images: {
+                          select: { url: true }
+                        }
+                      }
+                    }
+                  }
+                },
                 seller: {
                   select: {
                     id: true,
@@ -159,15 +181,17 @@ export class CartService {
       };
     }
 
-    const items = cart.items.map((item) => ({
-      id: item.id,
-      sellerOffer: item.sellerOffer,
-      quantity: item.quantity,
-      unitPrice: item.unitPrice,
-      totalPrice: item.quantity * item.unitPrice,
-      createdAt: item.createdAt,
-      updatedAt: item.updatedAt,
-    }));
+    const items = await Promise.all(
+      cart.items.map(async (item) => ({
+        id: item.id,
+        sellerOffer: await this.formatCartItemOffer(item.sellerOffer),
+        quantity: item.quantity,
+        unitPrice: item.unitPrice,
+        totalPrice: item.quantity * item.unitPrice,
+        createdAt: item.createdAt,
+        updatedAt: item.updatedAt,
+      }))
+    );
 
     const totalAmount = items.reduce((sum, item) => sum + item.totalPrice, 0);
 
@@ -246,6 +270,17 @@ export class CartService {
             mrp: true,
             minimumOrderQuantity: true,
             maximumOrderQuantity: true,
+            variant: {
+              select: {
+                catalogProduct: {
+                  select: {
+                    images: {
+                      select: { url: true }
+                    }
+                  }
+                }
+              }
+            }
           },
         },
       },
@@ -255,6 +290,7 @@ export class CartService {
 
     return {
       ...updated,
+      sellerOffer: await this.formatCartItemOffer(updated.sellerOffer),
       totalPrice: updated.quantity * updated.unitPrice,
     };
   }
@@ -305,5 +341,42 @@ export class CartService {
 
     this.logger.log(`Cart cleared for user ${userId}`);
     return { message: 'Cart cleared successfully' };
+  }
+
+  private async formatCartItemOffer(sellerOffer: any) {
+    if (!sellerOffer) return sellerOffer;
+
+    let images: string[] = [];
+
+    if (sellerOffer.variant?.catalogProduct?.images) {
+      images = sellerOffer.variant.catalogProduct.images.map((img: any) => img.url);
+    } else {
+      // Fallback name-based lookup
+      const cleanName = sellerOffer.name.replace(/\.\.\./g, '').trim();
+      const catalogProduct = await this.prisma.catalogProduct.findFirst({
+        where: {
+          name: {
+            startsWith: cleanName,
+            mode: 'insensitive'
+          },
+          deletedAt: null
+        },
+        include: {
+          images: {
+            select: { url: true }
+          }
+        }
+      });
+      if (catalogProduct && catalogProduct.images.length > 0) {
+        images = catalogProduct.images.map((img: any) => img.url);
+      }
+    }
+
+    // Remove variant to keep response clean and attach flat images array
+    const { variant, ...rest } = sellerOffer;
+    return {
+      ...rest,
+      images
+    };
   }
 }

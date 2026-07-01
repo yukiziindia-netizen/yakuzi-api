@@ -294,7 +294,7 @@ export class BuyersService {
     const profile = await this.prisma.buyerProfile.findUnique({
       where: { userId },
       include: {
-        user: { select: { id: true, phone: true, email: true, status: true } },
+        user: { select: { id: true, phone: true, email: true, username: true, status: true } },
       },
     });
 
@@ -319,7 +319,37 @@ export class BuyersService {
       );
     }
 
-    const updateData: any = { ...dto };
+    const { username, email, phone, ...profileDto } = dto;
+
+    // Check uniqueness for user fields if they are being updated
+    if (username || email || phone) {
+      if (username) {
+        const existingUsername = await this.prisma.user.findFirst({
+          where: { username, NOT: { id: userId } },
+        });
+        if (existingUsername) {
+          throw new ConflictException('Username is already taken');
+        }
+      }
+      if (email) {
+        const existingEmail = await this.prisma.user.findFirst({
+          where: { email, NOT: { id: userId } },
+        });
+        if (existingEmail) {
+          throw new ConflictException('Email is already registered');
+        }
+      }
+      if (phone) {
+        const existingPhone = await this.prisma.user.findFirst({
+          where: { phone, NOT: { id: userId } },
+        });
+        if (existingPhone) {
+          throw new ConflictException('Phone number is already registered');
+        }
+      }
+    }
+
+    const updateData: any = { ...profileDto };
 
     if (dto.inviteCode) {
       const cleanCode = dto.inviteCode.trim().toUpperCase();
@@ -361,6 +391,19 @@ export class BuyersService {
 
     if (dto.drugLicenseExpiry) updateData.drugLicenseExpiry = new Date(dto.drugLicenseExpiry);
     if (dto.drugLicenseExpiry2) updateData.drugLicenseExpiry2 = new Date(dto.drugLicenseExpiry2);
+
+    // Update User table if any user fields are present
+    const userUpdateData: any = {};
+    if (username !== undefined) userUpdateData.username = username;
+    if (email !== undefined) userUpdateData.email = email;
+    if (phone !== undefined) userUpdateData.phone = phone;
+
+    if (Object.keys(userUpdateData).length > 0) {
+      await this.prisma.user.update({
+        where: { id: userId },
+        data: userUpdateData,
+      });
+    }
 
     const profile = await this.prisma.buyerProfile.update({
       where: { userId },

@@ -148,6 +148,12 @@ export class StorageService {
     return `${this.cdnDomain}/${key}`;
   }
 
+  async uploadBannerImage(file: Express.Multer.File): Promise<string> {
+    this.validateFile(file, this.ALLOWED_IMAGE_TYPES);
+    const key = await this.upload(file, 'banners');
+    return `${this.cdnDomain}/${key}`;
+  }
+
   async uploadSettlementProof(file: Express.Multer.File): Promise<string> {
     this.validateFile(file, this.ALLOWED_DOC_TYPES);
     const key = await this.upload(file, 'settlement-proofs');

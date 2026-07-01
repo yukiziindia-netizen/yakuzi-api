@@ -769,7 +769,7 @@ export class ProductsService {
           category: true,
           subCategory: true,
           images: { take: 1 },
-          productVariants: { include: { sellerOffers: { where: { isActive: true, deletedAt: null }, select: { id: true, mrp: true, discountType: true, discountMeta: true, deliveryText: true, minimumOrderQuantity: true }, orderBy: { mrp: 'asc' }, take: 1 } } },
+          productVariants: { include: { sellerOffers: { where: { isActive: true, deletedAt: null }, select: { id: true, mrp: true, gstPercent: true, discountType: true, discountMeta: true, deliveryText: true, minimumOrderQuantity: true }, orderBy: { mrp: 'asc' }, take: 1 } } },
         },
         orderBy: { [effectiveSortBy]: sortOrder },
         skip,
@@ -847,23 +847,83 @@ export class ProductsService {
     return this.formatMasterDetail(master);
   }
 
+  private calculateSellingPrice(
+    mrp: number,
+    gstPercent: number,
+    discountType: string | null,
+    discountMeta: any,
+  ): number {
+    const margins: Record<number, number> = {
+      0: 18.12,
+      5: 23.81,
+      12: 28.67,
+      18: 32.20,
+    };
+    const retailMargin = margins[gstPercent] || 0;
+    const ptr = Math.round((mrp - (mrp * retailMargin / 100)) * 100) / 100;
+    
+    let finalPtr = ptr;
+    let discountPercent = 0;
+    
+    if (
+      discountType === 'PTR_DISCOUNT' ||
+      discountType === 'PTR_PLUS_SAME_PRODUCT_BONUS' ||
+      discountType === 'PTR_PLUS_DIFFERENT_PRODUCT_BONUS'
+    ) {
+      discountPercent = discountMeta?.discountPercent ?? 0;
+      finalPtr = Math.round((ptr - (ptr * discountPercent / 100)) * 100) / 100;
+    } else if (discountType === 'SPECIAL_PRICE') {
+      finalPtr = discountMeta?.specialPrice ?? ptr;
+    }
+    
+    const gstValue = Math.round((finalPtr * gstPercent / 100) * 100) / 100;
+    const perPtrWithGst = Math.round((finalPtr + gstValue) * 100) / 100;
+    
+    return perPtrWithGst;
+  }
+
+  private getBestOffer(m: any) {
+    const listings = (m.productVariants || []).flatMap((v: any) => v.sellerOffers || []);
+    if (listings.length === 0) return null;
+    
+    let bestOffer: any = null;
+    let minSellingPrice = Infinity;
+    
+    for (const l of listings) {
+      const sellingPrice = this.calculateSellingPrice(l.mrp, l.gstPercent, l.discountType, l.discountMeta);
+      if (sellingPrice < minSellingPrice) {
+        minSellingPrice = sellingPrice;
+        bestOffer = {
+          ...l,
+          sellingPrice,
+        };
+      }
+    }
+    
+    return bestOffer;
+  }
+
   private mapMasterToGrid(m: any) {
     const listings = (m.productVariants || []).flatMap((v: any) => v.sellerOffers || []);
-    const minPrice = listings.length > 0 ? Math.min(...listings.map((l: any) => l.mrp)) : m.mrp;
-    const minMoq = listings.length > 0 ? Math.min(...listings.map((l: any) => l.minimumOrderQuantity || 1)) : 1;
-    const bestListingId = listings.length > 0 ? listings.reduce((prev: any, curr: any) => prev.mrp < curr.mrp ? prev : curr).id : null;
+    const bestOffer = this.getBestOffer(m);
+    
     const hasSellers = listings.length > 0;
-
+    const minMoq = listings.length > 0 ? Math.min(...listings.map((l: any) => l.minimumOrderQuantity || 1)) : 1;
+    
     return {
       id: m.id,
       name: m.name,
       slug: m.slug,
       manufacturer: m.manufacturer,
 
-      mrp: m.mrp,
-      price: minPrice,
+      mrp: bestOffer ? bestOffer.mrp : m.mrp,
+      price: bestOffer ? bestOffer.sellingPrice : null,
+      discountType: bestOffer ? bestOffer.discountType : null,
+      discountMeta: bestOffer ? bestOffer.discountMeta : null,
+      gstPercent: bestOffer ? bestOffer.gstPercent : null,
+      
       moq: minMoq,
-      bestListingId,
+      bestListingId: bestOffer ? bestOffer.id : null,
       hasSellers,
       sellerCount: listings.length,
       image: m.images?.[0]?.url || null,
@@ -904,9 +964,11 @@ export class ProductsService {
           (v.sellerOffers || []).map((p: any) => {
               const batches = p.batches || [];
               const stock = batches.reduce((sum: number, b: any) => sum + b.stock, 0);
+              const sellingPrice = this.calculateSellingPrice(p.mrp, p.gstPercent, p.discountType, p.discountMeta);
               return {
                   id: p.id,
-                  price: p.mrp,
+                  price: sellingPrice,
+                  mrp: p.mrp,
                   discountType: p.discountType,
                   discountMeta: p.discountMeta,
                   deliveryText: p.deliveryText,
@@ -1110,6 +1172,14 @@ export class ProductsService {
       categoryName = product.category.name || product.category.id;
     }
 
+    let price = product.price;
+    let mrp = product.mrp;
+    
+    if (product.discountType !== undefined && !product.productVariants) {
+      price = this.calculateSellingPrice(product.mrp, product.gstPercent || 0, product.discountType, product.discountMeta);
+      mrp = product.mrp;
+    }
+
     const { batches: _batches, images: _images, category: _category, ...rest } = product;
     return {
       ...rest,
@@ -1117,6 +1187,8 @@ export class ProductsService {
       images,
       stock: totalStock,
       expiryDate: nearestExpiry,
+      price,
+      mrp,
     };
   }
 
