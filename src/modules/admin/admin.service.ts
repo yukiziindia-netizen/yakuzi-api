@@ -690,7 +690,25 @@ export class AdminService {
         },
         items: {
           include: {
-            sellerOffer: { select: { id: true, name: true, manufacturer: true, mrp: true } },
+            sellerOffer: {
+              select: {
+                id: true,
+                name: true,
+                manufacturer: true,
+                mrp: true,
+                variant: {
+                  select: {
+                    catalogProduct: {
+                      select: {
+                        images: {
+                          select: { url: true }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
             seller: { select: { id: true, companyName: true } },
           },
         },

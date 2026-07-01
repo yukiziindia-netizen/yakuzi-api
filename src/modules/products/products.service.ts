@@ -947,11 +947,11 @@ export class ProductsService {
 
   private mapMasterToGrid(m: any) {
     const listings = (m.productVariants || []).flatMap((v: any) => v.sellerOffers || []);
+    const bestOffer = this.getBestOffer(listings);
     const minPrice = listings.length > 0 ? Math.min(...listings.map((l: any) => l.mrp)) : m.mrp;
     const minMoq = listings.length > 0 ? Math.min(...listings.map((l: any) => l.minimumOrderQuantity || 1)) : 1;
     const bestListingId = listings.length > 0 ? listings.reduce((prev: any, curr: any) => prev.mrp < curr.mrp ? prev : curr).id : null;
     const hasSellers = listings.length > 0;
-    const minMoq = listings.length > 0 ? Math.min(...listings.map((l: any) => l.minimumOrderQuantity || 1)) : 1;
     
     return {
       id: m.id,

@@ -252,8 +252,8 @@ export class OrdersService {
     // Fallback: Populate images if variant is null (e.g. unlinked custom/temporary offers)
     for (const order of orders) {
       for (const item of order.items) {
-        if (item.sellerOffer && !item.sellerOffer.variant) {
-          const cleanName = item.sellerOffer.name.replace(/\.\.\./g, '').trim();
+        if (item.sellerOffer && !(item.sellerOffer as any).variant) {
+          const cleanName = (item.sellerOffer as any).name.replace(/\.\.\./g, '').trim();
           const catalogProduct = await this.prisma.catalogProduct.findFirst({
             where: {
               name: {
