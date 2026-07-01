@@ -1,5 +1,5 @@
 /**
- * PharmaBag Legacy → v2 Migration Script
+ * Yukizi Legacy → v2 Migration Script
  *
  * All-in-one: connects to legacy MongoDB, extracts, transforms, and imports
  * data into the new system via the Migration API endpoints.
@@ -32,7 +32,7 @@ import * as path from 'path';
 
 const LEGACY_MONGODB_URL =
   process.env.LEGACY_MONGODB_URL ||
-  'mongodb+srv://pharmabag2022:VzuzZwpts0mb8sWr@cluster0.8e37j.mongodb.net/pharma-dev';
+  'mongodb+srv://yukizi2022:VzuzZwpts0mb8sWr@cluster0.8e37j.mongodb.net/pharma-dev';
 
 const API_BASE_URL = process.env.API_BASE_URL || 'http://localhost:3000/api';
 const ADMIN_JWT_TOKEN = process.env.ADMIN_JWT_TOKEN || '';
@@ -745,7 +745,7 @@ async function importInBatches<T>(
 
 async function main(): Promise<void> {
   console.log('╔══════════════════════════════════════════════╗');
-  console.log('║  PharmaBag Legacy → v2 Migration            ║');
+  console.log('║  Yukizi Legacy → v2 Migration            ║');
   console.log('╚══════════════════════════════════════════════╝');
   console.log(`  API:       ${API_BASE_URL}`);
   console.log(`  MongoDB:   ${LEGACY_MONGODB_URL.replace(/:[^@]+@/, ':***@')}`);

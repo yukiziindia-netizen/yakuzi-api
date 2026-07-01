@@ -82,7 +82,7 @@ Because the production RDS database is in a private subnet with no public intern
 | `AWS_ACCESS_KEY`           | No       | —                           | S3 access key                   |
 | `AWS_SECRET_KEY`           | No       | —                           | S3 secret key                   |
 | `AWS_REGION`               | No       | `ap-south-1`                | AWS region                      |
-| `AWS_BUCKET`               | No       | `pharmabag-images`          | S3 bucket name                  |
+| `AWS_BUCKET`               | No       | `yukizi-images`          | S3 bucket name                  |
 | `CORS_ORIGINS`             | No       | `http://localhost:3000,...` | Comma-separated allowed origins |
 | `PLATFORM_COMMISSION_RATE` | No       | `5`                         | Commission % on orders          |
 
@@ -97,7 +97,7 @@ Open **http://localhost:3000/api/docs** after starting the server.
 
 ### Postman Collection
 
-Import `docs/pharmabag-api.postman_collection.json` into Postman. The collection includes:
+Import `docs/yukizi-api.postman_collection.json` into Postman. The collection includes:
 
 - All endpoints organized into 18 folders (including Categories & Migration)
 - Pre-configured auth tokens as collection variables

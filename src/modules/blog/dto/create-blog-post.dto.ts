@@ -62,7 +62,7 @@ export class CreateBlogPostDto {
   status?: BlogStatus;
 
   // SEO Fields
-  @ApiPropertyOptional({ example: 'Best Cold Medicines in India | Pharmabag' })
+  @ApiPropertyOptional({ example: 'Best Cold Medicines in India | Yukizi' })
   @IsOptional()
   @IsString()
   @MaxLength(200)
@@ -80,7 +80,7 @@ export class CreateBlogPostDto {
   @IsString({ each: true })
   metaKeywords?: string[];
 
-  @ApiPropertyOptional({ example: 'https://pharmabag.com/blog/cold-medicine' })
+  @ApiPropertyOptional({ example: 'https://yukizi.com/blog/cold-medicine' })
   @IsOptional()
   @IsString()
   canonicalUrl?: string;

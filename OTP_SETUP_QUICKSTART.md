@@ -15,7 +15,7 @@ NIMBUS_SENDER=PHABAG
 NIMBUS_REFERENCE_ID=1564879
 NIMBUS_ENTITY_ID=1701163558888608648
 NIMBUS_TEMPLATE_ID=1707163835062147514
-NIMBUS_OTP_MESSAGE=Welcome to Pharmabag. Use OTP {otp} to login to your Pharmabag account
+NIMBUS_OTP_MESSAGE=Welcome to Yukizi. Use OTP {otp} to login to your Yukizi account
 ```
 
 ### Step 2: Build & Run
@@ -166,7 +166,7 @@ For detailed information, see: [OTP_INTEGRATION_GUIDE.md](./OTP_INTEGRATION_GUID
 - Dashboard: http://nimbusit.info
 - Check API documentation for response codes
 
-### For PharmaBag Integration Issues
+### For Yukizi Integration Issues
 - Check logs: `tail -f logs/production.log`
 - Verify environment variables
 - Ensure Redis is running

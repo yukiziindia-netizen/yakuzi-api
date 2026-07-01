@@ -53,10 +53,10 @@ import { BannersModule } from './modules/banners/banners.module';
         AWS_SECRET_KEY: Joi.string().allow('').default(''),
         AWS_SECRET_ACCESS_KEY: Joi.string().allow('').default(''),
         AWS_ACCESS_SECRET_KEY: Joi.string().allow('').default(''),
-        AWS_BUCKET: Joi.string().default('pharmabag-images'),
+        AWS_BUCKET: Joi.string().default('yukizi-images'),
         AWS_REGION: Joi.string().default('ap-south-1'),
         CORS_ORIGINS: Joi.string().default(
-          'http://localhost:3000,http://localhost:3001,http://localhost:3002,http://localhost:3003,http://localhost:5173,https://pharmabag-web-admin.vercel.app,https://pharmabag-web-seller.vercel.app,https://pharmabag-web-buyer.vercel.app,https://seller.pharmabag.com,https://admin.pharmabag.com,https://pharmabag-api.onrender.com/api,https://pharmabag-api.onrender.com,https://pharmabag.in,https://www.pharmabag.in,https://admin.pharmabag.in,https://seller.pharmabag.in,http://api.pharmabag.in,api.pharmabag.in',
+          'http://localhost:3000,http://localhost:3001,http://localhost:3002,http://localhost:3003,http://localhost:5173,https://yukizi-web-admin.vercel.app,https://yukizi-web-seller.vercel.app,https://yukizi-web-buyer.vercel.app,https://seller.yukizi.com,https://admin.yukizi.com,https://yukizi-api.onrender.com/api,https://yukizi-api.onrender.com,https://yukizi.in,https://www.yukizi.in,https://admin.yukizi.in,https://seller.yukizi.in,http://api.yukizi.in,api.yukizi.in',
         ),
         PLATFORM_COMMISSION_RATE: Joi.number().default(0.05),
         IDFY_ACCOUNT_ID: Joi.string().allow('').optional(),

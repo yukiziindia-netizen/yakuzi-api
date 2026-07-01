@@ -2,7 +2,7 @@
 ## Current NestJS Backend vs Legacy Express Implementation
 
 **Report Date:** March 27, 2026  
-**Workspace:** PharmaBag API (NestJS 11, Prisma 6, PostgreSQL)  
+**Workspace:** Yukizi API (NestJS 11, Prisma 6, PostgreSQL)  
 **Status:** ⚠️ NOT IMPLEMENTED — 0% Complete
 
 ---
@@ -254,7 +254,7 @@ PLATFORM_COMMISSION_RATE=0.05
 AWS_ACCESS_KEY=
 AWS_SECRET_KEY=
 AWS_REGION=ap-south-1
-AWS_BUCKET=pharmabag-images
+AWS_BUCKET=yukizi-images
 NIMBUS_API_URL=...
 NIMBUS_USER=...
 NIMBUS_KEY=...

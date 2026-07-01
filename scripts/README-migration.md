@@ -1,8 +1,8 @@
-# PharmaBag Legacy → v2 Migration
+# Yukizi Legacy → v2 Migration
 
 ## Overview
 
-This script migrates all data from the legacy PharmaBag MongoDB database into the new PostgreSQL-based v2 system. It handles:
+This script migrates all data from the legacy Yukizi MongoDB database into the new PostgreSQL-based v2 system. It handles:
 
 - **Users** (buyers + sellers) → merged by phone number, with KYC/address data
 - **Orders** → with cart snapshot → order items, delivery addresses
@@ -59,7 +59,7 @@ ADMIN_JWT_TOKEN=<your-token> npx ts-node scripts/migrate-from-legacy.ts
 
 | Variable | Default | Description |
 |---|---|---|
-| `LEGACY_MONGODB_URL` | Legacy PharmaBag MongoDB | Connection string for legacy DB |
+| `LEGACY_MONGODB_URL` | Legacy Yukizi MongoDB | Connection string for legacy DB |
 | `API_BASE_URL` | `http://localhost:3000/api` | New system API endpoint |
 | `ADMIN_JWT_TOKEN` | *(required)* | JWT for ADMIN user |
 | `BATCH_SIZE` | `50` | Records per API batch call |

@@ -1,6 +1,6 @@
 {
   "info": {
-    "name": "PharmaBag API",
+    "name": "Yukizi API",
     "description": "B2B Pharmaceutical Marketplace API — Complete endpoint collection.\n\nBase URL: {{baseUrl}} (default http://localhost:3000/api)\nSwagger Docs: http://localhost:3000/api/docs\n\nTest credentials:\n- Buyer: 7777777777\n- Seller: 8888888888\n- Admin: 9999999999\n\nOTP in dev mode is logged to console. Retrieve from Redis: redis-cli GET otp:<phone>",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -645,7 +645,7 @@
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"proofUrl\": \"https://s3.amazonaws.com/pharmabag-images/payment-proof.jpg\"\n}"
+              "raw": "{\n  \"proofUrl\": \"https://s3.amazonaws.com/yukizi-images/payment-proof.jpg\"\n}"
             }
           }
         },
@@ -1201,7 +1201,7 @@
                 "header": [{ "key": "Content-Type", "value": "application/json" }],
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"title\": \"Best Medicines for Cold in India\",\n  \"slug\": \"best-medicines-for-cold-india\",\n  \"excerpt\": \"Discover effective medicines for cold relief in India.\",\n  \"content\": { \"blocks\": [{ \"type\": \"paragraph\", \"data\": { \"text\": \"Cold and flu are common ailments. Here are the best medicines available in India.\" } }] },\n  \"featuredImage\": \"https://example.com/cold-medicine.jpg\",\n  \"authorId\": \"{{blogAuthorId}}\",\n  \"categoryId\": \"{{blogCategoryId}}\",\n  \"tags\": [\"cold\", \"medicine\", \"india\"],\n  \"status\": \"DRAFT\",\n  \"metaTitle\": \"Best Cold Medicines in India | Pharmabag\",\n  \"metaDescription\": \"Top medicines for cold relief available across India.\",\n  \"metaKeywords\": [\"cold medicine india\", \"flu tablets\"],\n  \"canonicalUrl\": \"https://pharmabag.com/blog/best-medicines-for-cold-india\",\n  \"ogImage\": \"https://example.com/cold-medicine-og.jpg\"\n}"
+                  "raw": "{\n  \"title\": \"Best Medicines for Cold in India\",\n  \"slug\": \"best-medicines-for-cold-india\",\n  \"excerpt\": \"Discover effective medicines for cold relief in India.\",\n  \"content\": { \"blocks\": [{ \"type\": \"paragraph\", \"data\": { \"text\": \"Cold and flu are common ailments. Here are the best medicines available in India.\" } }] },\n  \"featuredImage\": \"https://example.com/cold-medicine.jpg\",\n  \"authorId\": \"{{blogAuthorId}}\",\n  \"categoryId\": \"{{blogCategoryId}}\",\n  \"tags\": [\"cold\", \"medicine\", \"india\"],\n  \"status\": \"DRAFT\",\n  \"metaTitle\": \"Best Cold Medicines in India | Yukizi\",\n  \"metaDescription\": \"Top medicines for cold relief available across India.\",\n  \"metaKeywords\": [\"cold medicine india\", \"flu tablets\"],\n  \"canonicalUrl\": \"https://yukizi.com/blog/best-medicines-for-cold-india\",\n  \"ogImage\": \"https://example.com/cold-medicine-og.jpg\"\n}"
                 }
               }
             },
@@ -1241,7 +1241,7 @@
                 "header": [{ "key": "Content-Type", "value": "application/json" }],
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"title\": \"Best Medicines for Cold in India — Updated Guide\",\n  \"excerpt\": \"Updated: Discover the most effective cold medicines in India for 2026.\",\n  \"metaTitle\": \"Best Cold Medicines in India 2026 | Pharmabag\"\n}"
+                  "raw": "{\n  \"title\": \"Best Medicines for Cold in India — Updated Guide\",\n  \"excerpt\": \"Updated: Discover the most effective cold medicines in India for 2026.\",\n  \"metaTitle\": \"Best Cold Medicines in India 2026 | Yukizi\"\n}"
                 }
               }
             },

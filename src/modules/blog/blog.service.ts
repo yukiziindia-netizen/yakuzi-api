@@ -46,7 +46,7 @@ export class BlogService {
           author = await this.prisma.blogAuthor.create({
             data: {
               name: user.adminProfile?.displayName || 'Admin',
-              bio: 'PharmaBag Admin',
+              bio: 'Yukizi Admin',
               avatar: ''
             }
           });

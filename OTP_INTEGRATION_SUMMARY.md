@@ -2,7 +2,7 @@
 
 ## ✅ Implementation Complete
 
-The PharmaBag API now has full production-ready OTP SMS integration with **Nimbus IT SMS Service**.
+The Yukizi API now has full production-ready OTP SMS integration with **Nimbus IT SMS Service**.
 
 ---
 
@@ -46,7 +46,7 @@ The PharmaBag API now has full production-ready OTP SMS integration with **Nimbu
 | `NIMBUS_REFERENCE_ID` | `1564879` | No |
 | `NIMBUS_ENTITY_ID` | `1701163558888608648` | No |
 | `NIMBUS_TEMPLATE_ID` | `1707163835062147514` | No |
-| `NIMBUS_OTP_MESSAGE` | `Welcome to Pharmabag...` | No |
+| `NIMBUS_OTP_MESSAGE` | `Welcome to Yukizi...` | No |
 
 Add these to your `.env` file before deployment.
 
@@ -246,7 +246,7 @@ See **OTP_INTEGRATION_GUIDE.md** for detailed troubleshooting.
 ## 📞 Support Resources
 
 - **Nimbus IT API**: http://nimbusit.info
-- **PharmaBag GitHub**: [Your repo URL]
+- **Yukizi GitHub**: [Your repo URL]
 - **Issues**: Check logs and configuration first
 
 ---

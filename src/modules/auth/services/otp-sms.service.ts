@@ -33,7 +33,7 @@ export class OtpSmsService {
 
     this.messageTemplate =
       this.configService.get<string>('NIMBUS_OTP_MESSAGE') ||
-      'Welcome to Pharmabag. Use OTP {otp} to login to your Pharmabag account';
+      'Welcome to Yukizi. Use OTP {otp} to login to your Yukizi account';
 
     if (!this.user || !this.password) {
       this.logger.warn('Nimbus SMS credentials (NIMBUS_USER/NIMBUS_KEY) missing!');

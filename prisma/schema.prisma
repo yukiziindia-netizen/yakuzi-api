@@ -107,6 +107,7 @@ model SellerProfile {
   fssaiNumber        String?
   bankAccount        Json?
   cancelCheck        String?
+  additionalDocuments String[]
   drugLicenseNumber2 String?
   drugLicenseUrl2    String?
   drugLicenseExpiry  DateTime?

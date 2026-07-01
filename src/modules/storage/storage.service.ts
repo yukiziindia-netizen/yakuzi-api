@@ -22,7 +22,7 @@ export class StorageService {
 
   constructor(private readonly config: ConfigService) {
     this.region = this.config.get<string>('AWS_REGION', 'ap-south-1');
-    this.bucket = this.config.get<string>('AWS_BUCKET', 'pharmabag03');
+    this.bucket = this.config.get<string>('AWS_BUCKET', 'yukizi03');
 
     const accessKeyId = this.config.get<string>('AWS_ACCESS_KEY_ID') || this.config.get<string>('AWS_ACCESS_KEY', '');
     const secretAccessKey = this.config.get<string>('AWS_SECRET_ACCESS_KEY') || this.config.get<string>('AWS_ACCESS_SECRET_KEY') || this.config.get<string>('AWS_SECRET_KEY', '');

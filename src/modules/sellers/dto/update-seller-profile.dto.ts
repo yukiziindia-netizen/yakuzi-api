@@ -31,6 +31,11 @@ export class UpdateSellerProfileDto {
   @IsOptional()
   cancelCheck?: string;
 
+  @ApiPropertyOptional({ example: ['https://s3.amazonaws.com/doc1.pdf'] })
+  @IsOptional()
+  @IsString({ each: true })
+  additionalDocuments?: string[];
+
   @ApiPropertyOptional({ example: '27AABCU9603R1ZM' })
   @IsOptional()
   @IsString()
@@ -60,7 +65,7 @@ export class UpdateSellerProfileDto {
   @IsString()
   drugLicenseNumber?: string;
 
-  @ApiPropertyOptional({ example: 'https://s3.amazonaws.com/pharmabag-images/drug-license.pdf' })
+  @ApiPropertyOptional({ example: 'https://s3.amazonaws.com/yukizi-images/drug-license.pdf' })
   @IsOptional()
   @IsString()
   drugLicenseUrl?: string;
@@ -70,7 +75,7 @@ export class UpdateSellerProfileDto {
   @IsString()
   drugLicenseNumber2?: string;
 
-  @ApiPropertyOptional({ example: 'https://s3.amazonaws.com/pharmabag-images/drug-license2.pdf' })
+  @ApiPropertyOptional({ example: 'https://s3.amazonaws.com/yukizi-images/drug-license2.pdf' })
   @IsOptional()
   @IsString()
   drugLicenseUrl2?: string;

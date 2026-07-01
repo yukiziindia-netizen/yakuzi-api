@@ -13,7 +13,7 @@ export class NimbusDataDto {
   Sender: string;
 
   @ApiProperty({
-    example: 'Welcome to Pharmabag. Use OTP {otp} to login to your Pharmabag account',
+    example: 'Welcome to Yukizi. Use OTP {otp} to login to your Yukizi account',
   })
   Message: string;
 

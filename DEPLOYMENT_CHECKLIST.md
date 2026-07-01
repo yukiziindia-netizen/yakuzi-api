@@ -32,7 +32,7 @@ NIMBUS_SENDER=PHABAG
 NIMBUS_REFERENCE_ID=1564879
 NIMBUS_ENTITY_ID=1701163558888608648
 NIMBUS_TEMPLATE_ID=1707163835062147514
-NIMBUS_OTP_MESSAGE=Welcome to Pharmabag. Use OTP {otp} to login to your Pharmabag account
+NIMBUS_OTP_MESSAGE=Welcome to Yukizi. Use OTP {otp} to login to your Yukizi account
 ```
 
 ---
@@ -78,7 +78,7 @@ npm run start:prod
 #### 2.3 Verify in Staging
 ```bash
 # Send OTP
-curl -X POST https://staging.pharmabag.com/api/auth/send-otp \
+curl -X POST https://staging.yukizi.com/api/auth/send-otp \
   -H "Content-Type: application/json" \
   -d '{"phone": "9831864222"}'
 
@@ -98,7 +98,7 @@ NIMBUS_SENDER=PHABAG
 NIMBUS_REFERENCE_ID=1564879
 NIMBUS_ENTITY_ID=1701163558888608648
 NIMBUS_TEMPLATE_ID=1707163835062147514
-NIMBUS_OTP_MESSAGE=Welcome to Pharmabag. Use OTP {otp} to login to your Pharmabag account
+NIMBUS_OTP_MESSAGE=Welcome to Yukizi. Use OTP {otp} to login to your Yukizi account
 ```
 
 #### 3.2 Security Checks
@@ -126,7 +126,7 @@ npm run start:prod
 ### 1. Health Checks
 ```bash
 # Health endpoint
-curl https://api.pharmabag.com/api/health
+curl https://api.yukizi.com/api/health
 
 # Should respond with status and timestamp
 ```
@@ -134,14 +134,14 @@ curl https://api.pharmabag.com/api/health
 ### 2. OTP Service Verification
 ```bash
 # Test 1: Send OTP
-curl -X POST https://api.pharmabag.com/api/auth/send-otp \
+curl -X POST https://api.yukizi.com/api/auth/send-otp \
   -H "Content-Type: application/json" \
   -d '{"phone": "9831864222"}'
 
 # Expected: {"message": "OTP sent successfully"}
 
 # Test 2: Verify with OTP (check logs or Redis for actual OTP)
-curl -X POST https://api.pharmabag.com/api/auth/verify-otp \
+curl -X POST https://api.yukizi.com/api/auth/verify-otp \
   -H "Content-Type: application/json" \
   -d '{"phone": "9831864222", "otp": "123456"}'
 
@@ -252,7 +252,7 @@ See **OTP_INTEGRATION_GUIDE.md** for detailed troubleshooting.
 ## Support Contacts
 
 - **Nimbus IT Support**: http://nimbusit.info
-- **PharmaBag DevOps**: [Your contact info]
+- **Yukizi DevOps**: [Your contact info]
 - **On-Call**: [Your on-call schedule]
 
 ---

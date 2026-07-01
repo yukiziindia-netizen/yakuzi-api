@@ -5,13 +5,13 @@ async function main() {
   const users = await prisma.user.findMany({
     where: {
       email: {
-        contains: 'pharmabag'
+        contains: 'yukizi'
       }
     }
   });
 
   for (const user of users) {
-    const newEmail = user.email.replace(/pharmabag/i, 'yukizi');
+    const newEmail = user.email.replace(/yukizi/i, 'yukizi');
     await prisma.user.update({
       where: { id: user.id },
       data: { email: newEmail }

@@ -18,7 +18,7 @@ async function testMastersIndia() {
       'Content-Length': Buffer.byteLength(payload),
       'client_id': 'gzBinPpAawEwvPCagt',
       'Accept': 'application/json',
-      'User-Agent': 'PharmaBag/1.0.1'
+      'User-Agent': 'Yukizi/1.0.1'
     }
   };
 

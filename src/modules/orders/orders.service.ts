@@ -236,7 +236,17 @@ export class OrdersService {
                 name: true,
                 manufacturer: true,
                 mrp: true,
-                
+                variant: {
+                  select: {
+                    catalogProduct: {
+                      select: {
+                        images: {
+                          select: { url: true }
+                        }
+                      }
+                    }
+                  }
+                }
               },
             },
             seller: {
@@ -441,7 +451,17 @@ export class OrdersService {
             name: true,
             manufacturer: true,
             mrp: true,
-            
+            variant: {
+              select: {
+                catalogProduct: {
+                  select: {
+                    images: {
+                      select: { url: true }
+                    }
+                  }
+                }
+              }
+            }
           },
         },
         order: {
