@@ -1,5 +1,12 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsOptional, IsNumber, IsBoolean, IsUUID, IsArray } from 'class-validator';
+import {
+  IsString,
+  IsOptional,
+  IsNumber,
+  IsBoolean,
+  IsUUID,
+  IsArray,
+} from 'class-validator';
 
 export class UpdateSuggestionDto {
   @ApiPropertyOptional({ example: 'Baconil 2mg' })
@@ -16,6 +23,16 @@ export class UpdateSuggestionDto {
   @IsString()
   @IsOptional()
   salt?: string;
+
+  @ApiPropertyOptional({ example: 'SKU12345' })
+  @IsString()
+  @IsOptional()
+  sku?: string;
+
+  @ApiPropertyOptional({ example: 'Material: Cotton' })
+  @IsString()
+  @IsOptional()
+  specifications?: string;
 
   @ApiPropertyOptional({ example: 'Detailed description' })
   @IsString()
@@ -58,6 +75,11 @@ export class UpdateSuggestionDto {
   @IsOptional()
   gstPercent?: number | null;
 
+  @ApiPropertyOptional({ example: false })
+  @IsBoolean()
+  @IsOptional()
+  isTaxIncluded?: boolean;
+
   @ApiPropertyOptional({ example: 'uuid-category-id' })
   @IsString()
   @IsOptional()
@@ -88,11 +110,15 @@ export class UpdateSuggestionDto {
   @IsOptional()
   isAd?: boolean;
 
-  @ApiPropertyOptional({ example: [{ name: 'Size', values: ['Medium', 'Large'] }] })
+  @ApiPropertyOptional({
+    example: [{ name: 'Size', values: ['Medium', 'Large'] }],
+  })
   @IsOptional()
   options?: any[];
 
-  @ApiPropertyOptional({ example: [{ name: 'Medium / Red', price: 100, available: 50 }] })
+  @ApiPropertyOptional({
+    example: [{ name: 'Medium / Red', price: 100, available: 50 }],
+  })
   @IsOptional()
   variants?: any[];
 }

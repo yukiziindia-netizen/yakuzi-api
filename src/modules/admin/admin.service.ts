@@ -29,7 +29,6 @@ import { AdminUpdateTicketStatusDto } from './dto/admin-update-ticket-status.dto
 import { AdminReplyTicketDto } from './dto/admin-reply-ticket.dto';
 import { NotificationsService } from '../notifications/notifications.service';
 
-
 @Injectable()
 export class AdminService {
   private readonly logger = new Logger(AdminService.name);
@@ -38,7 +37,6 @@ export class AdminService {
     private readonly prisma: PrismaService,
     private readonly notificationsService: NotificationsService,
   ) {}
-
 
   // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   // DASHBOARD
@@ -147,7 +145,10 @@ export class AdminService {
         pendingProductRequests,
       };
     } catch (error) {
-      this.logger.error(`Failed to fetch dashboard metrics: ${error.message}`, error.stack);
+      this.logger.error(
+        `Failed to fetch dashboard metrics: ${error.message}`,
+        error.stack,
+      );
       throw error; // Re-throw so NestJS returns 500 but we at least see the log on Render
     }
   }
@@ -157,7 +158,15 @@ export class AdminService {
   // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
   async getAllUsers(query: QueryUsersDto) {
-    const { role, status, search, dateFrom, dateTo, page = 1, limit = 20 } = query;
+    const {
+      role,
+      status,
+      search,
+      dateFrom,
+      dateTo,
+      page = 1,
+      limit = 20,
+    } = query;
     const skip = (page - 1) * limit;
 
     const where: Prisma.UserWhereInput = {};
@@ -174,8 +183,16 @@ export class AdminService {
       where.OR = [
         { phone: { contains: search, mode: 'insensitive' } },
         { email: { contains: search, mode: 'insensitive' } },
-        { buyerProfile: { legalName: { contains: search, mode: 'insensitive' } } },
-        { sellerProfile: { companyName: { contains: search, mode: 'insensitive' } } },
+        {
+          buyerProfile: {
+            legalName: { contains: search, mode: 'insensitive' },
+          },
+        },
+        {
+          sellerProfile: {
+            companyName: { contains: search, mode: 'insensitive' },
+          },
+        },
       ];
     }
 
@@ -241,7 +258,7 @@ export class AdminService {
             drugLicenseExpiry2: true,
             verificationStatus: true,
             updatedAt: true,
-          }
+          },
         },
         _count: { select: { orders: true, reviews: true, tickets: true } },
       },
@@ -284,9 +301,15 @@ export class AdminService {
       where: { id: userId },
       data: { status: UserStatus.APPROVED },
       select: {
-        id: true, phone: true, email: true, role: true,
-        status: true, createdAt: true, updatedAt: true,
-        buyerProfile: true, sellerProfile: true,
+        id: true,
+        phone: true,
+        email: true,
+        role: true,
+        status: true,
+        createdAt: true,
+        updatedAt: true,
+        buyerProfile: true,
+        sellerProfile: true,
       },
     });
 
@@ -298,7 +321,9 @@ export class AdminService {
     }
 
     // Also approve buyer profile â€” set VERIFIED + default PREPAID tier so buyer can place orders
-    const buyerProfile = await this.prisma.buyerProfile.findUnique({ where: { userId } });
+    const buyerProfile = await this.prisma.buyerProfile.findUnique({
+      where: { userId },
+    });
     if (buyerProfile) {
       await this.prisma.buyerProfile.update({
         where: { userId },
@@ -329,9 +354,15 @@ export class AdminService {
       where: { id: userId },
       data: { status: UserStatus.REJECTED },
       select: {
-        id: true, phone: true, email: true, role: true,
-        status: true, createdAt: true, updatedAt: true,
-        buyerProfile: true, sellerProfile: true,
+        id: true,
+        phone: true,
+        email: true,
+        role: true,
+        status: true,
+        createdAt: true,
+        updatedAt: true,
+        buyerProfile: true,
+        sellerProfile: true,
       },
     });
 
@@ -343,7 +374,9 @@ export class AdminService {
     }
 
     // Also reject buyer profile
-    const buyerProfile = await this.prisma.buyerProfile.findUnique({ where: { userId } });
+    const buyerProfile = await this.prisma.buyerProfile.findUnique({
+      where: { userId },
+    });
     if (buyerProfile) {
       await this.prisma.buyerProfile.update({
         where: { userId },
@@ -367,9 +400,15 @@ export class AdminService {
       where: { id: userId },
       data: { status: UserStatus.BLOCKED },
       select: {
-        id: true, phone: true, email: true, role: true,
-        status: true, createdAt: true, updatedAt: true,
-        buyerProfile: true, sellerProfile: true,
+        id: true,
+        phone: true,
+        email: true,
+        role: true,
+        status: true,
+        createdAt: true,
+        updatedAt: true,
+        buyerProfile: true,
+        sellerProfile: true,
       },
     });
 
@@ -388,9 +427,15 @@ export class AdminService {
       where: { id: userId },
       data: { status: UserStatus.APPROVED },
       select: {
-        id: true, phone: true, email: true, role: true,
-        status: true, createdAt: true, updatedAt: true,
-        buyerProfile: true, sellerProfile: true,
+        id: true,
+        phone: true,
+        email: true,
+        role: true,
+        status: true,
+        createdAt: true,
+        updatedAt: true,
+        buyerProfile: true,
+        sellerProfile: true,
       },
     });
 
@@ -403,7 +448,16 @@ export class AdminService {
   // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
   async getAllProducts(query: AdminQueryProductsDto) {
-    const { sellerId, categoryId, subCategoryId, search, isActive, approvalStatus, page = 1, limit = 20 } = query;
+    const {
+      sellerId,
+      categoryId,
+      subCategoryId,
+      search,
+      isActive,
+      approvalStatus,
+      page = 1,
+      limit = 20,
+    } = query;
     const skip = (page - 1) * limit;
 
     const where: Prisma.SellerOfferWhereInput = { deletedAt: null };
@@ -412,15 +466,18 @@ export class AdminService {
     if (subCategoryId) where.subCategoryId = subCategoryId;
     if (isActive === 'true') where.isActive = true;
     if (isActive === 'false') where.isActive = false;
-    if (approvalStatus && ['PENDING', 'APPROVED', 'REJECTED'].includes(approvalStatus.toUpperCase())) {
-      where.approvalStatus = approvalStatus.toUpperCase() as ProductApprovalStatus;
+    if (
+      approvalStatus &&
+      ['PENDING', 'APPROVED', 'REJECTED'].includes(approvalStatus.toUpperCase())
+    ) {
+      where.approvalStatus =
+        approvalStatus.toUpperCase() as ProductApprovalStatus;
     }
 
     if (search) {
       where.OR = [
         { name: { contains: search, mode: 'insensitive' } },
         { manufacturer: { contains: search, mode: 'insensitive' } },
-
       ];
     }
 
@@ -438,21 +495,35 @@ export class AdminService {
           rejectionReason: true,
           createdAt: true,
           updatedAt: true,
-          variant: { select: { catalogProduct: {
+          variant: {
             select: {
-              id: true,
-              _count: { select: { productVariants: true } }
-            }
-          } } },
+              catalogProduct: {
+                select: {
+                  id: true,
+                  _count: { select: { productVariants: true } },
+                },
+              },
+            },
+          },
           seller: { select: { id: true, companyName: true, userId: true } },
           category: { select: { id: true, name: true } },
           subCategory: { select: { id: true, name: true } },
           batches: {
-            select: { id: true, batchNumber: true, stock: true, expiryDate: true },
+            select: {
+              id: true,
+              batchNumber: true,
+              stock: true,
+              expiryDate: true,
+            },
             orderBy: { expiryDate: 'asc' },
           },
           inventoryAlerts: {
-            select: { id: true, alertType: true, message: true, createdAt: true },
+            select: {
+              id: true,
+              alertType: true,
+              message: true,
+              createdAt: true,
+            },
             take: 5,
             orderBy: { createdAt: 'desc' },
           },
@@ -472,13 +543,23 @@ export class AdminService {
     const product = await this.prisma.sellerOffer.findUnique({
       where: { id: sellerOfferId },
       include: {
-        seller: { select: { id: true, companyName: true, userId: true, city: true, state: true } },
+        seller: {
+          select: {
+            id: true,
+            companyName: true,
+            userId: true,
+            city: true,
+            state: true,
+          },
+        },
         category: { select: { id: true, name: true } },
         subCategory: { select: { id: true, name: true } },
         batches: { orderBy: { expiryDate: 'asc' } },
-        
+
         inventoryAlerts: { orderBy: { createdAt: 'desc' }, take: 10 },
-        _count: { select: { reviews: true, orderItems: true, cartItems: true } },
+        _count: {
+          select: { reviews: true, orderItems: true, cartItems: true },
+        },
       },
     });
 
@@ -487,9 +568,12 @@ export class AdminService {
   }
 
   async disableProduct(sellerOfferId: string) {
-    const product = await this.prisma.sellerOffer.findUnique({ where: { id: sellerOfferId } });
+    const product = await this.prisma.sellerOffer.findUnique({
+      where: { id: sellerOfferId },
+    });
     if (!product) throw new NotFoundException('Product not found');
-    if (!product.isActive) throw new BadRequestException('Product is already disabled');
+    if (!product.isActive)
+      throw new BadRequestException('Product is already disabled');
 
     const updated = await this.prisma.sellerOffer.update({
       where: { id: sellerOfferId },
@@ -502,9 +586,12 @@ export class AdminService {
   }
 
   async enableProduct(sellerOfferId: string) {
-    const product = await this.prisma.sellerOffer.findUnique({ where: { id: sellerOfferId } });
+    const product = await this.prisma.sellerOffer.findUnique({
+      where: { id: sellerOfferId },
+    });
     if (!product) throw new NotFoundException('Product not found');
-    if (product.isActive) throw new BadRequestException('Product is already active');
+    if (product.isActive)
+      throw new BadRequestException('Product is already active');
 
     const updated = await this.prisma.sellerOffer.update({
       where: { id: sellerOfferId },
@@ -517,9 +604,12 @@ export class AdminService {
   }
 
   async softDeleteProduct(sellerOfferId: string) {
-    const product = await this.prisma.sellerOffer.findUnique({ where: { id: sellerOfferId } });
+    const product = await this.prisma.sellerOffer.findUnique({
+      where: { id: sellerOfferId },
+    });
     if (!product) throw new NotFoundException('Product not found');
-    if (product.deletedAt) throw new BadRequestException('Product is already deleted');
+    if (product.deletedAt)
+      throw new BadRequestException('Product is already deleted');
 
     const updated = await this.prisma.sellerOffer.update({
       where: { id: sellerOfferId },
@@ -532,7 +622,9 @@ export class AdminService {
   }
 
   async approveProduct(sellerOfferId: string) {
-    const product = await this.prisma.sellerOffer.findUnique({ where: { id: sellerOfferId } });
+    const product = await this.prisma.sellerOffer.findUnique({
+      where: { id: sellerOfferId },
+    });
     if (!product) throw new NotFoundException('Product not found');
     if (product.approvalStatus === ProductApprovalStatus.APPROVED) {
       throw new BadRequestException('Product is already approved');
@@ -546,7 +638,11 @@ export class AdminService {
         rejectionReason: null,
       },
       select: {
-        id: true, name: true, isActive: true, approvalStatus: true, updatedAt: true,
+        id: true,
+        name: true,
+        isActive: true,
+        approvalStatus: true,
+        updatedAt: true,
         seller: { select: { id: true, companyName: true } },
       },
     });
@@ -556,7 +652,9 @@ export class AdminService {
   }
 
   async rejectProduct(sellerOfferId: string, reason?: string) {
-    const product = await this.prisma.sellerOffer.findUnique({ where: { id: sellerOfferId } });
+    const product = await this.prisma.sellerOffer.findUnique({
+      where: { id: sellerOfferId },
+    });
     if (!product) throw new NotFoundException('Product not found');
     if (product.approvalStatus === ProductApprovalStatus.REJECTED) {
       throw new BadRequestException('Product is already rejected');
@@ -570,12 +668,19 @@ export class AdminService {
         rejectionReason: reason || null,
       },
       select: {
-        id: true, name: true, isActive: true, approvalStatus: true, rejectionReason: true, updatedAt: true,
+        id: true,
+        name: true,
+        isActive: true,
+        approvalStatus: true,
+        rejectionReason: true,
+        updatedAt: true,
         seller: { select: { id: true, companyName: true } },
       },
     });
 
-    this.logger.log(`Product ${sellerOfferId} rejected by admin${reason ? `: ${reason}` : ''}`);
+    this.logger.log(
+      `Product ${sellerOfferId} rejected by admin${reason ? `: ${reason}` : ''}`,
+    );
     return updated;
   }
 
@@ -584,7 +689,16 @@ export class AdminService {
   // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
   async getAllOrders(query: AdminQueryOrdersDto) {
-    const { status, search, sellerId, buyerId, dateFrom, dateTo, page = 1, limit = 20 } = query;
+    const {
+      status,
+      search,
+      sellerId,
+      buyerId,
+      dateFrom,
+      dateTo,
+      page = 1,
+      limit = 20,
+    } = query;
     const skip = (page - 1) * limit;
 
     const where: Prisma.OrderWhereInput = {};
@@ -598,8 +712,20 @@ export class AdminService {
         { buyerId: { contains: search, mode: 'insensitive' } },
         { buyer: { phone: { contains: search, mode: 'insensitive' } } },
         { address: { name: { contains: search, mode: 'insensitive' } } },
-        { items: { some: { sellerId: { contains: search, mode: 'insensitive' } } } },
-        { items: { some: { seller: { companyName: { contains: search, mode: 'insensitive' } } } } },
+        {
+          items: {
+            some: { sellerId: { contains: search, mode: 'insensitive' } },
+          },
+        },
+        {
+          items: {
+            some: {
+              seller: {
+                companyName: { contains: search, mode: 'insensitive' },
+              },
+            },
+          },
+        },
       ];
     }
 
@@ -682,10 +808,8 @@ export class AdminService {
                 drugLicenseUrl2: true,
                 cancelCheck: true,
                 document: true,
-              }
+              },
             },
-
-
           },
         },
         items: {
@@ -701,13 +825,13 @@ export class AdminService {
                     catalogProduct: {
                       select: {
                         images: {
-                          select: { url: true }
-                        }
-                      }
-                    }
-                  }
-                }
-              }
+                          select: { url: true },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
             },
             seller: { select: { id: true, companyName: true } },
           },
@@ -732,10 +856,13 @@ export class AdminService {
     return order;
   }
 
-  async adminUpdateOrderStatus(orderId: string, dto: AdminUpdateOrderStatusDto) {
-    const order = await this.prisma.order.findUnique({ 
+  async adminUpdateOrderStatus(
+    orderId: string,
+    dto: AdminUpdateOrderStatusDto,
+  ) {
+    const order = await this.prisma.order.findUnique({
       where: { id: orderId },
-      include: { items: true }
+      include: { items: true },
     });
     if (!order) throw new NotFoundException('Order not found');
 
@@ -743,7 +870,12 @@ export class AdminService {
       where: { id: orderId },
       data: { orderStatus: dto.status },
       include: {
-        buyer: { select: { phone: true, buyerProfile: { select: { legalName: true } } } },
+        buyer: {
+          select: {
+            phone: true,
+            buyerProfile: { select: { legalName: true } },
+          },
+        },
         items: {
           include: {
             sellerOffer: { select: { name: true } },
@@ -754,7 +886,10 @@ export class AdminService {
     });
 
     // Create settlements if status is DELIVERED and payment is successful
-    if (updated.orderStatus === OrderStatus.DELIVERED && updated.paymentStatus === PaymentStatus.SUCCESS) {
+    if (
+      updated.orderStatus === OrderStatus.DELIVERED &&
+      updated.paymentStatus === PaymentStatus.SUCCESS
+    ) {
       for (const item of updated.items) {
         const existing = await this.prisma.sellerSettlement.findUnique({
           where: { orderItemId: item.id },
@@ -774,7 +909,9 @@ export class AdminService {
       }
     }
 
-    this.logger.log(`Order ${orderId} status overridden to ${dto.status} by admin`);
+    this.logger.log(
+      `Order ${orderId} status overridden to ${dto.status} by admin`,
+    );
     return updated;
   }
 
@@ -914,7 +1051,9 @@ export class AdminService {
   }
 
   async adminRejectPayment(paymentId: string) {
-    const payment = await this.prisma.payment.findUnique({ where: { id: paymentId } });
+    const payment = await this.prisma.payment.findUnique({
+      where: { id: paymentId },
+    });
     if (!payment) throw new NotFoundException('Payment not found');
     if (payment.verificationStatus === PaymentVerificationStatus.REJECTED) {
       throw new BadRequestException('Payment is already rejected');
@@ -942,7 +1081,6 @@ export class AdminService {
       include: {
         sellerOffer: {
           include: {
-            
             seller: { select: { companyName: true } },
           },
         },
@@ -978,7 +1116,15 @@ export class AdminService {
     });
   }
   async getAllSettlements(query: AdminQuerySettlementsDto) {
-    const { status, sellerId, orderItemId, dateFrom, dateTo, page = 1, limit = 20 } = query;
+    const {
+      status,
+      sellerId,
+      orderItemId,
+      dateFrom,
+      dateTo,
+      page = 1,
+      limit = 20,
+    } = query;
     const skip = (page - 1) * limit;
 
     const where: Prisma.SellerSettlementWhereInput = {};
@@ -1016,7 +1162,11 @@ export class AdminService {
     return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
   }
 
-  async markSettlementPaid(settlementId: string, payoutReference: string, paymentProofUrl?: string) {
+  async markSettlementPaid(
+    settlementId: string,
+    payoutReference: string,
+    paymentProofUrl?: string,
+  ) {
     const settlement = await this.prisma.sellerSettlement.findUnique({
       where: { id: settlementId },
     });
@@ -1072,8 +1222,10 @@ export class AdminService {
       }
     }
 
-    const allItemIds = orders.flatMap(o => o.items.map(i => i.id));
-    this.logger.log(`Sync settlements completed: ${createdCount} new records created.`);
+    const allItemIds = orders.flatMap((o) => o.items.map((i) => i.id));
+    this.logger.log(
+      `Sync settlements completed: ${createdCount} new records created.`,
+    );
     const syncedSettlements = await this.prisma.sellerSettlement.findMany({
       where: { orderItemId: { in: allItemIds } },
       include: {
@@ -1147,8 +1299,14 @@ export class AdminService {
     return ticket;
   }
 
-  async adminReplyTicket(adminUserId: string, ticketId: string, dto: AdminReplyTicketDto) {
-    const ticket = await this.prisma.ticket.findUnique({ where: { id: ticketId } });
+  async adminReplyTicket(
+    adminUserId: string,
+    ticketId: string,
+    dto: AdminReplyTicketDto,
+  ) {
+    const ticket = await this.prisma.ticket.findUnique({
+      where: { id: ticketId },
+    });
     if (!ticket) throw new NotFoundException('Ticket not found');
 
     const [message] = await this.prisma.$transaction([
@@ -1170,17 +1328,30 @@ export class AdminService {
     return message;
   }
 
-  async adminUpdateTicketStatus(ticketId: string, dto: AdminUpdateTicketStatusDto) {
-    const ticket = await this.prisma.ticket.findUnique({ where: { id: ticketId } });
+  async adminUpdateTicketStatus(
+    ticketId: string,
+    dto: AdminUpdateTicketStatusDto,
+  ) {
+    const ticket = await this.prisma.ticket.findUnique({
+      where: { id: ticketId },
+    });
     if (!ticket) throw new NotFoundException('Ticket not found');
 
     const updated = await this.prisma.ticket.update({
       where: { id: ticketId },
       data: { status: dto.status },
-      select: { id: true, subject: true, status: true, createdAt: true, updatedAt: true },
+      select: {
+        id: true,
+        subject: true,
+        status: true,
+        createdAt: true,
+        updatedAt: true,
+      },
     });
 
-    this.logger.log(`Ticket ${ticketId} status changed to ${dto.status} by admin`);
+    this.logger.log(
+      `Ticket ${ticketId} status changed to ${dto.status} by admin`,
+    );
     return updated;
   }
 
@@ -1188,9 +1359,12 @@ export class AdminService {
   // NOTIFICATIONS
   // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
-  async adminBroadcastNotification(adminUserId: string, dto: import('./dto/admin-broadcast-notification.dto').AdminBroadcastNotificationDto) {
+  async adminBroadcastNotification(
+    adminUserId: string,
+    dto: import('./dto/admin-broadcast-notification.dto').AdminBroadcastNotificationDto,
+  ) {
     const { target, message } = dto;
-    let whereClause: Prisma.UserWhereInput = { status: 'APPROVED' };
+    const whereClause: Prisma.UserWhereInput = { status: 'APPROVED' };
 
     if (target === 'BUYER') {
       whereClause.role = 'BUYER';
@@ -1201,15 +1375,17 @@ export class AdminService {
     // Fetch matching users
     const users = await this.prisma.user.findMany({
       where: whereClause,
-      select: { id: true, email: true, phone: true }
+      select: { id: true, email: true, phone: true },
     });
 
     if (users.length === 0) {
-      throw new BadRequestException('No active users found for the selected target audience.');
+      throw new BadRequestException(
+        'No active users found for the selected target audience.',
+      );
     }
 
     // Create notifications in bulk
-    const notificationsData = users.map(user => ({
+    const notificationsData = users.map((user) => ({
       userId: user.id,
       message,
     }));
@@ -1229,18 +1405,22 @@ export class AdminService {
     });
 
     // Simulate email/SMS triggers
-    this.logger.log(`Broadcast Notification: Sent to ${users.length} users (Target: ${target}).`);
-    users.forEach(u => {
+    this.logger.log(
+      `Broadcast Notification: Sent to ${users.length} users (Target: ${target}).`,
+    );
+    users.forEach((u) => {
       if (u.email) {
         // In a real app, this would push to an email queue (SQS, RabbitMQ, Bull)
-        this.logger.debug(`[MOCK EMAIL] Sending notification to ${u.email}: ${message}`);
+        this.logger.debug(
+          `[MOCK EMAIL] Sending notification to ${u.email}: ${message}`,
+        );
       }
     });
 
     return {
       success: true,
       deliveredCount: users.length,
-      target
+      target,
     };
   }
 
@@ -1253,9 +1433,9 @@ export class AdminService {
         admin: {
           select: {
             id: true,
-            adminProfile: { select: { displayName: true } }
-          }
-        }
+            adminProfile: { select: { displayName: true } },
+          },
+        },
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -1299,7 +1479,7 @@ export class AdminService {
       orderBy: { createdAt: 'desc' },
     });
 
-    return admins.map(admin => ({
+    return admins.map((admin) => ({
       id: admin.id,
       phone: admin.phone,
       email: admin.email,
@@ -1499,7 +1679,7 @@ export class AdminService {
     return this.prisma.sellerOffer.findMany({
       take: Number(limit) || 10,
       orderBy: { createdAt: 'desc' },
-      select: { id: true, name: true, mrp: true }
+      select: { id: true, name: true, mrp: true },
     });
   }
 
@@ -1507,7 +1687,12 @@ export class AdminService {
     return this.prisma.sellerProfile.findMany({
       take: Number(limit) || 10,
       orderBy: { createdAt: 'desc' },
-      select: { id: true, companyName: true, rating: true, user: { select: { phone: true } } }
+      select: {
+        id: true,
+        companyName: true,
+        rating: true,
+        user: { select: { phone: true } },
+      },
     });
   }
 
@@ -1517,7 +1702,10 @@ export class AdminService {
 
   async updateBuyerGstPanStatus(
     buyerId: string,
-    dto: { verified: boolean; creditTier?: import('@prisma/client').CreditTier },
+    dto: {
+      verified: boolean;
+      creditTier?: import('@prisma/client').CreditTier;
+    },
   ) {
     const buyer = await this.prisma.buyerProfile.findUnique({
       where: { id: buyerId },
@@ -1558,7 +1746,10 @@ export class AdminService {
 
   async updateSellerGstPanStatus(
     sellerId: string,
-    dto: { verified: boolean; creditTier?: import('@prisma/client').CreditTier },
+    dto: {
+      verified: boolean;
+      creditTier?: import('@prisma/client').CreditTier;
+    },
   ) {
     const seller = await this.prisma.sellerProfile.findUnique({
       where: { id: sellerId },
@@ -1577,13 +1768,18 @@ export class AdminService {
     });
 
     if (dto.verified) {
-      await this.notificationsService.notifyUserVerified(seller.userId, 'SELLER');
+      await this.notificationsService.notifyUserVerified(
+        seller.userId,
+        'SELLER',
+      );
     } else {
-      await this.notificationsService.notifyUserRejected(seller.userId, 'SELLER');
+      await this.notificationsService.notifyUserRejected(
+        seller.userId,
+        'SELLER',
+      );
     }
 
     return updated;
-
   }
 
   // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
@@ -1591,7 +1787,15 @@ export class AdminService {
   // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
   async getSuggestions(query: AdminQuerySuggestionsDto) {
-    const { search, categoryId, subCategoryId, page = 1, limit = 20, isActive, badgeType } = query;
+    const {
+      search,
+      categoryId,
+      subCategoryId,
+      page = 1,
+      limit = 20,
+      isActive,
+      badgeType,
+    } = query;
     const skip = (page - 1) * limit;
 
     const where: Prisma.CatalogProductWhereInput = { deletedAt: null };
@@ -1608,7 +1812,6 @@ export class AdminService {
       where.OR = [
         { name: { contains: search, mode: 'insensitive' } },
         { manufacturer: { contains: search, mode: 'insensitive' } },
-
       ];
     }
 
@@ -1637,13 +1840,24 @@ export class AdminService {
       return {
         ...item,
         price: meta.price !== undefined ? meta.price : item.mrp,
-        unit: meta.unit !== undefined ? meta.unit : item.unit || "1",
-        minimumOrderQuantity: meta.minimumOrderQuantity !== undefined ? meta.minimumOrderQuantity : item.minimumOrderQuantity || 1,
-        options: Array.isArray(item.options) ? item.options.filter((o: any) => !o || !o.isMetadata) : item.options,
+        unit: meta.unit !== undefined ? meta.unit : item.unit || '1',
+        minimumOrderQuantity:
+          meta.minimumOrderQuantity !== undefined
+            ? meta.minimumOrderQuantity
+            : item.minimumOrderQuantity || 1,
+        options: Array.isArray(item.options)
+          ? item.options.filter((o: any) => !o || !o.isMetadata)
+          : item.options,
       };
     });
 
-    return { data: mappedData, total, page, limit, totalPages: Math.ceil(total / limit) };
+    return {
+      data: mappedData,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    };
   }
 
   async getSuggestionById(id: string) {
@@ -1652,41 +1866,75 @@ export class AdminService {
       include: {
         category: { select: { id: true, name: true } },
         subCategory: { select: { id: true, name: true } },
-        
-        productVariants: { include: { sellerOffers: {
-          select: { id: true, seller: { select: { companyName: true } }, mrp: true },
-          take: 10,
-        } } }
-      }
+
+        productVariants: {
+          include: {
+            sellerOffers: {
+              select: {
+                id: true,
+                seller: { select: { companyName: true } },
+                mrp: true,
+              },
+              take: 10,
+            },
+          },
+        },
+      },
     });
 
     if (!suggestion) throw new NotFoundException('Suggestion not found');
     let meta: any = {};
     if (Array.isArray(suggestion.options)) {
-      const metaObj = (suggestion.options as any[]).find((o: any) => o && o.isMetadata);
+      const metaObj = (suggestion.options as any[]).find(
+        (o: any) => o && o.isMetadata,
+      );
       if (metaObj) meta = metaObj;
     }
     return {
       ...suggestion,
       price: meta.price !== undefined ? meta.price : suggestion.mrp,
-      unit: meta.unit !== undefined ? meta.unit : (suggestion as any).unit || "1",
-      minimumOrderQuantity: meta.minimumOrderQuantity !== undefined ? meta.minimumOrderQuantity : (suggestion as any).minimumOrderQuantity || 1,
-      options: Array.isArray(suggestion.options) ? (suggestion.options as any[]).filter((o: any) => !o || !o.isMetadata) : suggestion.options,
+      unit:
+        meta.unit !== undefined ? meta.unit : (suggestion as any).unit || '1',
+      minimumOrderQuantity:
+        meta.minimumOrderQuantity !== undefined
+          ? meta.minimumOrderQuantity
+          : (suggestion as any).minimumOrderQuantity || 1,
+      options: Array.isArray(suggestion.options)
+        ? (suggestion.options as any[]).filter((o: any) => !o || !o.isMetadata)
+        : suggestion.options,
     };
   }
 
-  async createSuggestion(dto: import('./dto/update-suggestion.dto').UpdateSuggestionDto) {
-    const slug = slugify(`${dto.name}-${dto.manufacturer}`, { lower: true, strict: true });
-    
+  async createSuggestion(
+    dto: import('./dto/update-suggestion.dto').UpdateSuggestionDto,
+  ) {
+    const slug = slugify(`${dto.name}-${dto.manufacturer}`, {
+      lower: true,
+      strict: true,
+    });
+
     // Resolve Category by name or use a default
     let resolvedCategoryId: string;
     if (dto.categoryId && !dto.categoryId.includes('-')) {
-      let cat = await this.prisma.category.findFirst({ where: { name: { equals: dto.categoryId, mode: 'insensitive' } } });
-      if (!cat) cat = await this.prisma.category.create({ data: { name: dto.categoryId, slug: slugify(dto.categoryId, { lower: true }) } });
+      let cat = await this.prisma.category.findFirst({
+        where: { name: { equals: dto.categoryId, mode: 'insensitive' } },
+      });
+      if (!cat)
+        cat = await this.prisma.category.create({
+          data: {
+            name: dto.categoryId,
+            slug: slugify(dto.categoryId, { lower: true }),
+          },
+        });
       resolvedCategoryId = cat.id;
     } else if (!dto.categoryId) {
-      let cat = await this.prisma.category.findFirst({ where: { name: 'Uncategorized' } });
-      if (!cat) cat = await this.prisma.category.create({ data: { name: 'Uncategorized', slug: 'uncategorized' } });
+      let cat = await this.prisma.category.findFirst({
+        where: { name: 'Uncategorized' },
+      });
+      if (!cat)
+        cat = await this.prisma.category.create({
+          data: { name: 'Uncategorized', slug: 'uncategorized' },
+        });
       resolvedCategoryId = cat.id;
     } else {
       resolvedCategoryId = dto.categoryId;
@@ -1695,24 +1943,47 @@ export class AdminService {
     // Resolve SubCategory by name or use a default
     let resolvedSubCategoryId: string;
     if (dto.subCategoryId && !dto.subCategoryId.includes('-')) {
-      let subCat = await this.prisma.subCategory.findFirst({ where: { name: { equals: dto.subCategoryId, mode: 'insensitive' }, categoryId: resolvedCategoryId } });
-      if (!subCat) subCat = await this.prisma.subCategory.create({ data: { name: dto.subCategoryId, slug: slugify(dto.subCategoryId, { lower: true }), categoryId: resolvedCategoryId } });
+      let subCat = await this.prisma.subCategory.findFirst({
+        where: {
+          name: { equals: dto.subCategoryId, mode: 'insensitive' },
+          categoryId: resolvedCategoryId,
+        },
+      });
+      if (!subCat)
+        subCat = await this.prisma.subCategory.create({
+          data: {
+            name: dto.subCategoryId,
+            slug: slugify(dto.subCategoryId, { lower: true }),
+            categoryId: resolvedCategoryId,
+          },
+        });
       resolvedSubCategoryId = subCat.id;
     } else if (!dto.subCategoryId) {
-      let subCat = await this.prisma.subCategory.findFirst({ where: { name: 'General', categoryId: resolvedCategoryId } });
-      if (!subCat) subCat = await this.prisma.subCategory.create({ data: { name: 'General', slug: 'general', categoryId: resolvedCategoryId } });
+      let subCat = await this.prisma.subCategory.findFirst({
+        where: { name: 'General', categoryId: resolvedCategoryId },
+      });
+      if (!subCat)
+        subCat = await this.prisma.subCategory.create({
+          data: {
+            name: 'General',
+            slug: 'general',
+            categoryId: resolvedCategoryId,
+          },
+        });
       resolvedSubCategoryId = subCat.id;
     } else {
       resolvedSubCategoryId = dto.subCategoryId;
     }
-    
+
     const meta = {
       isMetadata: true,
       price: dto.price !== undefined ? dto.price : (dto.mrp ?? 0),
-      unit: dto.unit ?? "1",
+      unit: dto.unit ?? '1',
       minimumOrderQuantity: dto.minimumOrderQuantity ?? 1,
     };
-    const userOptions = Array.isArray(dto.options) ? dto.options.filter((o: any) => !o || !o.isMetadata) : [];
+    const userOptions = Array.isArray(dto.options)
+      ? dto.options.filter((o: any) => !o || !o.isMetadata)
+      : [];
     const finalOptions = [meta, ...userOptions];
 
     const product = await this.prisma.catalogProduct.create({
@@ -1723,6 +1994,7 @@ export class AdminService {
         description: dto.description || '',
         mrp: dto.mrp !== undefined ? dto.mrp : dto.price,
         gstPercent: dto.gstPercent,
+        isTaxIncluded: dto.isTaxIncluded ?? false,
         categoryId: resolvedCategoryId,
         subCategoryId: resolvedSubCategoryId,
         packSize: dto.packSize,
@@ -1732,15 +2004,23 @@ export class AdminService {
         isYukiziChoice: dto.isYukiziChoice ?? false,
         isBestSeller: dto.isBestSeller ?? false,
         isAd: dto.isAd ?? false,
-        productVariants: dto.variants?.length ? {
-          create: dto.variants.map((v: any) => ({
-            name: v.name,
-            options: { price: v.price, available: v.available, image: v.image }
-          }))
-        } : undefined,
-        images: dto.images?.length ? {
-          create: dto.images.map(url => ({ url }))
-        } : undefined
+        productVariants: dto.variants?.length
+          ? {
+              create: dto.variants.map((v: any) => ({
+                name: v.name,
+                options: {
+                  price: v.price,
+                  available: v.available,
+                  image: v.image,
+                },
+              })),
+            }
+          : undefined,
+        images: dto.images?.length
+          ? {
+              create: dto.images.map((url) => ({ url })),
+            }
+          : undefined,
       },
       include: {
         category: { select: { id: true, name: true } },
@@ -1750,14 +2030,27 @@ export class AdminService {
     return product;
   }
 
-  async updateSuggestion(id: string, dto: import('./dto/update-suggestion.dto').UpdateSuggestionDto) {
-    const suggestion = await this.prisma.catalogProduct.findUnique({ where: { id } });
+  async updateSuggestion(
+    id: string,
+    dto: import('./dto/update-suggestion.dto').UpdateSuggestionDto,
+  ) {
+    const suggestion = await this.prisma.catalogProduct.findUnique({
+      where: { id },
+    });
     if (!suggestion) throw new NotFoundException('Suggestion not found');
 
     let resolvedCategoryId: string | undefined = undefined;
     if (dto.categoryId && !dto.categoryId.includes('-')) {
-      let cat = await this.prisma.category.findFirst({ where: { name: { equals: dto.categoryId, mode: 'insensitive' } } });
-      if (!cat) cat = await this.prisma.category.create({ data: { name: dto.categoryId, slug: slugify(dto.categoryId, { lower: true }) } });
+      let cat = await this.prisma.category.findFirst({
+        where: { name: { equals: dto.categoryId, mode: 'insensitive' } },
+      });
+      if (!cat)
+        cat = await this.prisma.category.create({
+          data: {
+            name: dto.categoryId,
+            slug: slugify(dto.categoryId, { lower: true }),
+          },
+        });
       resolvedCategoryId = cat.id;
     } else if (dto.categoryId) {
       resolvedCategoryId = dto.categoryId;
@@ -1766,8 +2059,20 @@ export class AdminService {
     let resolvedSubCategoryId: string | undefined = undefined;
     if (dto.subCategoryId && !dto.subCategoryId.includes('-')) {
       const catId = resolvedCategoryId || suggestion.categoryId;
-      let subCat = await this.prisma.subCategory.findFirst({ where: { name: { equals: dto.subCategoryId, mode: 'insensitive' }, categoryId: catId } });
-      if (!subCat) subCat = await this.prisma.subCategory.create({ data: { name: dto.subCategoryId, slug: slugify(dto.subCategoryId, { lower: true }), categoryId: catId } });
+      let subCat = await this.prisma.subCategory.findFirst({
+        where: {
+          name: { equals: dto.subCategoryId, mode: 'insensitive' },
+          categoryId: catId,
+        },
+      });
+      if (!subCat)
+        subCat = await this.prisma.subCategory.create({
+          data: {
+            name: dto.subCategoryId,
+            slug: slugify(dto.subCategoryId, { lower: true }),
+            categoryId: catId,
+          },
+        });
       resolvedSubCategoryId = subCat.id;
     } else if (dto.subCategoryId) {
       resolvedSubCategoryId = dto.subCategoryId;
@@ -1775,7 +2080,9 @@ export class AdminService {
 
     let existingMeta: any = {};
     if (Array.isArray(suggestion.options)) {
-      const found = (suggestion.options as any[]).find((o: any) => o && o.isMetadata);
+      const found = (suggestion.options as any[]).find(
+        (o: any) => o && o.isMetadata,
+      );
       if (found) existingMeta = found;
     }
 
@@ -1784,14 +2091,20 @@ export class AdminService {
       isMetadata: true,
       ...(dto.price !== undefined ? { price: dto.price } : {}),
       ...(dto.unit !== undefined ? { unit: dto.unit } : {}),
-      ...(dto.minimumOrderQuantity !== undefined ? { minimumOrderQuantity: dto.minimumOrderQuantity } : {}),
+      ...(dto.minimumOrderQuantity !== undefined
+        ? { minimumOrderQuantity: dto.minimumOrderQuantity }
+        : {}),
     };
 
     let newOptions: any[] = [];
     if (dto.options !== undefined) {
-      newOptions = Array.isArray(dto.options) ? dto.options.filter((o: any) => !o || !o.isMetadata) : [];
+      newOptions = Array.isArray(dto.options)
+        ? dto.options.filter((o: any) => !o || !o.isMetadata)
+        : [];
     } else if (Array.isArray(suggestion.options)) {
-      newOptions = (suggestion.options as any[]).filter((o: any) => !o || !o.isMetadata);
+      newOptions = (suggestion.options as any[]).filter(
+        (o: any) => !o || !o.isMetadata,
+      );
     }
 
     const finalOptions = [newMeta, ...newOptions];
@@ -1802,64 +2115,78 @@ export class AdminService {
         ...(dto.name ? { name: dto.name } : {}),
         ...(dto.manufacturer ? { manufacturer: dto.manufacturer } : {}),
 
-        ...(dto.description !== undefined ? { description: dto.description } : {}),
-        ...(dto.mrp !== undefined ? { mrp: dto.mrp } : (dto.price !== undefined ? { mrp: dto.price } : {})),
+        ...(dto.description !== undefined
+          ? { description: dto.description }
+          : {}),
+        ...(dto.mrp !== undefined
+          ? { mrp: dto.mrp }
+          : dto.price !== undefined
+            ? { mrp: dto.price }
+            : {}),
         ...(dto.packSize !== undefined ? { packSize: dto.packSize } : {}),
         ...(dto.gstPercent !== undefined ? { gstPercent: dto.gstPercent } : {}),
+        ...(dto.isTaxIncluded !== undefined ? { isTaxIncluded: dto.isTaxIncluded } : {}),
         ...(resolvedCategoryId ? { categoryId: resolvedCategoryId } : {}),
-        ...(resolvedSubCategoryId ? { subCategoryId: resolvedSubCategoryId } : {}),
+        ...(resolvedSubCategoryId
+          ? { subCategoryId: resolvedSubCategoryId }
+          : {}),
         options: finalOptions,
         ...(dto.isActive !== undefined ? { isActive: dto.isActive } : {}),
-        ...(dto.isYukiziChoice !== undefined ? { isYukiziChoice: dto.isYukiziChoice } : {}),
-        ...(dto.isBestSeller !== undefined ? { isBestSeller: dto.isBestSeller } : {}),
+        ...(dto.isYukiziChoice !== undefined
+          ? { isYukiziChoice: dto.isYukiziChoice }
+          : {}),
+        ...(dto.isBestSeller !== undefined
+          ? { isBestSeller: dto.isBestSeller }
+          : {}),
         ...(dto.isAd !== undefined ? { isAd: dto.isAd } : {}),
       },
       include: {
         category: { select: { id: true, name: true } },
         subCategory: { select: { id: true, name: true } },
       },
+    });
+
+    // Handle variants update if provided
+    if (dto.variants) {
+      // Simple approach: delete existing variants and recreate
+      await this.prisma.productVariant.deleteMany({
+        where: { catalogProductId: id },
       });
 
-      // Handle variants update if provided
-      if (dto.variants) {
-        // Simple approach: delete existing variants and recreate
-        await this.prisma.productVariant.deleteMany({
-          where: { catalogProductId: id }
+      if (dto.variants.length > 0) {
+        await this.prisma.productVariant.createMany({
+          data: dto.variants.map((v: any) => ({
+            catalogProductId: id,
+            name: v.name,
+            options: { price: v.price, available: v.available, image: v.image },
+          })),
         });
-        
-        if (dto.variants.length > 0) {
-          await this.prisma.productVariant.createMany({
-            data: dto.variants.map((v: any) => ({
-              catalogProductId: id,
-              name: v.name,
-              options: { price: v.price, available: v.available, image: v.image }
-            }))
-          });
-        }
       }
+    }
 
-      // Handle images update if provided
-      if (dto.images) {
-        await this.prisma.catalogProductImage.deleteMany({
-          where: { masterProductId: id }
+    // Handle images update if provided
+    if (dto.images) {
+      await this.prisma.catalogProductImage.deleteMany({
+        where: { masterProductId: id },
+      });
+
+      if (dto.images.length > 0) {
+        await this.prisma.catalogProductImage.createMany({
+          data: dto.images.map((url) => ({
+            masterProductId: id,
+            url,
+          })),
         });
-        
-        if (dto.images.length > 0) {
-          await this.prisma.catalogProductImage.createMany({
-            data: dto.images.map(url => ({
-              masterProductId: id,
-              url
-            }))
-          });
-        }
       }
+    }
 
-      return updated;
+    return updated;
   }
 
-
   async deleteSuggestion(id: string) {
-    const suggestion = await this.prisma.catalogProduct.findUnique({ where: { id } });
+    const suggestion = await this.prisma.catalogProduct.findUnique({
+      where: { id },
+    });
     if (!suggestion) throw new NotFoundException('Suggestion not found');
 
     return this.prisma.catalogProduct.update({
@@ -1868,7 +2195,9 @@ export class AdminService {
     });
   }
 
-  async importSuggestions(buffer: Buffer): Promise<{ success: boolean; recordsProcessed: number; errors: string[] }> {
+  async importSuggestions(
+    buffer: Buffer,
+  ): Promise<{ success: boolean; recordsProcessed: number; errors: string[] }> {
     const rawRecords: any[] = [];
     const errors: string[] = [];
     let count = 0;
@@ -1881,33 +2210,56 @@ export class AdminService {
         .on('data', (data) => rawRecords.push(data))
         .on('error', (err) => {
           this.logger.error(`CSV Parsing Error: ${err.message}`);
-          resolve({ success: false, recordsProcessed: 0, errors: [`Parsing error: ${err.message}`] });
+          resolve({
+            success: false,
+            recordsProcessed: 0,
+            errors: [`Parsing error: ${err.message}`],
+          });
         })
         .on('end', async () => {
           try {
-            this.logger.log(`Starting CSV import: ${rawRecords.length} records found`);
+            this.logger.log(
+              `Starting CSV import: ${rawRecords.length} records found`,
+            );
 
             // 1. Filter out empty/invalid rows early
-            const records = rawRecords.filter(r => (r['name'] || r['PRODUCT NAME'])?.trim());
+            const records = rawRecords.filter((r) =>
+              (r['name'] || r['PRODUCT NAME'])?.trim(),
+            );
             if (records.length === 0) {
-              return resolve({ success: true, recordsProcessed: 0, errors: ['No valid products found in CSV'] });
+              return resolve({
+                success: true,
+                recordsProcessed: 0,
+                errors: ['No valid products found in CSV'],
+              });
             }
 
             // 2. Pre-resolve all Categories
-            const uniqueCategoryNames = [...new Set(records.map(r => (r['category'] || r['Category'])?.trim()).filter(Boolean))] as string[];
+            const uniqueCategoryNames = [
+              ...new Set(
+                records
+                  .map((r) => (r['category'] || r['Category'])?.trim())
+                  .filter(Boolean),
+              ),
+            ] as string[];
             const catCache = new Map<string, string>();
-            
+
             // Load existing
             const existingCats = await this.prisma.category.findMany({
-              where: { name: { in: uniqueCategoryNames } }
+              where: { name: { in: uniqueCategoryNames } },
             });
-            existingCats.forEach(c => catCache.set(c.name, c.id));
+            existingCats.forEach((c) => catCache.set(c.name, c.id));
 
             // Create missing
             for (const name of uniqueCategoryNames) {
               if (!catCache.has(name)) {
                 const cat = await this.prisma.category.create({
-                  data: { name, slug: slugify(name, { lower: true, strict: true }) || name.toLowerCase() }
+                  data: {
+                    name,
+                    slug:
+                      slugify(name, { lower: true, strict: true }) ||
+                      name.toLowerCase(),
+                  },
                 });
                 catCache.set(name, cat.id);
               }
@@ -1918,29 +2270,32 @@ export class AdminService {
 
             // 3. Pre-resolve all Subcategories
             const subCatPairs = new Set<string>(); // "catName|subName"
-            records.forEach(r => {
-              const c = (r['category'] || r['Category'])?.trim() || 'Uncategorized';
+            records.forEach((r) => {
+              const c =
+                (r['category'] || r['Category'])?.trim() || 'Uncategorized';
               const s = (r['subCategory'] || r['Sub category'])?.trim();
               if (s) subCatPairs.add(`${c}|${s}`);
             });
 
             const subCatCache = new Map<string, string>(); // "catName|subName" -> id
-            
+
             for (const pair of subCatPairs) {
               const [catName, subName] = pair.split('|');
               const categoryId = catCache.get(catName) || defaultCatId;
-              
+
               let subCat = await this.prisma.subCategory.findFirst({
-                where: { name: subName, categoryId }
+                where: { name: subName, categoryId },
               });
-              
+
               if (!subCat) {
                 subCat = await this.prisma.subCategory.create({
-                  data: { 
-                    name: subName, 
-                    slug: slugify(subName, { lower: true, strict: true }) || subName.toLowerCase(),
-                    categoryId 
-                  }
+                  data: {
+                    name: subName,
+                    slug:
+                      slugify(subName, { lower: true, strict: true }) ||
+                      subName.toLowerCase(),
+                    categoryId,
+                  },
                 });
               }
               subCatCache.set(pair, subCat.id);
@@ -1953,103 +2308,143 @@ export class AdminService {
             const CHUNK_SIZE = 50;
             for (let i = 0; i < records.length; i += CHUNK_SIZE) {
               const chunk = records.slice(i, i + CHUNK_SIZE);
-              
-              await Promise.all(chunk.map(async (row) => {
-                try {
-                  const productName = (row['name'] || row['PRODUCT NAME'])?.trim();
-                  const manufacturer = (row['manufacturer'] || row['COMPANY NAME'])?.trim() || 'UNKNOWN';
 
-                  const categoryName = (row['category'] || row['Category'])?.trim();
-                  const subCategoryName = (row['subCategory'] || row['Sub category'])?.trim();
-                  const gstStr = String(row['gstPercent'] || row['GST'] || '0').trim();
-                  const mrpStr = String(row['mrp'] || '0').trim();
-                  const description = row['description']?.trim() || '';
-                  const imageUrl = (row['imageUrl'] || row['IMAGE URL'])?.trim();
+              await Promise.all(
+                chunk.map(async (row) => {
+                  try {
+                    const productName = (
+                      row['name'] || row['PRODUCT NAME']
+                    )?.trim();
+                    const manufacturer =
+                      (row['manufacturer'] || row['COMPANY NAME'])?.trim() ||
+                      'UNKNOWN';
 
-                  const gstPercent = parseFloat(gstStr.replace('%', '')) || 0;
-                  const mrp = parseFloat(mrpStr) || 0;
-                  const categoryId = (categoryName && catCache.get(categoryName)) || defaultCatId;
-                  
-                  let subCategoryId: string;
-                  const subCatLookupKey = `${categoryName || 'Uncategorized'}|${subCategoryName}`;
-                  if (subCategoryName && subCatCache.has(subCatLookupKey)) {
-                    subCategoryId = subCatCache.get(subCatLookupKey)!;
-                  } else {
-                    const cachedDefault = defaultSubCatCache.get(categoryId);
-                    if (cachedDefault) {
-                      subCategoryId = cachedDefault;
+                    const categoryName = (
+                      row['category'] || row['Category']
+                    )?.trim();
+                    const subCategoryName = (
+                      row['subCategory'] || row['Sub category']
+                    )?.trim();
+                    const gstStr = String(
+                      row['gstPercent'] || row['GST'] || '0',
+                    ).trim();
+                    const mrpStr = String(row['mrp'] || '0').trim();
+                    const description = row['description']?.trim() || '';
+                    const imageUrl = (
+                      row['imageUrl'] || row['IMAGE URL']
+                    )?.trim();
+
+                    const gstPercent = parseFloat(gstStr.replace('%', '')) || 0;
+                    const mrp = parseFloat(mrpStr) || 0;
+                    const categoryId =
+                      (categoryName && catCache.get(categoryName)) ||
+                      defaultCatId;
+
+                    let subCategoryId: string;
+                    const subCatLookupKey = `${categoryName || 'Uncategorized'}|${subCategoryName}`;
+                    if (subCategoryName && subCatCache.has(subCatLookupKey)) {
+                      subCategoryId = subCatCache.get(subCatLookupKey)!;
                     } else {
-                      subCategoryId = await this.resolveDefaultSubCategory(categoryId, defaultSubCatCache);
-                      defaultSubCatCache.set(categoryId, subCategoryId);
+                      const cachedDefault = defaultSubCatCache.get(categoryId);
+                      if (cachedDefault) {
+                        subCategoryId = cachedDefault;
+                      } else {
+                        subCategoryId = await this.resolveDefaultSubCategory(
+                          categoryId,
+                          defaultSubCatCache,
+                        );
+                        defaultSubCatCache.set(categoryId, subCategoryId);
+                      }
                     }
+
+                    const slug =
+                      slugify(`${productName}-${manufacturer}`, {
+                        lower: true,
+                        strict: true,
+                      }) || `p-${Date.now()}-${Math.random()}`;
+
+                    const masterProduct =
+                      await this.prisma.catalogProduct.upsert({
+                        where: { externalId: (row.id as string) || slug },
+                        update: {
+                          name: productName,
+                          manufacturer,
+
+                          mrp,
+                          description,
+                          gstPercent,
+                          categoryId,
+                          subCategoryId,
+                          updatedAt: new Date(),
+                        },
+                        create: {
+                          name: productName,
+                          slug,
+                          externalId: row.id || slug,
+                          manufacturer,
+
+                          mrp,
+                          description,
+                          gstPercent,
+                          categoryId,
+                          subCategoryId,
+                          isActive: true,
+                        },
+                      });
+
+                    if (imageUrl) {
+                      await this.prisma.catalogProductImage.upsert({
+                        where: { id: `img-${masterProduct.id}` },
+                        update: { url: imageUrl },
+                        create: {
+                          id: `img-${masterProduct.id}`,
+                          masterProductId: masterProduct.id,
+                          url: imageUrl,
+                        },
+                      });
+                    }
+
+                    count++;
+                  } catch (err) {
+                    errors.push(
+                      `Row error (${row['PRODUCT NAME']}): ${err.message}`,
+                    );
                   }
+                }),
+              );
 
-                  const slug = slugify(`${productName}-${manufacturer}`, { lower: true, strict: true }) || `p-${Date.now()}-${Math.random()}`;
-
-                  const masterProduct = await this.prisma.catalogProduct.upsert({
-                    where: { externalId: (row.id as string) || slug },
-                    update: {
-                      name: productName,
-                      manufacturer,
-
-                      mrp,
-                      description,
-                      gstPercent,
-                      categoryId,
-                      subCategoryId,
-                      updatedAt: new Date(),
-                    },
-                    create: {
-                      name: productName,
-                      slug,
-                      externalId: row.id || slug,
-                      manufacturer,
-
-                      mrp,
-                      description,
-                      gstPercent,
-                      categoryId,
-                      subCategoryId,
-                      isActive: true,
-                    },
-                  });
-
-                  if (imageUrl) {
-                    await this.prisma.catalogProductImage.upsert({
-                      where: { id: `img-${masterProduct.id}` },
-                      update: { url: imageUrl },
-                      create: {
-                        id: `img-${masterProduct.id}`,
-                        masterProductId: masterProduct.id,
-                        url: imageUrl,
-                      },
-                    });
-                  }
-
-                  count++;
-                } catch (err) {
-                  errors.push(`Row error (${row['PRODUCT NAME']}): ${err.message}`);
-                }
-              }));
-              
               if (i % 500 === 0) {
-                this.logger.log(`Import progress: ${i}/${records.length} processed`);
+                this.logger.log(
+                  `Import progress: ${i}/${records.length} processed`,
+                );
               }
             }
 
-            this.logger.log(`Import finished: ${count} records processed, ${errors.length} errors`);
-            resolve({ success: true, recordsProcessed: count, errors: errors.slice(0, 100) }); // Cap error log
+            this.logger.log(
+              `Import finished: ${count} records processed, ${errors.length} errors`,
+            );
+            resolve({
+              success: true,
+              recordsProcessed: count,
+              errors: errors.slice(0, 100),
+            }); // Cap error log
           } catch (err) {
             this.logger.error(`Critical CSV Import Error: ${err.message}`);
-            resolve({ success: false, recordsProcessed: count, errors: [`Global error: ${err.message}`] });
+            resolve({
+              success: false,
+              recordsProcessed: count,
+              errors: [`Global error: ${err.message}`],
+            });
           }
         });
     });
   }
 
-  private async resolveDefaultCategory(cache: Map<string, string>): Promise<string> {
+  private async resolveDefaultCategory(
+    cache: Map<string, string>,
+  ): Promise<string> {
     const name = 'Uncategorized';
-    if (cache.has(name)) return (cache.get(name) as string);
+    if (cache.has(name)) return cache.get(name) as string;
     let cat = await this.prisma.category.findUnique({ where: { name } });
     if (!cat) {
       cat = await this.prisma.category.create({
@@ -2060,10 +2455,13 @@ export class AdminService {
     return cat.id;
   }
 
-  private async resolveDefaultSubCategory(categoryId: string, cache: Map<string, string>): Promise<string> {
+  private async resolveDefaultSubCategory(
+    categoryId: string,
+    cache: Map<string, string>,
+  ): Promise<string> {
     const name = 'General';
     const key = `DEFAULT:${categoryId}`;
-    if (cache.has(key)) return (cache.get(key) as string);
+    if (cache.has(key)) return cache.get(key) as string;
     let subCat = await this.prisma.subCategory.findFirst({
       where: { name, categoryId },
     });
@@ -2087,71 +2485,83 @@ export class AdminService {
 
     if (!user) throw new NotFoundException('User not found');
 
-    this.logger.log(`Starting hard delete for user ${userId} (Role: ${user.role})`);
+    this.logger.log(
+      `Starting hard delete for user ${userId} (Role: ${user.role})`,
+    );
 
     try {
-      return await this.prisma.$transaction(async (tx) => {
-        // 1. Handle Seller-specific blocks
-        if (user.sellerProfile) {
-          // Delete settlements where this seller is the recipient
-          await tx.sellerSettlement.deleteMany({
-            where: { sellerId: user.sellerProfile.id },
-          });
-
-          // Delete order items where this seller is involved (prevents blocking SellerProfile/Product deletion)
-          // Note: This might leave orders "empty" or with incorrect totals, but hard delete is requested.
-          await tx.orderItem.deleteMany({
-            where: { sellerId: user.sellerProfile.id },
-          });
-        }
-
-        // 2. Handle Buyer-specific blocks
-        if (user.buyerProfile) {
-          // Delete custom orders
-          await tx.customOrder.deleteMany({
-            where: { buyerId: user.buyerProfile.id },
-          });
-
-          // Disconnect referral codes (set buyerId to null)
-          await tx.referralCode.updateMany({
-            where: { buyerId: user.buyerProfile.id },
-            data: { buyerId: null },
-          });
-
-          // Handle settlements blocked by buyer's orders
-          // When User is deleted, Order is deleted (Cascade), which deletes OrderItem (Cascade).
-          // But OrderItem is referenced by SellerSettlement without cascade.
-          const buyerOrders = await tx.order.findMany({
-            where: { buyerId: userId },
-            include: { items: true },
-          });
-          const orderItemIds = buyerOrders.flatMap((o) => o.items.map((i) => i.id));
-          if (orderItemIds.length > 0) {
+      return await this.prisma.$transaction(
+        async (tx) => {
+          // 1. Handle Seller-specific blocks
+          if (user.sellerProfile) {
+            // Delete settlements where this seller is the recipient
             await tx.sellerSettlement.deleteMany({
-              where: { orderItemId: { in: orderItemIds } },
+              where: { sellerId: user.sellerProfile.id },
+            });
+
+            // Delete order items where this seller is involved (prevents blocking SellerProfile/Product deletion)
+            // Note: This might leave orders "empty" or with incorrect totals, but hard delete is requested.
+            await tx.orderItem.deleteMany({
+              where: { sellerId: user.sellerProfile.id },
             });
           }
-        }
 
-        // 3. Handle Admin-specific blocks
-        if (user.role === 'ADMIN') {
-          await tx.notificationBroadcast.deleteMany({
-            where: { adminId: userId },
+          // 2. Handle Buyer-specific blocks
+          if (user.buyerProfile) {
+            // Delete custom orders
+            await tx.customOrder.deleteMany({
+              where: { buyerId: user.buyerProfile.id },
+            });
+
+            // Disconnect referral codes (set buyerId to null)
+            await tx.referralCode.updateMany({
+              where: { buyerId: user.buyerProfile.id },
+              data: { buyerId: null },
+            });
+
+            // Handle settlements blocked by buyer's orders
+            // When User is deleted, Order is deleted (Cascade), which deletes OrderItem (Cascade).
+            // But OrderItem is referenced by SellerSettlement without cascade.
+            const buyerOrders = await tx.order.findMany({
+              where: { buyerId: userId },
+              include: { items: true },
+            });
+            const orderItemIds = buyerOrders.flatMap((o) =>
+              o.items.map((i) => i.id),
+            );
+            if (orderItemIds.length > 0) {
+              await tx.sellerSettlement.deleteMany({
+                where: { orderItemId: { in: orderItemIds } },
+              });
+            }
+          }
+
+          // 3. Handle Admin-specific blocks
+          if (user.role === 'ADMIN') {
+            await tx.notificationBroadcast.deleteMany({
+              where: { adminId: userId },
+            });
+          }
+
+          // 4. Finally, delete the user (this will cascade to profiles, orders, etc.)
+          const deleted = await tx.user.delete({
+            where: { id: userId },
           });
-        }
 
-        // 4. Finally, delete the user (this will cascade to profiles, orders, etc.)
-        const deleted = await tx.user.delete({
-          where: { id: userId },
-        });
-
-        this.logger.log(`User ${userId} and all related data hard-deleted successfully`);
-        return deleted;
-      }, {
-        timeout: 15000 // Increase timeout for large deletions
-      });
+          this.logger.log(
+            `User ${userId} and all related data hard-deleted successfully`,
+          );
+          return deleted;
+        },
+        {
+          timeout: 15000, // Increase timeout for large deletions
+        },
+      );
     } catch (error) {
-      this.logger.error(`Failed to delete user ${userId}: ${error.message}`, error.stack);
+      this.logger.error(
+        `Failed to delete user ${userId}: ${error.message}`,
+        error.stack,
+      );
       throw error;
     }
   }

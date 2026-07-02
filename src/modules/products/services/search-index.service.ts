@@ -50,7 +50,9 @@ export class SearchIndexService {
         },
       });
 
-      this.logger.debug(`Search index upserted for product ${catalogProductId}`);
+      this.logger.debug(
+        `Search index upserted for product ${catalogProductId}`,
+      );
     } catch (error) {
       this.logger.error(
         `Failed to upsert search index for product ${catalogProductId}: ${error}`,

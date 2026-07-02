@@ -60,7 +60,12 @@ export interface ReconciliationResult {
     migratedTotalOrderValue: number;
     legacyTotalPayments: number;
     migratedTotalPayments: number;
-    discrepancies: Array<{ legacyOrderId: string; field: string; expected: number; actual: number }>;
+    discrepancies: Array<{
+      legacyOrderId: string;
+      field: string;
+      expected: number;
+      actual: number;
+    }>;
   };
   valid: boolean;
 }
@@ -99,7 +104,9 @@ export class MigrationService {
     // Process in batches
     for (let i = 0; i < deduped.length; i += BATCH_SIZE) {
       const batch = deduped.slice(i, i + BATCH_SIZE);
-      this.logger.log(`Processing user batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(deduped.length / BATCH_SIZE)}`);
+      this.logger.log(
+        `Processing user batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(deduped.length / BATCH_SIZE)}`,
+      );
 
       for (const legacyUser of batch) {
         try {
@@ -111,18 +118,22 @@ export class MigrationService {
           errors.push({ legacyId: legacyUser.legacyId, error: errMsg });
 
           // Record failed migration
-          await this.prisma.migrationRecord.create({
-            data: {
-              runId: run.id,
-              entityType: MigrationEntityType.USER,
-              legacyId: legacyUser.legacyId,
-              status: MigrationRecordStatus.FAILED,
-              errorMessage: errMsg,
-              rawData: legacyUser as any,
-            },
-          }).catch(() => {}); // Don't fail the batch on audit log failure
+          await this.prisma.migrationRecord
+            .create({
+              data: {
+                runId: run.id,
+                entityType: MigrationEntityType.USER,
+                legacyId: legacyUser.legacyId,
+                status: MigrationRecordStatus.FAILED,
+                errorMessage: errMsg,
+                rawData: legacyUser as any,
+              },
+            })
+            .catch(() => {}); // Don't fail the batch on audit log failure
 
-          this.logger.warn(`Failed to import user ${legacyUser.legacyId}: ${errMsg}`);
+          this.logger.warn(
+            `Failed to import user ${legacyUser.legacyId}: ${errMsg}`,
+          );
         }
       }
     }
@@ -133,7 +144,8 @@ export class MigrationService {
     }
 
     // Finalize run
-    const finalStatus = failedCount === 0 ? MigrationStatus.COMPLETED : MigrationStatus.COMPLETED;
+    const finalStatus =
+      failedCount === 0 ? MigrationStatus.COMPLETED : MigrationStatus.COMPLETED;
     await this.prisma.migrationRun.update({
       where: { id: run.id },
       data: {
@@ -142,7 +154,8 @@ export class MigrationService {
         failedCount,
         skippedCount,
         completedAt: new Date(),
-        errorSummary: errors.length > 0 ? JSON.stringify(errors.slice(0, 50)) : null,
+        errorSummary:
+          errors.length > 0 ? JSON.stringify(errors.slice(0, 50)) : null,
       },
     });
 
@@ -165,7 +178,10 @@ export class MigrationService {
    * 2. Check if phone already exists (merge scenario)
    * 3. Create User + Profile + ID mapping
    */
-  private async importSingleUser(legacy: LegacyUserDto, runId: string): Promise<void> {
+  private async importSingleUser(
+    legacy: LegacyUserDto,
+    runId: string,
+  ): Promise<void> {
     // Idempotency check: already migrated?
     const existing = await this.prisma.migrationIdMap.findUnique({
       where: {
@@ -215,10 +231,14 @@ export class MigrationService {
         where: { id: userId },
         data: { legacyId: legacy.legacyId },
       });
-      this.logger.debug(`Merged legacy user ${legacy.legacyId} with existing user ${userId} (phone: ${legacy.phone})`);
+      this.logger.debug(
+        `Merged legacy user ${legacy.legacyId} with existing user ${userId} (phone: ${legacy.phone})`,
+      );
     } else {
       // Create new user — NO PASSWORD (OTP-only auth)
-      const placeholderPassword = crypto.randomBytes(PLACEHOLDER_PASSWORD_LENGTH).toString('hex');
+      const placeholderPassword = crypto
+        .randomBytes(PLACEHOLDER_PASSWORD_LENGTH)
+        .toString('hex');
 
       const newUser = await this.prisma.user.create({
         data: {
@@ -317,7 +337,8 @@ export class MigrationService {
         await this.prisma.sellerProfile.create({
           data: {
             userId,
-            companyName: legacy.companyName || legacy.name || 'PENDING_MIGRATION',
+            companyName:
+              legacy.companyName || legacy.name || 'PENDING_MIGRATION',
             gstNumber,
             panNumber,
             drugLicenseNumber,
@@ -326,9 +347,10 @@ export class MigrationService {
             city,
             state,
             pincode,
-            verificationStatus: this.mapUserStatus(legacy.status) === UserStatus.APPROVED
-              ? VerificationStatus.VERIFIED
-              : VerificationStatus.PENDING,
+            verificationStatus:
+              this.mapUserStatus(legacy.status) === UserStatus.APPROVED
+                ? VerificationStatus.VERIFIED
+                : VerificationStatus.PENDING,
           },
         });
       }
@@ -361,11 +383,18 @@ export class MigrationService {
 
     for (let i = 0; i < orders.length; i += BATCH_SIZE) {
       const batch = orders.slice(i, i + BATCH_SIZE);
-      this.logger.log(`Processing order batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(orders.length / BATCH_SIZE)}`);
+      this.logger.log(
+        `Processing order batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(orders.length / BATCH_SIZE)}`,
+      );
 
       for (const legacyOrder of batch) {
         try {
-          const result = await this.importSingleOrder(legacyOrder, run.id, userIdMap, productIdMap);
+          const result = await this.importSingleOrder(
+            legacyOrder,
+            run.id,
+            userIdMap,
+            productIdMap,
+          );
           if (result === 'SKIPPED') {
             skippedCount++;
           } else {
@@ -376,18 +405,22 @@ export class MigrationService {
           failedCount++;
           errors.push({ legacyId: legacyOrder.legacyId, error: errMsg });
 
-          await this.prisma.migrationRecord.create({
-            data: {
-              runId: run.id,
-              entityType: MigrationEntityType.ORDER,
-              legacyId: legacyOrder.legacyId,
-              status: MigrationRecordStatus.FAILED,
-              errorMessage: errMsg,
-              rawData: legacyOrder as any,
-            },
-          }).catch(() => {});
+          await this.prisma.migrationRecord
+            .create({
+              data: {
+                runId: run.id,
+                entityType: MigrationEntityType.ORDER,
+                legacyId: legacyOrder.legacyId,
+                status: MigrationRecordStatus.FAILED,
+                errorMessage: errMsg,
+                rawData: legacyOrder as any,
+              },
+            })
+            .catch(() => {});
 
-          this.logger.warn(`Failed to import order ${legacyOrder.legacyId}: ${errMsg}`);
+          this.logger.warn(
+            `Failed to import order ${legacyOrder.legacyId}: ${errMsg}`,
+          );
         }
       }
     }
@@ -400,7 +433,8 @@ export class MigrationService {
         failedCount,
         skippedCount,
         completedAt: new Date(),
-        errorSummary: errors.length > 0 ? JSON.stringify(errors.slice(0, 50)) : null,
+        errorSummary:
+          errors.length > 0 ? JSON.stringify(errors.slice(0, 50)) : null,
       },
     });
 
@@ -437,7 +471,9 @@ export class MigrationService {
     // Resolve buyer
     const buyerId = userIdMap.get(legacy.legacyBuyerId);
     if (!buyerId) {
-      throw new Error(`Buyer not found for legacy ID: ${legacy.legacyBuyerId}. Import users first.`);
+      throw new Error(
+        `Buyer not found for legacy ID: ${legacy.legacyBuyerId}. Import users first.`,
+      );
     }
 
     // Resolve order items
@@ -454,13 +490,17 @@ export class MigrationService {
       // Resolve product via externalId
       const sellerOfferId = productIdMap.get(item.legacyProductId);
       if (!sellerOfferId) {
-        throw new Error(`Product not found for legacy ID: ${item.legacyProductId}`);
+        throw new Error(
+          `Product not found for legacy ID: ${item.legacyProductId}`,
+        );
       }
 
       // Resolve seller
       const sellerId = userIdMap.get(item.legacySellerId);
       if (!sellerId) {
-        throw new Error(`Seller not found for legacy ID: ${item.legacySellerId}`);
+        throw new Error(
+          `Seller not found for legacy ID: ${item.legacySellerId}`,
+        );
       }
 
       // Get seller profile ID (OrderItem.sellerId references SellerProfile, not User)
@@ -469,7 +509,9 @@ export class MigrationService {
         select: { id: true },
       });
       if (!sellerProfile) {
-        throw new Error(`SellerProfile not found for user ${sellerId} (legacy seller: ${item.legacySellerId})`);
+        throw new Error(
+          `SellerProfile not found for user ${sellerId} (legacy seller: ${item.legacySellerId})`,
+        );
       }
 
       resolvedItems.push({
@@ -491,7 +533,9 @@ export class MigrationService {
           orderStatus: this.mapOrderStatus(legacy.orderStatus),
           paymentStatus: this.mapPaymentStatus(legacy.paymentStatus),
           legacyId: legacy.legacyId,
-          ...(legacy.createdAt ? { createdAt: new Date(legacy.createdAt) } : {}),
+          ...(legacy.createdAt
+            ? { createdAt: new Date(legacy.createdAt) }
+            : {}),
           items: {
             create: resolvedItems.map((item) => ({
               sellerOfferId: item.sellerOfferId,
@@ -535,13 +579,15 @@ export class MigrationService {
     // Register order item ID maps
     for (const item of order.items) {
       if (item.legacyId) {
-        await this.prisma.migrationIdMap.create({
-          data: {
-            entityType: MigrationEntityType.ORDER_ITEM,
-            legacyId: item.legacyId,
-            newId: item.id,
-          },
-        }).catch(() => {}); // Ignore duplicates
+        await this.prisma.migrationIdMap
+          .create({
+            data: {
+              entityType: MigrationEntityType.ORDER_ITEM,
+              legacyId: item.legacyId,
+              newId: item.id,
+            },
+          })
+          .catch(() => {}); // Ignore duplicates
       }
     }
 
@@ -571,7 +617,9 @@ export class MigrationService {
   // STEP 4: PAYMENT MIGRATION PIPELINE
   // ════════════════════════════════════════════════════════
 
-  async migratePayments(payments: LegacyPaymentDto[]): Promise<MigrationResult> {
+  async migratePayments(
+    payments: LegacyPaymentDto[],
+  ): Promise<MigrationResult> {
     const startTime = Date.now();
     this.logger.log(`Starting payment migration: ${payments.length} records`);
 
@@ -592,11 +640,17 @@ export class MigrationService {
 
     for (let i = 0; i < payments.length; i += BATCH_SIZE) {
       const batch = payments.slice(i, i + BATCH_SIZE);
-      this.logger.log(`Processing payment batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(payments.length / BATCH_SIZE)}`);
+      this.logger.log(
+        `Processing payment batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(payments.length / BATCH_SIZE)}`,
+      );
 
       for (const legacyPayment of batch) {
         try {
-          const result = await this.importSinglePayment(legacyPayment, run.id, orderIdMap);
+          const result = await this.importSinglePayment(
+            legacyPayment,
+            run.id,
+            orderIdMap,
+          );
           if (result === 'SKIPPED') {
             skippedCount++;
           } else {
@@ -607,18 +661,22 @@ export class MigrationService {
           failedCount++;
           errors.push({ legacyId: legacyPayment.legacyId, error: errMsg });
 
-          await this.prisma.migrationRecord.create({
-            data: {
-              runId: run.id,
-              entityType: MigrationEntityType.PAYMENT,
-              legacyId: legacyPayment.legacyId,
-              status: MigrationRecordStatus.FAILED,
-              errorMessage: errMsg,
-              rawData: legacyPayment as any,
-            },
-          }).catch(() => {});
+          await this.prisma.migrationRecord
+            .create({
+              data: {
+                runId: run.id,
+                entityType: MigrationEntityType.PAYMENT,
+                legacyId: legacyPayment.legacyId,
+                status: MigrationRecordStatus.FAILED,
+                errorMessage: errMsg,
+                rawData: legacyPayment as any,
+              },
+            })
+            .catch(() => {});
 
-          this.logger.warn(`Failed to import payment ${legacyPayment.legacyId}: ${errMsg}`);
+          this.logger.warn(
+            `Failed to import payment ${legacyPayment.legacyId}: ${errMsg}`,
+          );
         }
       }
     }
@@ -634,7 +692,8 @@ export class MigrationService {
         failedCount,
         skippedCount,
         completedAt: new Date(),
-        errorSummary: errors.length > 0 ? JSON.stringify(errors.slice(0, 50)) : null,
+        errorSummary:
+          errors.length > 0 ? JSON.stringify(errors.slice(0, 50)) : null,
       },
     });
 
@@ -670,7 +729,9 @@ export class MigrationService {
     // Resolve order
     const orderId = orderIdMap.get(legacy.legacyOrderId);
     if (!orderId) {
-      throw new Error(`Order not found for legacy ID: ${legacy.legacyOrderId}. Import orders first.`);
+      throw new Error(
+        `Order not found for legacy ID: ${legacy.legacyOrderId}. Import orders first.`,
+      );
     }
 
     const payment = await this.prisma.payment.create({
@@ -680,7 +741,9 @@ export class MigrationService {
         method: this.mapPaymentMethod(legacy.method),
         referenceNumber: legacy.referenceNumber || null,
         proofUrl: legacy.proofUrl || null,
-        verificationStatus: this.mapVerificationStatus(legacy.verificationStatus),
+        verificationStatus: this.mapVerificationStatus(
+          legacy.verificationStatus,
+        ),
         legacyId: legacy.legacyId,
         ...(legacy.createdAt ? { createdAt: new Date(legacy.createdAt) } : {}),
       },
@@ -777,16 +840,22 @@ export class MigrationService {
       const u = users[i];
 
       if (!u.legacyId) errors.push(`users[${i}]: missing legacyId`);
-      if (!u.phone || !/^\d{10}$/.test(u.phone)) errors.push(`users[${i}]: invalid phone "${u.phone}"`);
-      if (!u.role || !['BUYER', 'SELLER'].includes(u.role)) errors.push(`users[${i}]: invalid role "${u.role}"`);
+      if (!u.phone || !/^\d{10}$/.test(u.phone))
+        errors.push(`users[${i}]: invalid phone "${u.phone}"`);
+      if (!u.role || !['BUYER', 'SELLER'].includes(u.role))
+        errors.push(`users[${i}]: invalid role "${u.role}"`);
 
       // Duplicate phone detection
       const count = (phoneCounts.get(u.phone) || 0) + 1;
       phoneCounts.set(u.phone, count);
-      if (count > 1) warnings.push(`users[${i}]: duplicate phone ${u.phone} (occurrence #${count}, last wins)`);
+      if (count > 1)
+        warnings.push(
+          `users[${i}]: duplicate phone ${u.phone} (occurrence #${count}, last wins)`,
+        );
 
       // KYC completeness
-      if (u.role === 'SELLER' && !u.companyName) warnings.push(`users[${i}]: seller missing companyName`);
+      if (u.role === 'SELLER' && !u.companyName)
+        warnings.push(`users[${i}]: seller missing companyName`);
       if (!u.kyc?.gstNumber) warnings.push(`users[${i}]: missing GST number`);
     }
 
@@ -815,18 +884,24 @@ export class MigrationService {
 
       if (!o.legacyId) errors.push(`orders[${i}]: missing legacyId`);
       if (!o.legacyBuyerId) errors.push(`orders[${i}]: missing legacyBuyerId`);
-      if (!userIdMap.has(o.legacyBuyerId)) errors.push(`orders[${i}]: buyer ${o.legacyBuyerId} not in ID map`);
-      if (!o.items || o.items.length === 0) errors.push(`orders[${i}]: no items`);
+      if (!userIdMap.has(o.legacyBuyerId))
+        errors.push(`orders[${i}]: buyer ${o.legacyBuyerId} not in ID map`);
+      if (!o.items || o.items.length === 0)
+        errors.push(`orders[${i}]: no items`);
 
       // Validate items
       let calculatedTotal = 0;
       for (let j = 0; j < (o.items || []).length; j++) {
         const item = o.items[j];
         if (!productIdMap.has(item.legacyProductId)) {
-          errors.push(`orders[${i}].items[${j}]: product ${item.legacyProductId} not found`);
+          errors.push(
+            `orders[${i}].items[${j}]: product ${item.legacyProductId} not found`,
+          );
         }
         if (!userIdMap.has(item.legacySellerId)) {
-          errors.push(`orders[${i}].items[${j}]: seller ${item.legacySellerId} not in ID map`);
+          errors.push(
+            `orders[${i}].items[${j}]: seller ${item.legacySellerId} not in ID map`,
+          );
         }
         calculatedTotal += item.totalPrice;
       }
@@ -845,13 +920,18 @@ export class MigrationService {
       warnings,
       summary: {
         total: orders.length,
-        resolvableBuyers: orders.filter((o) => userIdMap.has(o.legacyBuyerId)).length,
-        unresolvableBuyers: orders.filter((o) => !userIdMap.has(o.legacyBuyerId)).length,
+        resolvableBuyers: orders.filter((o) => userIdMap.has(o.legacyBuyerId))
+          .length,
+        unresolvableBuyers: orders.filter(
+          (o) => !userIdMap.has(o.legacyBuyerId),
+        ).length,
       },
     };
   }
 
-  async validatePayments(payments: LegacyPaymentDto[]): Promise<ValidationResult> {
+  async validatePayments(
+    payments: LegacyPaymentDto[],
+  ): Promise<ValidationResult> {
     const errors: string[] = [];
     const warnings: string[] = [];
     const orderIdMap = await this.loadIdMap(MigrationEntityType.ORDER);
@@ -860,11 +940,13 @@ export class MigrationService {
       const p = payments[i];
 
       if (!p.legacyId) errors.push(`payments[${i}]: missing legacyId`);
-      if (!p.legacyOrderId) errors.push(`payments[${i}]: missing legacyOrderId`);
+      if (!p.legacyOrderId)
+        errors.push(`payments[${i}]: missing legacyOrderId`);
       if (!orderIdMap.has(p.legacyOrderId)) {
         errors.push(`payments[${i}]: order ${p.legacyOrderId} not in ID map`);
       }
-      if (p.amount < 0) errors.push(`payments[${i}]: negative amount ${p.amount}`);
+      if (p.amount < 0)
+        errors.push(`payments[${i}]: negative amount ${p.amount}`);
       if (p.amount === 0) warnings.push(`payments[${i}]: zero amount`);
     }
 
@@ -875,8 +957,12 @@ export class MigrationService {
       summary: {
         total: payments.length,
         totalAmount: payments.reduce((sum, p) => sum + p.amount, 0),
-        resolvableOrders: payments.filter((p) => orderIdMap.has(p.legacyOrderId)).length,
-        unresolvableOrders: payments.filter((p) => !orderIdMap.has(p.legacyOrderId)).length,
+        resolvableOrders: payments.filter((p) =>
+          orderIdMap.has(p.legacyOrderId),
+        ).length,
+        unresolvableOrders: payments.filter(
+          (p) => !orderIdMap.has(p.legacyOrderId),
+        ).length,
       },
     };
   }
@@ -901,7 +987,12 @@ export class MigrationService {
 
     // Orders
     let ordersMissing = 0;
-    const discrepancies: Array<{ legacyOrderId: string; field: string; expected: number; actual: number }> = [];
+    const discrepancies: Array<{
+      legacyOrderId: string;
+      field: string;
+      expected: number;
+      actual: number;
+    }> = [];
     let legacyTotalOrderValue = 0;
     let migratedTotalOrderValue = 0;
 
@@ -992,7 +1083,9 @@ export class MigrationService {
    * Rollback a specific migration run.
    * Deletes all records created during that run using the audit trail.
    */
-  async rollbackRun(runId: string): Promise<{ rolledBack: number; errors: string[] }> {
+  async rollbackRun(
+    runId: string,
+  ): Promise<{ rolledBack: number; errors: string[] }> {
     const run = await this.prisma.migrationRun.findUnique({
       where: { id: runId },
     });
@@ -1031,7 +1124,9 @@ export class MigrationService {
         rolledBack++;
       } catch (error) {
         const errMsg = error instanceof Error ? error.message : String(error);
-        errors.push(`Failed to rollback ${record.entityType}:${record.legacyId}: ${errMsg}`);
+        errors.push(
+          `Failed to rollback ${record.entityType}:${record.legacyId}: ${errMsg}`,
+        );
       }
     }
 
@@ -1047,7 +1142,9 @@ export class MigrationService {
     // Clean up migration records
     await this.prisma.migrationRecord.deleteMany({ where: { runId } });
 
-    this.logger.warn(`Rollback complete: ${rolledBack} records rolled back, ${errors.length} errors`);
+    this.logger.warn(
+      `Rollback complete: ${rolledBack} records rolled back, ${errors.length} errors`,
+    );
     return { rolledBack, errors };
   }
 
@@ -1055,8 +1152,13 @@ export class MigrationService {
    * Rollback ALL migration data (nuclear option — use with caution).
    * Requires explicit confirmation flag.
    */
-  async rollbackAll(confirm: boolean): Promise<{ runs: number; records: number }> {
-    if (!confirm) throw new BadRequestException('Must confirm full rollback with confirm=true');
+  async rollbackAll(
+    confirm: boolean,
+  ): Promise<{ runs: number; records: number }> {
+    if (!confirm)
+      throw new BadRequestException(
+        'Must confirm full rollback with confirm=true',
+      );
 
     this.logger.warn('FULL MIGRATION ROLLBACK initiated');
 
@@ -1084,7 +1186,10 @@ export class MigrationService {
 
   async getMigrationStatus(): Promise<{
     runs: any[];
-    totals: Record<string, { success: number; failed: number; skipped: number }>;
+    totals: Record<
+      string,
+      { success: number; failed: number; skipped: number }
+    >;
     idMapCounts: Record<string, number>;
   }> {
     const runs = await this.prisma.migrationRun.findMany({
@@ -1105,10 +1210,14 @@ export class MigrationService {
     });
 
     // Aggregate totals per entity type
-    const totals: Record<string, { success: number; failed: number; skipped: number }> = {};
+    const totals: Record<
+      string,
+      { success: number; failed: number; skipped: number }
+    > = {};
     for (const run of runs) {
       if (run.status === MigrationStatus.ROLLED_BACK) continue;
-      if (!totals[run.entityType]) totals[run.entityType] = { success: 0, failed: 0, skipped: 0 };
+      if (!totals[run.entityType])
+        totals[run.entityType] = { success: 0, failed: 0, skipped: 0 };
       totals[run.entityType].success += run.successCount;
       totals[run.entityType].failed += run.failedCount;
       totals[run.entityType].skipped += run.skippedCount;
@@ -1167,56 +1276,81 @@ export class MigrationService {
 
   private mapUserStatus(status?: string): UserStatus {
     switch (status) {
-      case 'APPROVED': return UserStatus.APPROVED;
-      case 'REJECTED': return UserStatus.REJECTED;
-      case 'BLOCKED': return UserStatus.BLOCKED;
-      default: return UserStatus.PENDING;
+      case 'APPROVED':
+        return UserStatus.APPROVED;
+      case 'REJECTED':
+        return UserStatus.REJECTED;
+      case 'BLOCKED':
+        return UserStatus.BLOCKED;
+      default:
+        return UserStatus.PENDING;
     }
   }
 
   private mapOrderStatus(status?: string): OrderStatus {
     switch (status) {
-      case 'ACCEPTED': return OrderStatus.ACCEPTED;
-      case 'SHIPPED': return OrderStatus.SHIPPED;
-      case 'OUT_FOR_DELIVERY': return OrderStatus.OUT_FOR_DELIVERY;
-      case 'DELIVERED': return OrderStatus.DELIVERED;
-      case 'CANCELLED': return OrderStatus.CANCELLED;
-      default: return OrderStatus.PLACED;
+      case 'ACCEPTED':
+        return OrderStatus.ACCEPTED;
+      case 'SHIPPED':
+        return OrderStatus.SHIPPED;
+      case 'OUT_FOR_DELIVERY':
+        return OrderStatus.OUT_FOR_DELIVERY;
+      case 'DELIVERED':
+        return OrderStatus.DELIVERED;
+      case 'CANCELLED':
+        return OrderStatus.CANCELLED;
+      default:
+        return OrderStatus.PLACED;
     }
   }
 
   private mapPaymentStatus(status?: string): PaymentStatus {
     switch (status) {
-      case 'PARTIAL': return PaymentStatus.PARTIAL;
-      case 'SUCCESS': return PaymentStatus.SUCCESS;
-      case 'FAILED': return PaymentStatus.FAILED;
-      default: return PaymentStatus.PENDING;
+      case 'PARTIAL':
+        return PaymentStatus.PARTIAL;
+      case 'SUCCESS':
+        return PaymentStatus.SUCCESS;
+      case 'FAILED':
+        return PaymentStatus.FAILED;
+      default:
+        return PaymentStatus.PENDING;
     }
   }
 
   private mapPaymentMethod(method?: string): PaymentMethod {
     switch (method) {
-      case 'BANK_TRANSFER': return PaymentMethod.BANK_TRANSFER;
-      case 'UPI': return PaymentMethod.UPI;
-      case 'COD': return PaymentMethod.COD;
-      case 'PARTIAL': return PaymentMethod.PARTIAL;
-      case 'CREDIT': return PaymentMethod.CREDIT;
-      default: return PaymentMethod.COD;
+      case 'BANK_TRANSFER':
+        return PaymentMethod.BANK_TRANSFER;
+      case 'UPI':
+        return PaymentMethod.UPI;
+      case 'COD':
+        return PaymentMethod.COD;
+      case 'PARTIAL':
+        return PaymentMethod.PARTIAL;
+      case 'CREDIT':
+        return PaymentMethod.CREDIT;
+      default:
+        return PaymentMethod.COD;
     }
   }
 
   private mapVerificationStatus(status?: string): PaymentVerificationStatus {
     switch (status) {
-      case 'CONFIRMED': return PaymentVerificationStatus.CONFIRMED;
-      case 'REJECTED': return PaymentVerificationStatus.REJECTED;
-      default: return PaymentVerificationStatus.PENDING;
+      case 'CONFIRMED':
+        return PaymentVerificationStatus.CONFIRMED;
+      case 'REJECTED':
+        return PaymentVerificationStatus.REJECTED;
+      default:
+        return PaymentVerificationStatus.PENDING;
     }
   }
 
   /**
    * Load all legacy→new ID mappings for a given entity type into a Map for O(1) lookups.
    */
-  private async loadIdMap(entityType: MigrationEntityType): Promise<Map<string, string>> {
+  private async loadIdMap(
+    entityType: MigrationEntityType,
+  ): Promise<Map<string, string>> {
     const records = await this.prisma.migrationIdMap.findMany({
       where: { entityType },
       select: { legacyId: true, newId: true },
@@ -1237,7 +1371,11 @@ export class MigrationService {
   }
 
   private sortForRollback(
-    records: Array<{ newId: string | null; entityType: MigrationEntityType; legacyId: string }>,
+    records: Array<{
+      newId: string | null;
+      entityType: MigrationEntityType;
+      legacyId: string;
+    }>,
     primaryType: MigrationEntityType,
   ) {
     // Rollback order: PAYMENT → ORDER → ORDER_ITEM → SETTLEMENT → USER
@@ -1248,10 +1386,15 @@ export class MigrationService {
       ORDER: 3,
       USER: 4,
     };
-    return [...records].sort((a, b) => (order[a.entityType] ?? 99) - (order[b.entityType] ?? 99));
+    return [...records].sort(
+      (a, b) => (order[a.entityType] ?? 99) - (order[b.entityType] ?? 99),
+    );
   }
 
-  private async deleteEntity(entityType: MigrationEntityType, id: string): Promise<void> {
+  private async deleteEntity(
+    entityType: MigrationEntityType,
+    id: string,
+  ): Promise<void> {
     switch (entityType) {
       case MigrationEntityType.USER:
         await this.prisma.user.delete({ where: { id } }).catch(() => {});
@@ -1266,7 +1409,9 @@ export class MigrationService {
         await this.prisma.orderItem.delete({ where: { id } }).catch(() => {});
         break;
       case MigrationEntityType.SETTLEMENT:
-        await this.prisma.sellerSettlement.delete({ where: { id } }).catch(() => {});
+        await this.prisma.sellerSettlement
+          .delete({ where: { id } })
+          .catch(() => {});
         break;
     }
   }

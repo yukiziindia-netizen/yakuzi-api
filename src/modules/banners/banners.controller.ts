@@ -15,7 +15,11 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { BannersService, CreateBannerDto, UpdateBannerDto } from './banners.service';
+import {
+  BannersService,
+  CreateBannerDto,
+  UpdateBannerDto,
+} from './banners.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -84,7 +88,10 @@ export class AdminBannersController {
       title: dto.title,
       link: dto.link,
       imageUrl,
-      isActive: dto.isActive !== undefined ? String(dto.isActive) === 'true' : undefined,
+      isActive:
+        dto.isActive !== undefined
+          ? String(dto.isActive) === 'true'
+          : undefined,
       order: dto.order ? Number(dto.order) : undefined,
     });
     return { message: 'Banner updated successfully', data };

@@ -54,7 +54,9 @@ export class ProductsService {
       name: this.normalizeString(dto.name),
       manufacturer: this.normalizeString(dto.manufacturer),
 
-      description: dto.description ? this.normalizeString(dto.description) : undefined,
+      description: dto.description
+        ? this.normalizeString(dto.description)
+        : undefined,
       slug: dto.slug
         ? dto.slug.trim().toLowerCase()
         : this.generateSlug(dto.name),
@@ -79,7 +81,9 @@ export class ProductsService {
 
     const [category, subCategory] = await Promise.all([
       this.prisma.category.findUnique({ where: { id: normalized.categoryId } }),
-      this.prisma.subCategory.findUnique({ where: { id: normalized.subCategoryId } }),
+      this.prisma.subCategory.findUnique({
+        where: { id: normalized.subCategoryId },
+      }),
     ]);
     if (!category) throw new NotFoundException('Category not found');
     if (!subCategory) throw new NotFoundException('Sub-category not found');
@@ -90,8 +94,16 @@ export class ProductsService {
         where: { externalId: normalized.externalId },
       });
       if (existing) {
-        this.logger.log(`Upsert: product with externalId ${normalized.externalId} exists, updating`);
-        return this.upsertExistingProduct(existing.id, seller.id, normalized, category, subCategory);
+        this.logger.log(
+          `Upsert: product with externalId ${normalized.externalId} exists, updating`,
+        );
+        return this.upsertExistingProduct(
+          existing.id,
+          seller.id,
+          normalized,
+          category,
+          subCategory,
+        );
       }
     }
 
@@ -102,19 +114,27 @@ export class ProductsService {
       });
       if (existingBySlug) {
         if (normalized.externalId || normalized.isMigration) {
-          this.logger.log(`Upsert: product with slug ${normalized.slug} exists, updating`);
-          return this.upsertExistingProduct(existingBySlug.id, seller.id, normalized, category, subCategory);
+          this.logger.log(
+            `Upsert: product with slug ${normalized.slug} exists, updating`,
+          );
+          return this.upsertExistingProduct(
+            existingBySlug.id,
+            seller.id,
+            normalized,
+            category,
+            subCategory,
+          );
         }
         // Allow duplicate slugs for seller-specific listings
       }
     }
 
-    let masterProductId = dto.masterProductId;
+    const masterProductId = dto.masterProductId;
     let catalogProduct: any = null;
     if (masterProductId) {
       catalogProduct = await this.prisma.catalogProduct.findUnique({
         where: { id: masterProductId },
-        include: { productVariants: true }
+        include: { productVariants: true },
       });
     }
 
@@ -122,10 +142,13 @@ export class ProductsService {
       catalogProduct = await this.prisma.catalogProduct.findFirst({
         where: {
           name: { equals: normalized.name, mode: 'insensitive' },
-          manufacturer: { equals: normalized.manufacturer, mode: 'insensitive' },
+          manufacturer: {
+            equals: normalized.manufacturer,
+            mode: 'insensitive',
+          },
           deletedAt: null,
         },
-        include: { productVariants: true }
+        include: { productVariants: true },
       });
     }
 
@@ -138,16 +161,21 @@ export class ProductsService {
         // Find matching variant if from master
         let matchedVariantId = undefined;
         if (catalogProduct) {
-          const matched = catalogProduct.productVariants.find(pv => pv.name === v.name);
+          const matched = catalogProduct.productVariants.find(
+            (pv) => pv.name === v.name,
+          );
           if (matched) matchedVariantId = matched.id;
         }
 
         // If from master but no match, could be a new variant not in master, or just a seller override
         const offerName = `${normalized.name} - ${v.name}`;
-        const slug = this.generateSlug(offerName) + '-' + Math.random().toString(36).substring(2, 6);
+        const slug =
+          this.generateSlug(offerName) +
+          '-' +
+          Math.random().toString(36).substring(2, 6);
 
         const existingProduct = await this.prisma.sellerOffer.findFirst({
-          where: { sellerId: seller.id, name: offerName, deletedAt: null }
+          where: { sellerId: seller.id, name: offerName, deletedAt: null },
         });
 
         let product;
@@ -161,15 +189,16 @@ export class ProductsService {
               description: normalized.description,
               mrp: v.price > 0 ? v.price : normalized.mrp,
               gstPercent: normalized.gstPercent,
+              isTaxIncluded: normalized.isTaxIncluded ?? false,
               minimumOrderQuantity: normalized.minimumOrderQuantity ?? 1,
               maximumOrderQuantity: normalized.maximumOrderQuantity,
               discountType: normalized.discountType,
               discountMeta: normalized.discountMeta ?? undefined,
               deliveryText: normalized.deliveryText,
             },
-            include: { category: true, subCategory: true }
+            include: { category: true, subCategory: true },
           });
-          
+
           await this.inventoryService.updateDefaultBatch(
             product.id,
             v.available > 0 ? v.available : normalized.stock,
@@ -180,26 +209,33 @@ export class ProductsService {
             seller: { connect: { id: seller.id } },
             category: { connect: { id: normalized.categoryId } },
             subCategory: { connect: { id: normalized.subCategoryId } },
-            variant: matchedVariantId ? { connect: { id: matchedVariantId } } : undefined,
+            variant: matchedVariantId
+              ? { connect: { id: matchedVariantId } }
+              : undefined,
             name: offerName,
             slug: slug,
-            externalId: normalized.externalId ? `${normalized.externalId}-${v.name}` : undefined,
+            externalId: normalized.externalId
+              ? `${normalized.externalId}-${v.name}`
+              : undefined,
             manufacturer: normalized.manufacturer,
             description: normalized.description,
             mrp: v.price > 0 ? v.price : normalized.mrp,
             gstPercent: normalized.gstPercent,
+            isTaxIncluded: normalized.isTaxIncluded ?? false,
             minimumOrderQuantity: normalized.minimumOrderQuantity ?? 1,
             maximumOrderQuantity: normalized.maximumOrderQuantity,
             discountType: normalized.discountType,
             discountMeta: normalized.discountMeta ?? undefined,
             deliveryText: normalized.deliveryText,
-            approvalStatus: isFromMaster ? ProductApprovalStatus.APPROVED : ProductApprovalStatus.PENDING,
+            approvalStatus: isFromMaster
+              ? ProductApprovalStatus.APPROVED
+              : ProductApprovalStatus.PENDING,
             isActive: isFromMaster ? true : false,
           };
 
           product = await this.prisma.sellerOffer.create({
             data: productData,
-            include: { category: true, subCategory: true }
+            include: { category: true, subCategory: true },
           });
 
           await this.inventoryService.createDefaultBatch(
@@ -217,33 +253,46 @@ export class ProductsService {
         });
 
         this.analyticsService.initialise(product.id);
-        this.logger.log(`Product variant created: ${product.id} by seller ${seller.id}`);
+        this.logger.log(
+          `Product variant created: ${product.id} by seller ${seller.id}`,
+        );
         createdOffers.push(product);
       }
 
       if (catalogProduct) {
-        await this.prisma.catalogProduct.update({
-          where: { id: catalogProduct.id },
-          data: { updatedAt: new Date() },
-        }).catch(err => this.logger.warn(`Failed to touch MasterProduct: ${err.message}`));
+        await this.prisma.catalogProduct
+          .update({
+            where: { id: catalogProduct.id },
+            data: { updatedAt: new Date() },
+          })
+          .catch((err) =>
+            this.logger.warn(`Failed to touch MasterProduct: ${err.message}`),
+          );
       }
 
       return {
         ...createdOffers[0],
         images: normalized.images?.length ? [] : [],
-        stock: dto.variants[0]?.available > 0 ? dto.variants[0].available : normalized.stock,
+        stock:
+          dto.variants[0]?.available > 0
+            ? dto.variants[0].available
+            : normalized.stock,
         expiryDate: normalized.expiryDate,
       };
     }
 
     // Default flow: single product without specific variants array
     let variantId = normalized.variantId;
-    if (!variantId && catalogProduct && catalogProduct.productVariants.length > 0) {
+    if (
+      !variantId &&
+      catalogProduct &&
+      catalogProduct.productVariants.length > 0
+    ) {
       variantId = catalogProduct.productVariants[0].id;
     }
 
     const existingProduct = await this.prisma.sellerOffer.findFirst({
-      where: { sellerId: seller.id, name: normalized.name, deletedAt: null }
+      where: { sellerId: seller.id, name: normalized.name, deletedAt: null },
     });
 
     let product;
@@ -257,13 +306,14 @@ export class ProductsService {
           description: normalized.description,
           mrp: normalized.mrp,
           gstPercent: normalized.gstPercent,
+          isTaxIncluded: normalized.isTaxIncluded ?? false,
           minimumOrderQuantity: normalized.minimumOrderQuantity ?? 1,
           maximumOrderQuantity: normalized.maximumOrderQuantity,
           discountType: normalized.discountType,
           discountMeta: normalized.discountMeta ?? undefined,
           deliveryText: normalized.deliveryText,
         },
-        include: { category: true, subCategory: true }
+        include: { category: true, subCategory: true },
       });
       await this.inventoryService.updateDefaultBatch(
         product.id,
@@ -283,12 +333,15 @@ export class ProductsService {
         description: normalized.description,
         mrp: normalized.mrp,
         gstPercent: normalized.gstPercent,
+        isTaxIncluded: normalized.isTaxIncluded ?? false,
         minimumOrderQuantity: normalized.minimumOrderQuantity ?? 1,
         maximumOrderQuantity: normalized.maximumOrderQuantity,
         discountType: normalized.discountType,
         discountMeta: normalized.discountMeta ?? undefined,
         deliveryText: normalized.deliveryText,
-        approvalStatus: isFromMaster ? ProductApprovalStatus.APPROVED : ProductApprovalStatus.PENDING,
+        approvalStatus: isFromMaster
+          ? ProductApprovalStatus.APPROVED
+          : ProductApprovalStatus.PENDING,
         isActive: isFromMaster ? true : false, // Auto-approve if from master catalog
       };
 
@@ -322,30 +375,32 @@ export class ProductsService {
 
     this.analyticsService.initialise(product.id);
 
-    this.logger.log(
-      `Product created: ${product.id} by seller ${seller.id}`,
-    );
+    this.logger.log(`Product created: ${product.id} by seller ${seller.id}`);
 
     // Touch the master product to reflect new listing activity
     if (catalogProduct) {
       // Notify waitlisted users
-      await this.notifyWaitlistedUsers(catalogProduct.id).catch(err => {
-        this.logger.error(`Failed to notify waitlisted users for product ${catalogProduct.id}: ${err.message}`);
+      await this.notifyWaitlistedUsers(catalogProduct.id).catch((err) => {
+        this.logger.error(
+          `Failed to notify waitlisted users for product ${catalogProduct.id}: ${err.message}`,
+        );
       });
 
-      await this.prisma.catalogProduct.update({
-        where: { id: catalogProduct.id },
-        data: { updatedAt: new Date() },
-      }).catch(err => this.logger.warn(`Failed to touch MasterProduct: ${err.message}`));
+      await this.prisma.catalogProduct
+        .update({
+          where: { id: catalogProduct.id },
+          data: { updatedAt: new Date() },
+        })
+        .catch((err) =>
+          this.logger.warn(`Failed to touch MasterProduct: ${err.message}`),
+        );
     }
 
     const batch = await this.prisma.productBatch.findFirst({
       where: { sellerOfferId: product.id, batchNumber: 'DEFAULT' },
     });
 
-    const images = normalized.images?.length
-      ? []
-      : [];
+    const images = normalized.images?.length ? [] : [];
 
     return {
       ...product,
@@ -378,6 +433,7 @@ export class ProductsService {
         description: dto.description,
         mrp: dto.mrp,
         gstPercent: dto.gstPercent,
+        isTaxIncluded: dto.isTaxIncluded,
         minimumOrderQuantity: dto.minimumOrderQuantity ?? 1,
         maximumOrderQuantity: dto.maximumOrderQuantity,
         discountType: dto.discountType,
@@ -398,7 +454,11 @@ export class ProductsService {
       // await this.prisma.catalogProductImage.createMany
     }
 
-    await this.inventoryService.updateDefaultBatch(productId, dto.stock, dto.expiryDate);
+    await this.inventoryService.updateDefaultBatch(
+      productId,
+      dto.stock,
+      dto.expiryDate,
+    );
 
     this.searchIndexService.upsert(productId, {
       name: updated.name,
@@ -418,10 +478,16 @@ export class ProductsService {
 
     // Touch the master product to reflect new listing activity
     if (updated.variantId) {
-      await this.prisma.catalogProduct.update({
-        where: { id: updated.variantId },
-        data: { updatedAt: new Date() },
-      }).catch(err => this.logger.warn(`Failed to touch MasterProduct ${updated.variantId}: ${err.message}`));
+      await this.prisma.catalogProduct
+        .update({
+          where: { id: updated.variantId },
+          data: { updatedAt: new Date() },
+        })
+        .catch((err) =>
+          this.logger.warn(
+            `Failed to touch MasterProduct ${updated.variantId}: ${err.message}`,
+          ),
+        );
     }
 
     return {
@@ -456,7 +522,9 @@ export class ProductsService {
           name: dto.products[i]?.name ?? 'unknown',
           reason: error instanceof Error ? error.message : 'Unknown error',
         });
-        this.logger.warn(`Bulk create failed at index ${i}: ${error instanceof Error ? error.message : error}`);
+        this.logger.warn(
+          `Bulk create failed at index ${i}: ${error instanceof Error ? error.message : error}`,
+        );
       }
     }
 
@@ -473,9 +541,11 @@ export class ProductsService {
     const seller = await this.prisma.sellerProfile.findUnique({
       where: { userId },
     });
-    
+
     if (!seller) {
-      this.logger.warn(`Seller profile not found for user ${userId} during findOwn`);
+      this.logger.warn(
+        `Seller profile not found for user ${userId} during findOwn`,
+      );
       return {
         products: [],
         meta: {
@@ -487,7 +557,12 @@ export class ProductsService {
       };
     }
 
-    const { page = 1, limit = 20, sortBy = 'createdAt', sortOrder = 'desc' } = query;
+    const {
+      page = 1,
+      limit = 20,
+      sortBy = 'createdAt',
+      sortOrder = 'desc',
+    } = query;
     const skip = (page - 1) * limit;
 
     const where: Prisma.SellerOfferWhereInput = {
@@ -503,7 +578,8 @@ export class ProductsService {
     }
 
     if (query.status) {
-      where.approvalStatus = query.status.toUpperCase() as ProductApprovalStatus;
+      where.approvalStatus =
+        query.status.toUpperCase() as ProductApprovalStatus;
     }
 
     // New Items (Created in last 30 days)
@@ -573,13 +649,17 @@ export class ProductsService {
 
     // Trim strings
     if (productData.name) productData.name = productData.name.trim();
-    if (productData.manufacturer) productData.manufacturer = productData.manufacturer.trim();
-    if (productData.description) productData.description = productData.description.trim();
+    if (productData.manufacturer)
+      productData.manufacturer = productData.manufacturer.trim();
+    if (productData.description)
+      productData.description = productData.description.trim();
 
     const updateData: Prisma.SellerOfferUpdateInput = {
       ...productData,
       ...(categoryId ? { category: { connect: { id: categoryId } } } : {}),
-      ...(subCategoryId ? { subCategory: { connect: { id: subCategoryId } } } : {}),
+      ...(subCategoryId
+        ? { subCategory: { connect: { id: subCategoryId } } }
+        : {}),
     };
 
     const updated = await this.prisma.sellerOffer.update({
@@ -609,25 +689,21 @@ export class ProductsService {
       if (stock !== undefined && stock > 0) {
         const offerWithVariant = await this.prisma.sellerOffer.findUnique({
           where: { id: product.id },
-          include: { variant: true }
+          include: { variant: true },
         });
         const catalogProductId = offerWithVariant?.variant?.catalogProductId;
-        
+
         if (catalogProductId) {
-          await this.notifyWaitlistedUsers(catalogProductId).catch(err => {
-            this.logger.error(`Failed to notify waitlisted users for product ${catalogProductId}: ${err.message}`);
+          await this.notifyWaitlistedUsers(catalogProductId).catch((err) => {
+            this.logger.error(
+              `Failed to notify waitlisted users for product ${catalogProductId}: ${err.message}`,
+            );
           });
         }
       }
     }
 
-    if (
-      dto.name ||
-      dto.manufacturer ||
-
-      dto.categoryId ||
-      dto.subCategoryId
-    ) {
+    if (dto.name || dto.manufacturer || dto.categoryId || dto.subCategoryId) {
       this.searchIndexService.upsert(updated.id, {
         name: updated.name,
         manufacturer: updated.manufacturer,
@@ -678,11 +754,17 @@ export class ProductsService {
    * This is the "Marketplace" view where unique items are shown once.
    */
   async findAll(query: QueryProductDto) {
-    const { page = 1, limit = 20, sortBy = 'createdAt', sortOrder = 'desc' } = query;
+    const {
+      page = 1,
+      limit = 20,
+      sortBy = 'createdAt',
+      sortOrder = 'desc',
+    } = query;
     const skip = (page - 1) * limit;
 
     // Handle sortBy mapping
-    const effectiveSortBy = sortBy === 'price' ? 'mrp' : (sortBy === 'newest' ? 'updatedAt' : sortBy);
+    const effectiveSortBy =
+      sortBy === 'price' ? 'mrp' : sortBy === 'newest' ? 'updatedAt' : sortBy;
 
     const where: Prisma.CatalogProductWhereInput = {
       isActive: true,
@@ -696,13 +778,13 @@ export class ProductsService {
         OR: [
           { name: { contains: query.search, mode: 'insensitive' } },
           { manufacturer: { contains: query.search, mode: 'insensitive' } },
-
         ],
       });
     }
 
     if (query.categoryId) andConditions.push({ categoryId: query.categoryId });
-    if (query.subCategoryId) andConditions.push({ subCategoryId: query.subCategoryId });
+    if (query.subCategoryId)
+      andConditions.push({ subCategoryId: query.subCategoryId });
     if (query.manufacturer) {
       andConditions.push({
         manufacturer: { contains: query.manufacturer, mode: 'insensitive' },
@@ -721,8 +803,8 @@ export class ProductsService {
                 isActive: true,
                 deletedAt: null,
                 createdAt: { gte: thirtyDaysAgo },
-              }
-            }
+              },
+            },
           },
         },
       });
@@ -730,7 +812,7 @@ export class ProductsService {
 
     // Combine filters that target the underlying seller products
     const productConditions: Prisma.SellerOfferWhereInput[] = [
-      { isActive: true, deletedAt: null }
+      { isActive: true, deletedAt: null },
     ];
 
     if (query.isDiscounted) {
@@ -744,9 +826,13 @@ export class ProductsService {
     if (query.minPrice !== undefined || query.maxPrice !== undefined) {
       productConditions.push({
         mrp: {
-          ...(query.minPrice !== undefined ? { gte: Number(query.minPrice) } : {}),
-          ...(query.maxPrice !== undefined ? { lte: Number(query.maxPrice) } : {}),
-        }
+          ...(query.minPrice !== undefined
+            ? { gte: Number(query.minPrice) }
+            : {}),
+          ...(query.maxPrice !== undefined
+            ? { lte: Number(query.maxPrice) }
+            : {}),
+        },
       });
     }
 
@@ -757,20 +843,23 @@ export class ProductsService {
     if (query.discountType && query.discountType !== 'All') {
       let mappedType: string | null = null;
       if (query.discountType === 'Upclom') mappedType = 'PTR_DISCOUNT';
-      else if (query.discountType === 'Fuill') mappedType = 'SAME_PRODUCT_BONUS';
+      else if (query.discountType === 'Fuill')
+        mappedType = 'SAME_PRODUCT_BONUS';
       else mappedType = query.discountType;
-      
+
       productConditions.push({ discountType: mappedType as any });
     }
 
     if (query.discountRange && query.discountRange !== 'All') {
-       // Since discount logic depends on various types (PTR, Bonus), we'll do a generic discount check
-       productConditions.push({ discountType: { not: null } });
+      // Since discount logic depends on various types (PTR, Bonus), we'll do a generic discount check
+      productConditions.push({ discountType: { not: null } });
     }
 
     if (productConditions.length > 1) {
       andConditions.push({
-        productVariants: { some: { sellerOffers: { some: { AND: productConditions } } } },
+        productVariants: {
+          some: { sellerOffers: { some: { AND: productConditions } } },
+        },
       });
     }
 
@@ -785,7 +874,24 @@ export class ProductsService {
           category: true,
           subCategory: true,
           images: { take: 1 },
-          productVariants: { include: { sellerOffers: { where: { isActive: true, deletedAt: null }, select: { id: true, mrp: true, gstPercent: true, discountType: true, discountMeta: true, deliveryText: true, minimumOrderQuantity: true }, orderBy: { mrp: 'asc' }, take: 1 } } },
+          productVariants: {
+            include: {
+              sellerOffers: {
+                where: { isActive: true, deletedAt: null },
+                select: {
+                  id: true,
+                  mrp: true,
+                  gstPercent: true,
+                  discountType: true,
+                  discountMeta: true,
+                  deliveryText: true,
+                  minimumOrderQuantity: true,
+                },
+                orderBy: { mrp: 'asc' },
+                take: 1,
+              },
+            },
+          },
         },
         orderBy: { [effectiveSortBy]: sortOrder },
         skip,
@@ -812,75 +918,99 @@ export class ProductsService {
   async findOne(id: string) {
     // 1. First, check if 'id' is a specific Seller Listing (Product)
     const listing = await this.prisma.sellerOffer.findFirst({
-        where: { id, deletedAt: null },
-        include: {
-            category: true,
-            subCategory: true,
-            batches: true,
-            variant: true,
-            seller: { select: { id: true, companyName: true, rating: true, city: true, state: true } },
-        }
+      where: { id, deletedAt: null },
+      include: {
+        category: true,
+        subCategory: true,
+        batches: true,
+        variant: true,
+        seller: {
+          select: {
+            id: true,
+            companyName: true,
+            rating: true,
+            city: true,
+            state: true,
+          },
+        },
+      },
     });
 
     if (listing) {
-        this.logger.log(`findOne: Found specific listing ${id}`);
-        if (listing.variant?.catalogProductId) {
-            const master = await this.prisma.catalogProduct.findFirst({
-              where: { id: listing.variant.catalogProductId, deletedAt: null },
+      this.logger.log(`findOne: Found specific listing ${id}`);
+      if (listing.variant?.catalogProductId) {
+        const master = await this.prisma.catalogProduct.findFirst({
+          where: { id: listing.variant.catalogProductId, deletedAt: null },
+          include: {
+            category: true,
+            subCategory: true,
+            images: true,
+            productVariants: {
               include: {
-                category: true,
-                subCategory: true,
-                images: true,
-                productVariants: {
-                    include: {
-                        sellerOffers: {
-                            where: { deletedAt: null },
-                            include: {
-                                seller: { select: { id: true, companyName: true, rating: true, city: true, state: true } },
-                                batches: { orderBy: { expiryDate: 'asc' } },
-                            },
-                            orderBy: { mrp: 'asc' }
-                        }
-                    }
-                }
+                sellerOffers: {
+                  where: { deletedAt: null },
+                  include: {
+                    seller: {
+                      select: {
+                        id: true,
+                        companyName: true,
+                        rating: true,
+                        city: true,
+                        state: true,
+                      },
+                    },
+                    batches: { orderBy: { expiryDate: 'asc' } },
+                  },
+                  orderBy: { mrp: 'asc' },
+                },
               },
-            });
-            if (master) {
-                this.analyticsService.recordView(master.id);
-                return this.formatMasterDetail(master);
-            }
+            },
+          },
+        });
+        if (master) {
+          this.analyticsService.recordView(master.id);
+          return this.formatMasterDetail(master);
         }
-        return this.flattenProduct(listing as any);
+      }
+      return this.flattenProduct(listing as any);
     }
 
     // 2. Fallback: Check if 'id' is a Master Product (by ID or Slug)
     const master = await this.prisma.catalogProduct.findFirst({
-      where: { 
+      where: {
         OR: [{ id }, { slug: id }],
-        deletedAt: null 
+        deletedAt: null,
       },
       include: {
         category: true,
         subCategory: true,
         images: true,
-        
+
         productVariants: {
-            include: {
-                sellerOffers: {
-                    where: { deletedAt: null },
-                    include: {
-                        seller: { select: { id: true, companyName: true, rating: true, city: true, state: true } },
-                        batches: { orderBy: { expiryDate: 'asc' } },
-                    },
-                    orderBy: { mrp: 'asc' }
-                }
-            }
-        }
+          include: {
+            sellerOffers: {
+              where: { deletedAt: null },
+              include: {
+                seller: {
+                  select: {
+                    id: true,
+                    companyName: true,
+                    rating: true,
+                    city: true,
+                    state: true,
+                  },
+                },
+                batches: { orderBy: { expiryDate: 'asc' } },
+              },
+              orderBy: { mrp: 'asc' },
+            },
+          },
+        },
       },
     });
 
     if (!master) {
-        throw new NotFoundException('Product not found');
+      throw new NotFoundException('Product not found');
     }
 
     // record analytics view for the master item
@@ -899,40 +1029,47 @@ export class ProductsService {
       0: 18.12,
       5: 23.81,
       12: 28.67,
-      18: 32.20,
+      18: 32.2,
     };
     const retailMargin = margins[gstPercent] || 0;
-    const ptr = Math.round((mrp - (mrp * retailMargin / 100)) * 100) / 100;
-    
+    const ptr = Math.round((mrp - (mrp * retailMargin) / 100) * 100) / 100;
+
     let finalPtr = ptr;
     let discountPercent = 0;
-    
+
     if (
       discountType === 'PTR_DISCOUNT' ||
       discountType === 'PTR_PLUS_SAME_PRODUCT_BONUS' ||
       discountType === 'PTR_PLUS_DIFFERENT_PRODUCT_BONUS'
     ) {
       discountPercent = discountMeta?.discountPercent ?? 0;
-      finalPtr = Math.round((ptr - (ptr * discountPercent / 100)) * 100) / 100;
+      finalPtr = Math.round((ptr - (ptr * discountPercent) / 100) * 100) / 100;
     } else if (discountType === 'SPECIAL_PRICE') {
       finalPtr = discountMeta?.specialPrice ?? ptr;
     }
-    
-    const gstValue = Math.round((finalPtr * gstPercent / 100) * 100) / 100;
+
+    const gstValue = Math.round(((finalPtr * gstPercent) / 100) * 100) / 100;
     const perPtrWithGst = Math.round((finalPtr + gstValue) * 100) / 100;
-    
+
     return perPtrWithGst;
   }
 
   private getBestOffer(m: any) {
-    const listings = (m.productVariants || []).flatMap((v: any) => v.sellerOffers || []);
+    const listings = (m.productVariants || []).flatMap(
+      (v: any) => v.sellerOffers || [],
+    );
     if (listings.length === 0) return null;
-    
+
     let bestOffer: any = null;
     let minSellingPrice = Infinity;
-    
+
     for (const l of listings) {
-      const sellingPrice = this.calculateSellingPrice(l.mrp, l.gstPercent, l.discountType, l.discountMeta);
+      const sellingPrice = this.calculateSellingPrice(
+        l.mrp,
+        l.gstPercent,
+        l.discountType,
+        l.discountMeta,
+      );
       if (sellingPrice < minSellingPrice) {
         minSellingPrice = sellingPrice;
         bestOffer = {
@@ -941,18 +1078,31 @@ export class ProductsService {
         };
       }
     }
-    
+
     return bestOffer;
   }
 
   private mapMasterToGrid(m: any) {
-    const listings = (m.productVariants || []).flatMap((v: any) => v.sellerOffers || []);
+    const listings = (m.productVariants || []).flatMap(
+      (v: any) => v.sellerOffers || [],
+    );
     const bestOffer = this.getBestOffer(m);
-    const minPrice = listings.length > 0 ? Math.min(...listings.map((l: any) => l.mrp)) : m.mrp;
-    const minMoq = listings.length > 0 ? Math.min(...listings.map((l: any) => l.minimumOrderQuantity || 1)) : 1;
-    const bestListingId = listings.length > 0 ? listings.reduce((prev: any, curr: any) => prev.mrp < curr.mrp ? prev : curr).id : null;
+    const minPrice =
+      listings.length > 0
+        ? Math.min(...listings.map((l: any) => l.mrp))
+        : m.mrp;
+    const minMoq =
+      listings.length > 0
+        ? Math.min(...listings.map((l: any) => l.minimumOrderQuantity || 1))
+        : 1;
+    const bestListingId =
+      listings.length > 0
+        ? listings.reduce((prev: any, curr: any) =>
+            prev.mrp < curr.mrp ? prev : curr,
+          ).id
+        : null;
     const hasSellers = listings.length > 0;
-    
+
     return {
       id: m.id,
       name: m.name,
@@ -964,7 +1114,7 @@ export class ProductsService {
       discountType: bestOffer ? bestOffer.discountType : null,
       discountMeta: bestOffer ? bestOffer.discountMeta : null,
       gstPercent: bestOffer ? bestOffer.gstPercent : null,
-      
+
       moq: minMoq,
       bestListingId,
       hasSellers,
@@ -981,8 +1131,15 @@ export class ProductsService {
   }
 
   private formatMasterDetail(m: any) {
-    const allListings = (m.productVariants || []).flatMap((v: any) => v.sellerOffers || []);
-    const bestListing = allListings.length > 0 ? allListings.reduce((prev: any, curr: any) => prev.mrp < curr.mrp ? prev : curr) : null;
+    const allListings = (m.productVariants || []).flatMap(
+      (v: any) => v.sellerOffers || [],
+    );
+    const bestListing =
+      allListings.length > 0
+        ? allListings.reduce((prev: any, curr: any) =>
+            prev.mrp < curr.mrp ? prev : curr,
+          )
+        : null;
     return {
       id: m.id,
       name: m.name,
@@ -1009,41 +1166,70 @@ export class ProductsService {
       isBestSeller: m.isBestSeller || false,
       isAd: m.isAd || false,
       // Group seller listings
-      listings: (m.productVariants || []).flatMap((v: any) => 
-          (v.sellerOffers || []).map((p: any) => {
-              const batches = p.batches || [];
-              const stock = batches.reduce((sum: number, b: any) => sum + b.stock, 0);
-              const sellingPrice = this.calculateSellingPrice(p.mrp, p.gstPercent, p.discountType, p.discountMeta);
-              return {
-                  id: p.id,
-                  price: sellingPrice,
-                  mrp: p.mrp,
-                  discountType: p.discountType,
-                  discountMeta: p.discountMeta,
-                  deliveryText: p.deliveryText,
-                  stock,
-                  expiryDate: batches.length > 0 ? batches[0].expiryDate : null,
-                  seller: p.seller,
-                  sellerName: p.seller?.companyName,
-                  images: p.images?.length > 0 ? p.images : m.images, // Fallback to master images
-                  moq: p.minimumOrderQuantity || 1,
-                  variantName: v.name,
-              };
-          })
-      ),
-      options: Array.isArray(m.options) ? m.options.filter((o: any) => o && typeof o === 'object' && !Array.isArray(o) && o.name) : [],
-      variants: (m.productVariants || []).map((v: any) => {
-          const offers = v.sellerOffers || [];
-          const minPrice = offers.length > 0 ? Math.min(...offers.map((o: any) => o.mrp)) : (v.options?.price || 0);
-          const totalStock = offers.reduce((sum: number, o: any) => sum + (o.batches || []).reduce((bsum: number, b: any) => bsum + b.stock, 0), 0);
+      listings: (m.productVariants || []).flatMap((v: any) =>
+        (v.sellerOffers || []).map((p: any) => {
+          const batches = p.batches || [];
+          const stock = batches.reduce(
+            (sum: number, b: any) => sum + b.stock,
+            0,
+          );
+          const sellingPrice = this.calculateSellingPrice(
+            p.mrp,
+            p.gstPercent,
+            p.discountType,
+            p.discountMeta,
+          );
           return {
-              id: v.id,
-              name: v.name,
-              price: minPrice.toString(),
-              available: totalStock > 0 ? totalStock.toString() : (v.options?.available ? v.options.available.toString() : "0"),
-              image: v.options?.image || null
+            id: p.id,
+            price: sellingPrice,
+            mrp: p.mrp,
+            discountType: p.discountType,
+            discountMeta: p.discountMeta,
+            deliveryText: p.deliveryText,
+            stock,
+            expiryDate: batches.length > 0 ? batches[0].expiryDate : null,
+            seller: p.seller,
+            sellerName: p.seller?.companyName,
+            images: p.images?.length > 0 ? p.images : m.images, // Fallback to master images
+            moq: p.minimumOrderQuantity || 1,
+            variantName: v.name,
           };
-      })
+        }),
+      ),
+      options: Array.isArray(m.options)
+        ? m.options.filter(
+            (o: any) =>
+              o && typeof o === 'object' && !Array.isArray(o) && o.name,
+          )
+        : [],
+      variants: (m.productVariants || []).map((v: any) => {
+        const offers = v.sellerOffers || [];
+        const minPrice =
+          offers.length > 0
+            ? Math.min(...offers.map((o: any) => o.mrp))
+            : v.options?.price || 0;
+        const totalStock = offers.reduce(
+          (sum: number, o: any) =>
+            sum +
+            (o.batches || []).reduce(
+              (bsum: number, b: any) => bsum + b.stock,
+              0,
+            ),
+          0,
+        );
+        return {
+          id: v.id,
+          name: v.name,
+          price: minPrice.toString(),
+          available:
+            totalStock > 0
+              ? totalStock.toString()
+              : v.options?.available
+                ? v.options.available.toString()
+                : '0',
+          image: v.options?.image || null,
+        };
+      }),
     };
   }
 
@@ -1064,8 +1250,12 @@ export class ProductsService {
         AND: words.map((w) => ({
           OR: [
             { name: { contains: w, mode: 'insensitive' as Prisma.QueryMode } },
-            { manufacturer: { contains: w, mode: 'insensitive' as Prisma.QueryMode } },
-
+            {
+              manufacturer: {
+                contains: w,
+                mode: 'insensitive' as Prisma.QueryMode,
+              },
+            },
           ],
         })),
       };
@@ -1088,7 +1278,6 @@ export class ProductsService {
           gstPercent: true,
           categoryId: true,
           subCategoryId: true,
-          
         },
         take: 10,
         orderBy: { name: 'asc' },
@@ -1155,13 +1344,22 @@ export class ProductsService {
               include: {
                 sellerOffers: {
                   include: {
-                    batches: { where: { stock: { gt: 0 } }, orderBy: { expiryDate: 'asc' } },
-                    seller: { select: { companyName: true, city: true, state: true, rating: true } },
-                  }
-                }
-              }
-            }
-            
+                    batches: {
+                      where: { stock: { gt: 0 } },
+                      orderBy: { expiryDate: 'asc' },
+                    },
+                    seller: {
+                      select: {
+                        companyName: true,
+                        city: true,
+                        state: true,
+                        rating: true,
+                      },
+                    },
+                  },
+                },
+              },
+            },
           },
         },
       },
@@ -1212,8 +1410,8 @@ export class ProductsService {
     const nearestExpiry = batches.length > 0 ? batches[0].expiryDate : null;
 
     // Standardize images as string array
-    const images = (product.images ?? []).map((img: any) => 
-      typeof img === 'string' ? img : (img.url ?? img)
+    const images = (product.images ?? []).map((img: any) =>
+      typeof img === 'string' ? img : (img.url ?? img),
     );
 
     // Standardize category name
@@ -1224,13 +1422,23 @@ export class ProductsService {
 
     let price = product.price;
     let mrp = product.mrp;
-    
+
     if (product.discountType !== undefined && !product.productVariants) {
-      price = this.calculateSellingPrice(product.mrp, product.gstPercent || 0, product.discountType, product.discountMeta);
+      price = this.calculateSellingPrice(
+        product.mrp,
+        product.gstPercent || 0,
+        product.discountType,
+        product.discountMeta,
+      );
       mrp = product.mrp;
     }
 
-    const { batches: _batches, images: _images, category: _category, ...rest } = product;
+    const {
+      batches: _batches,
+      images: _images,
+      category: _category,
+      ...rest
+    } = product;
     return {
       ...rest,
       category: categoryName,
@@ -1248,7 +1456,9 @@ export class ProductsService {
     const request = await (this.prisma as any).catalogProductRequest.create({
       data: {
         userId,
-        productName: (dto as any).catalogProductName?.trim() || (dto as any).productName?.trim(),
+        productName:
+          (dto as any).catalogProductName?.trim() ||
+          (dto as any).productName?.trim(),
         manufacturer: dto.manufacturer?.trim(),
         description: dto.description?.trim(),
         status: 'PENDING',
@@ -1270,8 +1480,17 @@ export class ProductsService {
     return request;
   }
 
-  async findAllRequests(query: { page?: number | string; limit?: number | string; status?: string; userId?: string; search?: string; dateFrom?: string; dateTo?: string } = {}) {
-
+  async findAllRequests(
+    query: {
+      page?: number | string;
+      limit?: number | string;
+      status?: string;
+      userId?: string;
+      search?: string;
+      dateFrom?: string;
+      dateTo?: string;
+    } = {},
+  ) {
     const page = Number(query.page || 1);
     const limit = Number(query.limit || 20);
     const skip = (page - 1) * limit;
@@ -1297,15 +1516,12 @@ export class ProductsService {
       };
     }
 
-
     if (query.dateFrom || query.dateTo) {
       where.createdAt = {
         ...(query.dateFrom ? { gte: new Date(query.dateFrom) } : {}),
         ...(query.dateTo ? { lte: new Date(query.dateTo) } : {}),
       };
     }
-
-
 
     const [requests, total] = await Promise.all([
       (this.prisma as any).catalogProductRequest.findMany({
@@ -1343,9 +1559,11 @@ export class ProductsService {
   }
 
   async updateRequestStatus(requestId: string, status: any) {
-    const request = await (this.prisma as any).catalogProductRequest.findUnique({
-      where: { id: requestId },
-    });
+    const request = await (this.prisma as any).catalogProductRequest.findUnique(
+      {
+        where: { id: requestId },
+      },
+    );
 
     if (!request) {
       throw new NotFoundException('Product request not found');
@@ -1433,7 +1651,7 @@ export class ProductsService {
 
     if (waitlisted.length === 0) return;
 
-    const notifications = waitlisted.map(w => ({
+    const notifications = waitlisted.map((w) => ({
       userId: w.userId,
       message: `The product ${w.catalogProduct.name} you were waiting for is now back in stock!`,
     }));
@@ -1443,7 +1661,7 @@ export class ProductsService {
     });
 
     await this.prisma.productWaitlist.updateMany({
-      where: { id: { in: waitlisted.map(w => w.id) } },
+      where: { id: { in: waitlisted.map((w) => w.id) } },
       data: { isNotified: true },
     });
   }

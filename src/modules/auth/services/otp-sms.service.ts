@@ -29,14 +29,17 @@ export class OtpSmsService {
 
     this.sender = this.configService.get<string>('NIMBUS_SENDER') || 'PHABAG';
     this.entityId = this.configService.get<string>('NIMBUS_ENTITY_ID') || '';
-    this.templateId = this.configService.get<string>('NIMBUS_TEMPLATE_ID') || '';
+    this.templateId =
+      this.configService.get<string>('NIMBUS_TEMPLATE_ID') || '';
 
     this.messageTemplate =
       this.configService.get<string>('NIMBUS_OTP_MESSAGE') ||
       'Welcome to Yukizi. Use OTP {otp} to login to your Yukizi account';
 
     if (!this.user || !this.password) {
-      this.logger.warn('Nimbus SMS credentials (NIMBUS_USER/NIMBUS_KEY) missing!');
+      this.logger.warn(
+        'Nimbus SMS credentials (NIMBUS_USER/NIMBUS_KEY) missing!',
+      );
     }
   }
 
@@ -45,17 +48,17 @@ export class OtpSmsService {
   // ==============================
   async sendOtp(phone: string, otp: string): Promise<any> {
     if (!phone || !otp) {
-      throw new HttpException(
-        'Phone and OTP required',
-        HttpStatus.BAD_REQUEST,
-      );
+      throw new HttpException('Phone and OTP required', HttpStatus.BAD_REQUEST);
     }
 
     const formattedPhone = this.formatPhone(phone);
 
     // Robust replacement: handles {otp}, [otp], <otp>, {#var#}, or {%otp%} case-insensitively
     // We intentionally do not use \botp\b to avoid matching the literal word "OTP" in the template.
-    const message = this.messageTemplate.replace(/\{otp\}|\[otp\]|<otp>|\{#var#\}|\{%otp%\}/gi, otp);
+    const message = this.messageTemplate.replace(
+      /\{otp\}|\[otp\]|<otp>|\{#var#\}|\{%otp%\}/gi,
+      otp,
+    );
 
     this.logger.log(`Final message being sent: ${message}`);
     this.logger.log(`Sending OTP to ${formattedPhone}`);
@@ -122,7 +125,9 @@ export class OtpSmsService {
     }
 
     if (clean.length < 12) {
-      this.logger.warn(`Phone number ${phone} may be too short for international format`);
+      this.logger.warn(
+        `Phone number ${phone} may be too short for international format`,
+      );
     }
 
     return clean;

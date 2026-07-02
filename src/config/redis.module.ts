@@ -22,4 +22,4 @@ import { createRedisClient, REDIS_CLIENT } from './redis.config';
   ],
   exports: [REDIS_CLIENT],
 })
-export class RedisModule { }
+export class RedisModule {}

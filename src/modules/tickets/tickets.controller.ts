@@ -7,7 +7,12 @@ import {
   ParseUUIDPipe,
   UseGuards,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+} from '@nestjs/swagger';
 import { TicketsService } from './tickets.service';
 import { CreateTicketDto } from './dto/create-ticket.dto';
 import { CreateMessageDto } from './dto/create-message.dto';
@@ -32,7 +37,9 @@ export class TicketsController {
   }
 
   @Get()
-  @ApiOperation({ summary: 'Get tickets (own for buyer/seller, all for admin)' })
+  @ApiOperation({
+    summary: 'Get tickets (own for buyer/seller, all for admin)',
+  })
   @ApiResponse({ status: 200, description: 'Tickets list returned' })
   getTickets(
     @CurrentUser('id') userId: string,

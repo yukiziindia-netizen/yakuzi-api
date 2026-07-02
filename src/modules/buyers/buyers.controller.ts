@@ -9,7 +9,12 @@ import {
   HttpStatus,
   Query,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+} from '@nestjs/swagger';
 import { Role } from '@prisma/client';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
@@ -68,7 +73,10 @@ export class BuyersController {
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Seller onboards a buyer (SELLER role)' })
   @ApiResponse({ status: 201, description: 'Buyer onboarded successfully' })
-  @ApiResponse({ status: 400, description: 'Invalid buyer data or IDFY verification failed' })
+  @ApiResponse({
+    status: 400,
+    description: 'Invalid buyer data or IDFY verification failed',
+  })
   @ApiResponse({ status: 403, description: 'Forbidden — not a seller' })
   async onboardBuyer(
     @CurrentUser('id') sellerId: string,

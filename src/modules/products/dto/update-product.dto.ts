@@ -11,7 +11,10 @@ import {
   IsObject,
   Min,
   MaxLength,
+  ValidateIf,
 } from 'class-validator';
+import { Prisma } from '@prisma/client';
+import { Type } from 'class-transformer';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { DiscountType } from '@prisma/client';
 
@@ -41,14 +44,12 @@ export class UpdateProductDto {
   @ApiPropertyOptional({ example: 'Paracetamol IP 500mg' })
   @IsString()
   @IsOptional()
-
-
   @ApiPropertyOptional({ example: 'Analgesic and antipyretic tablet' })
   @IsString()
   @IsOptional()
   description?: string;
 
-  @ApiPropertyOptional({ example: 25.50, description: 'MRP in INR' })
+  @ApiPropertyOptional({ example: 25.5, description: 'MRP in INR' })
   @IsNumber()
   @Min(0)
   @IsOptional()
@@ -59,6 +60,11 @@ export class UpdateProductDto {
   @Min(0)
   @IsOptional()
   gstPercent?: number;
+
+  @ApiPropertyOptional({ example: false })
+  @IsBoolean()
+  @IsOptional()
+  isTaxIncluded?: boolean;
 
   @ApiPropertyOptional({ example: 10, minimum: 1 })
   @IsInt()
@@ -83,7 +89,10 @@ export class UpdateProductDto {
   @IsOptional()
   stock?: number;
 
-  @ApiPropertyOptional({ example: '2026-12-31', description: 'ISO date string' })
+  @ApiPropertyOptional({
+    example: '2026-12-31',
+    description: 'ISO date string',
+  })
   @IsDateString()
   @IsOptional()
   expiryDate?: string;
@@ -105,19 +114,24 @@ export class UpdateProductDto {
     example: 'SAME_PRODUCT_BONUS',
     description: 'Type of discount applied to this product',
   })
+  @ValidateIf((object, value) => value !== null)
   @IsEnum(DiscountType)
   @IsOptional()
-  discountType?: DiscountType;
+  discountType?: DiscountType | null;
 
   @ApiPropertyOptional({
     example: { buy: 10, get: 2 },
     description: 'JSON metadata for the discount',
   })
+  @ValidateIf((object, value) => value !== null)
   @IsObject()
   @IsOptional()
-  discountMeta?: Record<string, any>;
+  discountMeta?: Prisma.InputJsonValue;
 
-  @ApiPropertyOptional({ example: 'Tomorrow', description: 'Dynamic delivery timeframe text' })
+  @ApiPropertyOptional({
+    example: 'Tomorrow',
+    description: 'Dynamic delivery timeframe text',
+  })
   @IsString()
   @IsOptional()
   deliveryText?: string;

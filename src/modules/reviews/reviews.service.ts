@@ -57,7 +57,13 @@ export class ReviewsService {
     }
 
     const review = await this.prisma.review.create({
-      data: { userId, catalogProductId, sellerOfferId: purchased.sellerOfferId, rating, comment },
+      data: {
+        userId,
+        catalogProductId,
+        sellerOfferId: purchased.sellerOfferId,
+        rating,
+        comment,
+      },
       select: {
         id: true,
         userId: true,
@@ -117,7 +123,7 @@ export class ReviewsService {
     });
 
     return {
-      data: reviews.map(r => ({
+      data: reviews.map((r) => ({
         id: r.id,
         catalogProductId: catalogProductId,
         userId: r.user.id,
@@ -127,7 +133,9 @@ export class ReviewsService {
         createdAt: r.createdAt.toISOString(),
       })),
       total: avgResult._count || 0,
-      averageRating: +((avgResult._avg && avgResult._avg.rating) || 0).toFixed(1),
+      averageRating: +((avgResult._avg && avgResult._avg.rating) || 0).toFixed(
+        1,
+      ),
       page: 1,
       limit: 50,
     };
@@ -138,7 +146,7 @@ export class ReviewsService {
    */
   async getAdminReviews(page: number = 1, limit: number = 20) {
     const skip = (page - 1) * limit;
-    
+
     const [reviews, total] = await Promise.all([
       this.prisma.review.findMany({
         skip,
@@ -159,7 +167,7 @@ export class ReviewsService {
     ]);
 
     return {
-      data: reviews.map(r => ({
+      data: reviews.map((r) => ({
         id: r.id,
         catalogProductId: r.catalogProductId,
         productName: r.catalogProduct?.name || 'Unknown Product',

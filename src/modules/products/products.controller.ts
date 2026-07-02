@@ -12,7 +12,12 @@ import {
   HttpStatus,
 } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+} from '@nestjs/swagger';
 import { Role } from '@prisma/client';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
@@ -39,7 +44,9 @@ export class ProductsController {
   @Roles(Role.SELLER, Role.BUYER)
   @HttpCode(HttpStatus.CREATED)
   @ApiBearerAuth('JWT-auth')
-  @ApiOperation({ summary: 'Request a new product to be added to the platform' })
+  @ApiOperation({
+    summary: 'Request a new product to be added to the platform',
+  })
   @ApiResponse({ status: 201, description: 'Request created' })
   async createRequest(
     @CurrentUser('id') userId: string,
@@ -58,9 +65,20 @@ export class ProductsController {
   @ApiResponse({ status: 200, description: 'Own product requests list' })
   async findMyRequests(
     @CurrentUser('id') userId: string,
-    @Query() query: { page?: number; limit?: number; status?: string; search?: string; dateFrom?: string; dateTo?: string },
+    @Query()
+    query: {
+      page?: number;
+      limit?: number;
+      status?: string;
+      search?: string;
+      dateFrom?: string;
+      dateTo?: string;
+    },
   ) {
-    const data = await this.productsService.findAllRequests({ ...query, userId });
+    const data = await this.productsService.findAllRequests({
+      ...query,
+      userId,
+    });
     return { message: 'Your product requests retrieved successfully', data };
   }
 
@@ -71,12 +89,20 @@ export class ProductsController {
   @ApiBearerAuth('JWT-auth')
   @ApiOperation({ summary: 'List all product requests (Admin only)' })
   @ApiResponse({ status: 200, description: 'Product requests list' })
-  async findAllRequests(@Query() query: { page?: number; limit?: number; status?: string; search?: string; dateFrom?: string; dateTo?: string }) {
+  async findAllRequests(
+    @Query()
+    query: {
+      page?: number;
+      limit?: number;
+      status?: string;
+      search?: string;
+      dateFrom?: string;
+      dateTo?: string;
+    },
+  ) {
     const data = await this.productsService.findAllRequests(query);
     return { message: 'Product requests retrieved successfully', data };
   }
-
-
 
   @Patch('requests/:id/status')
   @UseGuards(JwtAuthGuard, RolesGuard)
@@ -118,7 +144,9 @@ export class ProductsController {
   @Throttle({ default: { limit: 100, ttl: 60000 } })
   @Get('suggestions')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Get product name suggestions for autocomplete (master vs local)' })
+  @ApiOperation({
+    summary: 'Get product name suggestions for autocomplete (master vs local)',
+  })
   @ApiResponse({ status: 200, description: 'Suggestions returned' })
   async getSuggestions(
     @Query('search') q: string, // Changed from 'q' to 'search' to match your logs
@@ -130,9 +158,13 @@ export class ProductsController {
 
   @Get('featured')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Get featured products for marketing carousels (homepage/login)' })
+  @ApiOperation({
+    summary: 'Get featured products for marketing carousels (homepage/login)',
+  })
   @ApiResponse({ status: 200, description: 'Featured products list' })
-  async getFeatured(@Query('slot') slot: 'HOMEPAGE_CAROUSEL' | 'LOGIN_CAROUSEL') {
+  async getFeatured(
+    @Query('slot') slot: 'HOMEPAGE_CAROUSEL' | 'LOGIN_CAROUSEL',
+  ) {
     const data = await this.productsService.getFeatured(slot);
     return { message: 'Featured products retrieved successfully', data };
   }
@@ -172,7 +204,9 @@ export class ProductsController {
   @Roles(Role.SELLER)
   @HttpCode(HttpStatus.CREATED)
   @ApiBearerAuth('JWT-auth')
-  @ApiOperation({ summary: 'Bulk-create products (seller only, migration-friendly)' })
+  @ApiOperation({
+    summary: 'Bulk-create products (seller only, migration-friendly)',
+  })
   @ApiResponse({ status: 201, description: 'Bulk creation results returned' })
   async bulkCreate(
     @CurrentUser('id') userId: string,
@@ -220,10 +254,7 @@ export class ProductsController {
   @ApiBearerAuth('JWT-auth')
   @ApiOperation({ summary: 'Soft-delete own product (seller only)' })
   @ApiResponse({ status: 200, description: 'Product deleted' })
-  async remove(
-    @CurrentUser('id') userId: string,
-    @Param('id') id: string,
-  ) {
+  async remove(@CurrentUser('id') userId: string, @Param('id') id: string) {
     const data = await this.productsService.softDelete(userId, id);
     return data;
   }
@@ -237,9 +268,7 @@ export class ProductsController {
   @ApiBearerAuth('JWT-auth')
   @ApiOperation({ summary: 'Get current user waitlist (Notify Me)' })
   @ApiResponse({ status: 200, description: 'Waitlist retrieved' })
-  async getMyWaitlist(
-    @CurrentUser('id') userId: string,
-  ) {
+  async getMyWaitlist(@CurrentUser('id') userId: string) {
     const data = await this.productsService.getMyWaitlist(userId);
     return { message: 'Waitlist retrieved successfully', data };
   }

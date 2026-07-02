@@ -25,7 +25,10 @@ export class CartService {
     let sellerOffer = await this.prisma.sellerOffer.findFirst({
       where: { id: sellerOfferId, isActive: true, deletedAt: null },
       include: {
-        batches: { where: { stock: { gt: 0 } }, orderBy: { expiryDate: 'asc' } },
+        batches: {
+          where: { stock: { gt: 0 } },
+          orderBy: { expiryDate: 'asc' },
+        },
       },
     });
 
@@ -38,24 +41,35 @@ export class CartService {
             include: {
               sellerOffers: {
                 where: { isActive: true, deletedAt: null },
-                include: { batches: { where: { stock: { gt: 0 } }, orderBy: { expiryDate: 'asc' } } },
+                include: {
+                  batches: {
+                    where: { stock: { gt: 0 } },
+                    orderBy: { expiryDate: 'asc' },
+                  },
+                },
                 orderBy: { mrp: 'asc' },
-              }
-            }
-          }
-        }
+              },
+            },
+          },
+        },
       });
       if (catalogProduct && catalogProduct.productVariants.length > 0) {
-        const offers = catalogProduct.productVariants.flatMap((v: any) => v.sellerOffers || []);
+        const offers = catalogProduct.productVariants.flatMap(
+          (v: any) => v.sellerOffers || [],
+        );
         if (offers.length > 0) {
-          sellerOffer = offers.reduce((prev: any, curr: any) => prev.mrp < curr.mrp ? prev : curr);
+          sellerOffer = offers.reduce((prev: any, curr: any) =>
+            prev.mrp < curr.mrp ? prev : curr,
+          );
           sellerOfferId = sellerOffer!.id;
         }
       }
     }
 
     if (!sellerOffer) {
-      throw new NotFoundException('Product not found or is no longer available');
+      throw new NotFoundException(
+        'Product not found or is no longer available',
+      );
     }
 
     // 3. Validate minimum order quantity
@@ -66,7 +80,10 @@ export class CartService {
     }
 
     // 4. Validate maximum order quantity
-    if (sellerOffer.maximumOrderQuantity && quantity > sellerOffer.maximumOrderQuantity) {
+    if (
+      sellerOffer.maximumOrderQuantity &&
+      quantity > sellerOffer.maximumOrderQuantity
+    ) {
       throw new BadRequestException(
         `Maximum order quantity for this product is ${sellerOffer.maximumOrderQuantity}`,
       );
@@ -128,18 +145,20 @@ export class CartService {
                 catalogProduct: {
                   select: {
                     images: {
-                      select: { url: true }
-                    }
-                  }
-                }
-              }
-            }
+                      select: { url: true },
+                    },
+                  },
+                },
+              },
+            },
           },
         },
       },
     });
 
-    this.logger.log(`Item added to cart: product ${sellerOfferId}, qty ${quantity}`);
+    this.logger.log(
+      `Item added to cart: product ${sellerOfferId}, qty ${quantity}`,
+    );
 
     return {
       ...cartItem,
@@ -175,11 +194,11 @@ export class CartService {
                     catalogProduct: {
                       select: {
                         images: {
-                          select: { url: true }
-                        }
-                      }
-                    }
-                  }
+                          select: { url: true },
+                        },
+                      },
+                    },
+                  },
                 },
                 seller: {
                   select: {
@@ -215,7 +234,7 @@ export class CartService {
         totalPrice: item.quantity * item.unitPrice,
         createdAt: item.createdAt,
         updatedAt: item.updatedAt,
-      }))
+      })),
     );
 
     const totalAmount = items.reduce((sum, item) => sum + item.totalPrice, 0);
@@ -231,7 +250,11 @@ export class CartService {
   // UPDATE CART ITEM QUANTITY
   // ──────────────────────────────────────────────
 
-  async updateCartItem(userId: string, cartItemId: string, dto: UpdateCartItemDto) {
+  async updateCartItem(
+    userId: string,
+    cartItemId: string,
+    dto: UpdateCartItemDto,
+  ) {
     const { quantity } = dto;
 
     // 1. Find the cart item and verify ownership
@@ -268,14 +291,20 @@ export class CartService {
     }
 
     // 4. Validate maximum order quantity
-    if (cartItem.sellerOffer.maximumOrderQuantity && quantity > cartItem.sellerOffer.maximumOrderQuantity) {
+    if (
+      cartItem.sellerOffer.maximumOrderQuantity &&
+      quantity > cartItem.sellerOffer.maximumOrderQuantity
+    ) {
       throw new BadRequestException(
         `Maximum order quantity for this product is ${cartItem.sellerOffer.maximumOrderQuantity}`,
       );
     }
 
     // 5. Validate stock
-    const totalStock = cartItem.sellerOffer.batches.reduce((sum, b) => sum + b.stock, 0);
+    const totalStock = cartItem.sellerOffer.batches.reduce(
+      (sum, b) => sum + b.stock,
+      0,
+    );
     if (quantity > totalStock) {
       throw new BadRequestException(
         `Insufficient stock. Only ${totalStock} units available`,
@@ -300,12 +329,12 @@ export class CartService {
                 catalogProduct: {
                   select: {
                     images: {
-                      select: { url: true }
-                    }
-                  }
-                }
-              }
-            }
+                      select: { url: true },
+                    },
+                  },
+                },
+              },
+            },
           },
         },
       },
@@ -374,7 +403,9 @@ export class CartService {
     let images: string[] = [];
 
     if (sellerOffer.variant?.catalogProduct?.images) {
-      images = sellerOffer.variant.catalogProduct.images.map((img: any) => img.url);
+      images = sellerOffer.variant.catalogProduct.images.map(
+        (img: any) => img.url,
+      );
     } else {
       // Fallback name-based lookup
       const cleanName = sellerOffer.name.replace(/\.\.\./g, '').trim();
@@ -382,15 +413,15 @@ export class CartService {
         where: {
           name: {
             startsWith: cleanName,
-            mode: 'insensitive'
+            mode: 'insensitive',
           },
-          deletedAt: null
+          deletedAt: null,
         },
         include: {
           images: {
-            select: { url: true }
-          }
-        }
+            select: { url: true },
+          },
+        },
       });
       if (catalogProduct && catalogProduct.images.length > 0) {
         images = catalogProduct.images.map((img: any) => img.url);
@@ -401,7 +432,7 @@ export class CartService {
     const { variant, ...rest } = sellerOffer;
     return {
       ...rest,
-      images
+      images,
     };
   }
 }

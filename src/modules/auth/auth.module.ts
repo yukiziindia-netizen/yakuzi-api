@@ -16,7 +16,10 @@ import { OtpSmsService } from './services/otp-sms.service';
       useFactory: (configService: ConfigService) => ({
         secret: configService.get<string>('JWT_SECRET'),
         signOptions: {
-          expiresIn: configService.get<string>('JWT_ACCESS_EXPIRES', '1h') as any,
+          expiresIn: configService.get<string>(
+            'JWT_ACCESS_EXPIRES',
+            '1h',
+          ) as any,
         },
       }),
     }),

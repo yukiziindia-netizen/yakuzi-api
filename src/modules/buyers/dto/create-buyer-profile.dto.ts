@@ -31,7 +31,10 @@ export class CreateBuyerProfileDto {
   @IsNotEmpty()
   legalName: string;
 
-  @ApiPropertyOptional({ example: '27AABCU9603R1ZM', description: '15-char GSTIN (required if no PAN)' })
+  @ApiPropertyOptional({
+    example: '27AABCU9603R1ZM',
+    description: '15-char GSTIN (required if no PAN)',
+  })
   @IsOptional()
   @IsString()
   @ValidateIf((o) => !!o.gstNumber)
@@ -40,7 +43,10 @@ export class CreateBuyerProfileDto {
   })
   gstNumber?: string;
 
-  @ApiPropertyOptional({ example: 'ABCDE1234F', description: '10-char PAN (required if no GST)' })
+  @ApiPropertyOptional({
+    example: 'ABCDE1234F',
+    description: '10-char PAN (required if no GST)',
+  })
   @IsOptional()
   @IsString()
   @ValidateIf((o) => !!o.panNumber)
@@ -49,7 +55,10 @@ export class CreateBuyerProfileDto {
   })
   panNumber?: string;
 
-  @ApiPropertyOptional({ example: '123456789012', description: '12-digit Aadhaar Card number' })
+  @ApiPropertyOptional({
+    example: '123456789012',
+    description: '12-digit Aadhaar Card number',
+  })
   @IsOptional()
   @IsString()
   @Matches(/^\d{12}$/, {
@@ -89,7 +98,13 @@ export class CreateBuyerProfileDto {
 
   @ApiPropertyOptional({
     description: 'Structured address object',
-    example: { street1: '123 MG Road', street2: 'Andheri East', city: 'Mumbai', state: 'Maharashtra', pincode: '400069' },
+    example: {
+      street1: '123 MG Road',
+      street2: 'Andheri East',
+      city: 'Mumbai',
+      state: 'Maharashtra',
+      pincode: '400069',
+    },
   })
   @IsOptional()
   @IsObject()
@@ -97,7 +112,14 @@ export class CreateBuyerProfileDto {
 
   @ApiPropertyOptional({
     description: 'Drug licence details array',
-    example: [{ type: 'DL20B', number: 'DL-20B-12345', expiry: '2026-12-31', imgUrl: 'https://...' }],
+    example: [
+      {
+        type: 'DL20B',
+        number: 'DL-20B-12345',
+        expiry: '2026-12-31',
+        imgUrl: 'https://...',
+      },
+    ],
   })
   @IsOptional()
   @IsArray()
@@ -105,7 +127,13 @@ export class CreateBuyerProfileDto {
 
   @ApiPropertyOptional({
     description: 'Bank account details',
-    example: { accountNumber: '1234567890', ifsc: 'SBIN0001234', bankName: 'SBI', branch: 'Andheri', holderName: 'Rajesh Kumar' },
+    example: {
+      accountNumber: '1234567890',
+      ifsc: 'SBIN0001234',
+      bankName: 'SBI',
+      branch: 'Andheri',
+      holderName: 'Rajesh Kumar',
+    },
   })
   @IsOptional()
   @IsObject()
@@ -136,7 +164,9 @@ export class CreateBuyerProfileDto {
   @IsNumber()
   longitude?: number;
 
-  @ApiPropertyOptional({ description: 'Pre-verified IDFY response (from /verification/pangst)' })
+  @ApiPropertyOptional({
+    description: 'Pre-verified IDFY response (from /verification/pangst)',
+  })
   @IsOptional()
   @IsObject()
   gstPanResponse?: Record<string, any>;

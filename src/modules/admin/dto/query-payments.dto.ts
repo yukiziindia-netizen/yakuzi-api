@@ -4,12 +4,19 @@ import { ApiPropertyOptional } from '@nestjs/swagger';
 import { PaymentVerificationStatus } from '@prisma/client';
 
 export class AdminQueryPaymentsDto {
-  @ApiPropertyOptional({ enum: PaymentVerificationStatus, example: 'PENDING', description: 'Filter by verification status' })
+  @ApiPropertyOptional({
+    enum: PaymentVerificationStatus,
+    example: 'PENDING',
+    description: 'Filter by verification status',
+  })
   @IsOptional()
   @IsEnum(PaymentVerificationStatus)
   verificationStatus?: PaymentVerificationStatus;
 
-  @ApiPropertyOptional({ example: 'uuid-of-order', description: 'Filter by order ID' })
+  @ApiPropertyOptional({
+    example: 'uuid-of-order',
+    description: 'Filter by order ID',
+  })
   @IsOptional()
   @IsUUID()
   orderId?: string;
@@ -21,7 +28,11 @@ export class AdminQueryPaymentsDto {
   @Min(1)
   page?: number = 1;
 
-  @ApiPropertyOptional({ example: 20, default: 20, description: 'Items per page (max 500)' })
+  @ApiPropertyOptional({
+    example: 20,
+    default: 20,
+    description: 'Items per page (max 500)',
+  })
   @IsOptional()
   @Type(() => Number)
   @IsInt()

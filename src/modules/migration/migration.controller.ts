@@ -11,7 +11,12 @@ import {
   UseGuards,
   ParseUUIDPipe,
 } from '@nestjs/common';
-import { ApiTags, ApiBearerAuth, ApiOperation, ApiQuery } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiBearerAuth,
+  ApiOperation,
+  ApiQuery,
+} from '@nestjs/swagger';
 import { MigrationEntityType } from '@prisma/client';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
@@ -34,7 +39,9 @@ export class MigrationController {
 
   @Post('validate/users')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Validate legacy user data before import (dry-run)' })
+  @ApiOperation({
+    summary: 'Validate legacy user data before import (dry-run)',
+  })
   async validateUsers(@Body() dto: MigrateUsersDto) {
     const result = await this.migrationService.validateUsers(dto.users);
     return { message: 'User validation complete', data: result };
@@ -42,7 +49,9 @@ export class MigrationController {
 
   @Post('validate/orders')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Validate legacy order data before import (dry-run)' })
+  @ApiOperation({
+    summary: 'Validate legacy order data before import (dry-run)',
+  })
   async validateOrders(@Body() dto: MigrateOrdersDto) {
     const result = await this.migrationService.validateOrders(dto.orders);
     return { message: 'Order validation complete', data: result };
@@ -50,7 +59,9 @@ export class MigrationController {
 
   @Post('validate/payments')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Validate legacy payment data before import (dry-run)' })
+  @ApiOperation({
+    summary: 'Validate legacy payment data before import (dry-run)',
+  })
   async validatePayments(@Body() dto: MigratePaymentsDto) {
     const result = await this.migrationService.validatePayments(dto.payments);
     return { message: 'Payment validation complete', data: result };
@@ -68,7 +79,10 @@ export class MigrationController {
 
   @Post('import/orders')
   @HttpCode(HttpStatus.CREATED)
-  @ApiOperation({ summary: 'Step 2: Import legacy orders (requires users + products imported first)' })
+  @ApiOperation({
+    summary:
+      'Step 2: Import legacy orders (requires users + products imported first)',
+  })
   async importOrders(@Body() dto: MigrateOrdersDto) {
     const result = await this.migrationService.migrateOrders(dto.orders);
     return { message: 'Order migration complete', data: result };
@@ -76,7 +90,9 @@ export class MigrationController {
 
   @Post('import/payments')
   @HttpCode(HttpStatus.CREATED)
-  @ApiOperation({ summary: 'Step 3: Import legacy payments (requires orders imported first)' })
+  @ApiOperation({
+    summary: 'Step 3: Import legacy payments (requires orders imported first)',
+  })
   async importPayments(@Body() dto: MigratePaymentsDto) {
     const result = await this.migrationService.migratePayments(dto.payments);
     return { message: 'Payment migration complete', data: result };
@@ -86,11 +102,23 @@ export class MigrationController {
 
   @Post('reconcile')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Post-migration reconciliation: compare legacy data against migrated data' })
+  @ApiOperation({
+    summary:
+      'Post-migration reconciliation: compare legacy data against migrated data',
+  })
   async reconcile(
-    @Body() body: { users: MigrateUsersDto['users']; orders: MigrateOrdersDto['orders']; payments: MigratePaymentsDto['payments'] },
+    @Body()
+    body: {
+      users: MigrateUsersDto['users'];
+      orders: MigrateOrdersDto['orders'];
+      payments: MigratePaymentsDto['payments'];
+    },
   ) {
-    const result = await this.migrationService.reconcile(body.users, body.orders, body.payments);
+    const result = await this.migrationService.reconcile(
+      body.users,
+      body.orders,
+      body.payments,
+    );
     return { message: 'Reconciliation complete', data: result };
   }
 
@@ -125,7 +153,9 @@ export class MigrationController {
 
   @Delete('rollback/:runId')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Rollback a specific migration run (deletes imported data)' })
+  @ApiOperation({
+    summary: 'Rollback a specific migration run (deletes imported data)',
+  })
   async rollbackRun(@Param('runId', ParseUUIDPipe) runId: string) {
     const result = await this.migrationService.rollbackRun(runId);
     return { message: 'Rollback complete', data: result };
@@ -133,7 +163,9 @@ export class MigrationController {
 
   @Delete('rollback-all')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Rollback ALL migration data (requires confirm=true)' })
+  @ApiOperation({
+    summary: 'Rollback ALL migration data (requires confirm=true)',
+  })
   @ApiQuery({ name: 'confirm', required: true, type: Boolean })
   async rollbackAll(@Query('confirm') confirm: string) {
     const result = await this.migrationService.rollbackAll(confirm === 'true');

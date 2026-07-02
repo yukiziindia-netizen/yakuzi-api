@@ -20,7 +20,9 @@ export class AnalyticsService {
       await this.prisma.productAnalytics.create({
         data: { catalogProductId },
       });
-      this.logger.debug(`Analytics initialised for product ${catalogProductId}`);
+      this.logger.debug(
+        `Analytics initialised for product ${catalogProductId}`,
+      );
     } catch (error) {
       this.logger.error(
         `Failed to initialise analytics for product ${catalogProductId}: ${error}`,

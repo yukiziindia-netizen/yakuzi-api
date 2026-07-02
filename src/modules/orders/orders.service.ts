@@ -8,6 +8,7 @@ import {
 import { PrismaService } from '../../database/prisma.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
+import { UpdateShippingDetailsDto } from './dto/update-shipping-details.dto';
 import { OrderStatus, Role, PaymentStatus } from '@prisma/client';
 import { ShiprocketService } from './shiprocket.service';
 
@@ -52,7 +53,9 @@ export class OrdersService {
     });
 
     if (!cart || cart.items.length === 0) {
-      throw new BadRequestException('Cart is empty. Add products before checkout.');
+      throw new BadRequestException(
+        'Cart is empty. Add products before checkout.',
+      );
     }
 
     // 1b. Fetch buyer profile for referral code (KYC checks removed)
@@ -70,7 +73,6 @@ export class OrdersService {
           `Product "${product.name}" is no longer available. Please remove it from your cart.`,
         );
       }
-
 
       const totalStock = product.batches.reduce((sum, b) => sum + b.stock, 0);
       if (item.quantity > totalStock) {
@@ -162,12 +164,12 @@ export class OrdersService {
                     catalogProduct: {
                       select: {
                         images: {
-                          select: { url: true }
-                        }
-                      }
-                    }
-                  }
-                }
+                          select: { url: true },
+                        },
+                      },
+                    },
+                  },
+                },
               },
             },
             seller: {
@@ -192,21 +194,21 @@ export class OrdersService {
             where: {
               name: {
                 startsWith: cleanName,
-                mode: 'insensitive'
+                mode: 'insensitive',
               },
-              deletedAt: null
+              deletedAt: null,
             },
             include: {
               images: {
-                select: { url: true }
-              }
-            }
+                select: { url: true },
+              },
+            },
           });
           if (catalogProduct && catalogProduct.images.length > 0) {
             (item.sellerOffer as any).variant = {
               catalogProduct: {
-                images: catalogProduct.images
-              }
+                images: catalogProduct.images,
+              },
             };
           }
         }
@@ -241,12 +243,12 @@ export class OrdersService {
                     catalogProduct: {
                       select: {
                         images: {
-                          select: { url: true }
-                        }
-                      }
-                    }
-                  }
-                }
+                          select: { url: true },
+                        },
+                      },
+                    },
+                  },
+                },
               },
             },
             seller: {
@@ -263,26 +265,28 @@ export class OrdersService {
     for (const order of orders) {
       for (const item of order.items) {
         if (item.sellerOffer && !(item.sellerOffer as any).variant) {
-          const cleanName = (item.sellerOffer as any).name.replace(/\.\.\./g, '').trim();
+          const cleanName = (item.sellerOffer as any).name
+            .replace(/\.\.\./g, '')
+            .trim();
           const catalogProduct = await this.prisma.catalogProduct.findFirst({
             where: {
               name: {
                 startsWith: cleanName,
-                mode: 'insensitive'
+                mode: 'insensitive',
               },
-              deletedAt: null
+              deletedAt: null,
             },
             include: {
               images: {
-                select: { url: true }
-              }
-            }
+                select: { url: true },
+              },
+            },
           });
           if (catalogProduct && catalogProduct.images.length > 0) {
             (item.sellerOffer as any).variant = {
               catalogProduct: {
-                images: catalogProduct.images
-              }
+                images: catalogProduct.images,
+              },
             };
           }
         }
@@ -325,12 +329,12 @@ export class OrdersService {
                     catalogProduct: {
                       select: {
                         images: {
-                          select: { url: true }
-                        }
-                      }
-                    }
-                  }
-                }
+                          select: { url: true },
+                        },
+                      },
+                    },
+                  },
+                },
               },
             },
             seller: {
@@ -369,21 +373,21 @@ export class OrdersService {
           where: {
             name: {
               startsWith: cleanName,
-              mode: 'insensitive'
+              mode: 'insensitive',
             },
-            deletedAt: null
+            deletedAt: null,
           },
           include: {
             images: {
-              select: { url: true }
-            }
-          }
+              select: { url: true },
+            },
+          },
         });
         if (catalogProduct && catalogProduct.images.length > 0) {
           (item.sellerOffer as any).variant = {
             catalogProduct: {
-              images: catalogProduct.images
-            }
+              images: catalogProduct.images,
+            },
           };
         }
       }
@@ -435,7 +439,7 @@ export class OrdersService {
 
     if (dateFrom || dateTo) {
       where.order = {
-        createdAt: {}
+        createdAt: {},
       };
       if (dateFrom) where.order.createdAt.gte = new Date(dateFrom);
       if (dateTo) where.order.createdAt.lte = new Date(dateTo);
@@ -456,12 +460,12 @@ export class OrdersService {
                 catalogProduct: {
                   select: {
                     images: {
-                      select: { url: true }
-                    }
-                  }
-                }
-              }
-            }
+                      select: { url: true },
+                    },
+                  },
+                },
+              },
+            },
           },
         },
         order: {
@@ -543,21 +547,25 @@ export class OrdersService {
     });
 
     if (sellerItems.length === 0) {
-      throw new ForbiddenException(
-        'You do not have any items in this order',
-      );
+      throw new ForbiddenException('You do not have any items in this order');
     }
 
     // 3. Fetch current order
     const order = await this.prisma.order.findUnique({
       where: { id: orderId },
       include: {
-        buyer: { select: { phone: true, email: true, buyerProfile: { select: { legalName: true } } } },
+        buyer: {
+          select: {
+            phone: true,
+            email: true,
+            buyerProfile: { select: { legalName: true } },
+          },
+        },
         address: true,
         items: {
-          include: { sellerOffer: true }
-        }
-      }
+          include: { sellerOffer: true },
+        },
+      },
     });
 
     if (!order) {
@@ -568,7 +576,11 @@ export class OrdersService {
     const validTransitions: Record<string, string[]> = {
       PLACED: ['ACCEPTED', 'CANCELLED'],
       ACCEPTED: ['PAYMENT_RECEIVED', 'READY_TO_SHIP', 'CANCELLED'],
-      PAYMENT_RECEIVED: ['READY_TO_SHIP', 'DISPATCHED_FROM_SELLER', 'CANCELLED'],
+      PAYMENT_RECEIVED: [
+        'READY_TO_SHIP',
+        'DISPATCHED_FROM_SELLER',
+        'CANCELLED',
+      ],
       READY_TO_SHIP: ['DISPATCHED_FROM_SELLER', 'CANCELLED'],
       DISPATCHED_FROM_SELLER: ['RECEIVED_AT_WAREHOUSE', 'SHIPPED', 'CANCELLED'],
       RECEIVED_AT_WAREHOUSE: ['SHIPPED', 'CANCELLED'],
@@ -596,19 +608,26 @@ export class OrdersService {
       try {
         const payload = {
           order_id: order.id,
-          order_date: order.createdAt.toISOString().replace('T', ' ').substring(0, 16),
-          pickup_location: "Primary",
-          billing_customer_name: order.address?.name || order.buyer.buyerProfile?.legalName || "Buyer",
-          billing_last_name: "",
-          billing_address: order.address?.address || "Address",
-          billing_city: order.address?.city || "City",
-          billing_pincode: order.address?.pincode || "110001",
-          billing_state: order.address?.state || "State",
-          billing_country: "India",
-          billing_email: order.buyer.email || "no-reply@yukizi.com",
-          billing_phone: order.buyer.phone || order.address?.phone || "9999999999",
+          order_date: order.createdAt
+            .toISOString()
+            .replace('T', ' ')
+            .substring(0, 16),
+          pickup_location: 'Primary',
+          billing_customer_name:
+            order.address?.name ||
+            order.buyer.buyerProfile?.legalName ||
+            'Buyer',
+          billing_last_name: '',
+          billing_address: order.address?.address || 'Address',
+          billing_city: order.address?.city || 'City',
+          billing_pincode: order.address?.pincode || '110001',
+          billing_state: order.address?.state || 'State',
+          billing_country: 'India',
+          billing_email: order.buyer.email || 'no-reply@yukizi.com',
+          billing_phone:
+            order.buyer.phone || order.address?.phone || '9999999999',
           shipping_is_billing: true,
-          order_items: order.items.map(item => ({
+          order_items: order.items.map((item) => ({
             name: item.sellerOffer.name,
             sku: item.sellerOffer.id.substring(0, 8), // placeholder sku
             units: item.quantity,
@@ -617,25 +636,30 @@ export class OrdersService {
             tax: 0,
             hsn: null,
           })),
-          payment_method: order.paymentStatus === 'SUCCESS' ? "Prepaid" : "COD",
+          payment_method: order.paymentStatus === 'SUCCESS' ? 'Prepaid' : 'COD',
           sub_total: order.totalAmount,
-          length: 10,  // Defaults, should be mapped from product in real scenario
+          length: 10, // Defaults, should be mapped from product in real scenario
           breadth: 10,
           height: 10,
           weight: 1, // 1 kg default
         };
 
-        const shiprocketData = await this.shiprocketService.createOrder(payload);
-        
+        const shiprocketData =
+          await this.shiprocketService.createOrder(payload);
+
         // Update data with Shiprocket fields
         updateData.shiprocketOrderId = shiprocketData.order_id?.toString();
         updateData.shipmentId = shiprocketData.shipment_id?.toString();
         updateData.awbCode = shiprocketData.awb_code?.toString();
         updateData.courierName = shiprocketData.courier_name?.toString();
-        
-        this.logger.log(`Order ${orderId} pushed to Shiprocket: ${shiprocketData.shipment_id}`);
+
+        this.logger.log(
+          `Order ${orderId} pushed to Shiprocket: ${shiprocketData.shipment_id}`,
+        );
       } catch (error: any) {
-        this.logger.error(`Failed to push order to Shiprocket: ${error.message}`);
+        this.logger.error(
+          `Failed to push order to Shiprocket: ${error.message}`,
+        );
         // Not failing the transition if Shiprocket fails, or we could throw error.
         // For robustness we allow transition but log error.
       }
@@ -657,7 +681,10 @@ export class OrdersService {
     });
 
     // Create settlements if status is DELIVERED and payment is successful
-    if (updated.orderStatus === OrderStatus.DELIVERED && updated.paymentStatus === PaymentStatus.SUCCESS) {
+    if (
+      updated.orderStatus === OrderStatus.DELIVERED &&
+      updated.paymentStatus === PaymentStatus.SUCCESS
+    ) {
       for (const item of updated.items) {
         const existing = await this.prisma.sellerSettlement.findUnique({
           where: { orderItemId: item.id },
@@ -679,6 +706,55 @@ export class OrdersService {
 
     this.logger.log(
       `Order ${orderId} status updated to ${dto.status} by seller ${seller.id}`,
+    );
+
+    return updated;
+  }
+
+  // ──────────────────────────────────────────────
+  // UPDATE SHIPPING DETAILS (Seller)
+  // ──────────────────────────────────────────────
+
+  async updateShippingDetails(
+    userId: string,
+    orderId: string,
+    dto: UpdateShippingDetailsDto,
+  ) {
+    // 1. Find seller profile
+    const seller = await this.prisma.sellerProfile.findUnique({
+      where: { userId },
+    });
+
+    if (!seller) {
+      throw new NotFoundException('Seller profile not found');
+    }
+
+    // 2. Verify this seller has items in the order
+    const sellerItems = await this.prisma.orderItem.findMany({
+      where: { orderId, sellerId: seller.id },
+    });
+
+    if (sellerItems.length === 0) {
+      throw new ForbiddenException('You do not have any items in this order');
+    }
+
+    // 3. Fetch current order
+    const order = await this.prisma.order.findUnique({
+      where: { id: orderId },
+    });
+
+    if (!order) {
+      throw new NotFoundException('Order not found');
+    }
+
+    // 4. Update the order with shipping details
+    const updated = await this.prisma.order.update({
+      where: { id: orderId },
+      data: dto,
+    });
+
+    this.logger.log(
+      `Order ${orderId} shipping details updated by seller ${seller.id}`,
     );
 
     return updated;
@@ -714,13 +790,22 @@ export class OrdersService {
 
     // 2. Permission check
     if (role === Role.BUYER && order.buyerId !== userId) {
-      throw new ForbiddenException('You do not have permission to cancel this order');
+      throw new ForbiddenException(
+        'You do not have permission to cancel this order',
+      );
     }
 
     // 3. Status validation
-    const uncancelable: OrderStatus[] = [OrderStatus.SHIPPED, OrderStatus.DELIVERED, OrderStatus.RETURNED, OrderStatus.CANCELLED];
+    const uncancelable: OrderStatus[] = [
+      OrderStatus.SHIPPED,
+      OrderStatus.DELIVERED,
+      OrderStatus.RETURNED,
+      OrderStatus.CANCELLED,
+    ];
     if (uncancelable.includes(order.orderStatus)) {
-      throw new BadRequestException(`Cannot cancel order in ${order.orderStatus} status`);
+      throw new BadRequestException(
+        `Cannot cancel order in ${order.orderStatus} status`,
+      );
     }
 
     // 4. Update order and restore stock in a transaction
@@ -738,14 +823,14 @@ export class OrdersService {
             where: { id: item.sellerOffer.batches[0].id },
             data: { stock: { increment: item.quantity } },
           });
-          
+
           // Check if there are waitlisted users to notify
           const offerWithVariant = await tx.sellerOffer.findUnique({
             where: { id: item.sellerOffer.id },
-            include: { variant: true }
+            include: { variant: true },
           });
           const catalogProductId = offerWithVariant?.variant?.catalogProductId;
-          
+
           if (catalogProductId) {
             const waitlisted = await tx.productWaitlist.findMany({
               where: { catalogProductId, isNotified: false },
@@ -753,7 +838,7 @@ export class OrdersService {
             });
 
             if (waitlisted.length > 0) {
-              const notifications = waitlisted.map(w => ({
+              const notifications = waitlisted.map((w) => ({
                 userId: w.userId,
                 message: `The product ${w.catalogProduct.name} you were waiting for is now back in stock!`,
               }));
@@ -761,7 +846,7 @@ export class OrdersService {
               await tx.notification.createMany({ data: notifications });
 
               await tx.productWaitlist.updateMany({
-                where: { id: { in: waitlisted.map(w => w.id) } },
+                where: { id: { in: waitlisted.map((w) => w.id) } },
                 data: { isNotified: true },
               });
             }

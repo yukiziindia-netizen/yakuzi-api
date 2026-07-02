@@ -95,7 +95,9 @@ export class CategoriesService {
   async deleteCategory(id: string) {
     const existing = await this.prisma.category.findUnique({
       where: { id },
-      include: { _count: { select: { masterProducts: true, subCategories: true } } },
+      include: {
+        _count: { select: { masterProducts: true, subCategories: true } },
+      },
     });
     if (!existing) throw new NotFoundException('Category not found');
 
@@ -117,7 +119,11 @@ export class CategoriesService {
   }
 
   async bulkCreateCategories(dto: BulkCreateCategoryDto) {
-    const results = { success: 0, failed: 0, errors: [] as { name: string; reason: string }[] };
+    const results = {
+      success: 0,
+      failed: 0,
+      errors: [] as { name: string; reason: string }[],
+    };
 
     for (const item of dto.categories) {
       try {
@@ -132,7 +138,9 @@ export class CategoriesService {
       }
     }
 
-    this.logger.log(`Bulk category creation: ${results.success} success, ${results.failed} failed`);
+    this.logger.log(
+      `Bulk category creation: ${results.success} success, ${results.failed} failed`,
+    );
     return results;
   }
 
@@ -185,7 +193,9 @@ export class CategoriesService {
   }
 
   async updateSubCategory(id: string, dto: UpdateSubCategoryDto) {
-    const existing = await this.prisma.subCategory.findUnique({ where: { id } });
+    const existing = await this.prisma.subCategory.findUnique({
+      where: { id },
+    });
     if (!existing) throw new NotFoundException('SubCategory not found');
 
     const data: Prisma.SubCategoryUpdateInput = {};
@@ -229,7 +239,12 @@ export class CategoriesService {
 
   async getSubCategoryMap() {
     const subCategories = await this.prisma.subCategory.findMany({
-      select: { id: true, name: true, categoryId: true, category: { select: { name: true } } },
+      select: {
+        id: true,
+        name: true,
+        categoryId: true,
+        category: { select: { name: true } },
+      },
       orderBy: { name: 'asc' },
     });
     const map: Record<string, string> = {};
@@ -241,7 +256,11 @@ export class CategoriesService {
   }
 
   async bulkCreateSubCategories(dto: BulkCreateSubCategoryDto) {
-    const results = { success: 0, failed: 0, errors: [] as { name: string; categoryId: string; reason: string }[] };
+    const results = {
+      success: 0,
+      failed: 0,
+      errors: [] as { name: string; categoryId: string; reason: string }[],
+    };
 
     for (const item of dto.subcategories) {
       try {
@@ -257,7 +276,9 @@ export class CategoriesService {
       }
     }
 
-    this.logger.log(`Bulk subcategory creation: ${results.success} success, ${results.failed} failed`);
+    this.logger.log(
+      `Bulk subcategory creation: ${results.success} success, ${results.failed} failed`,
+    );
     return results;
   }
 }

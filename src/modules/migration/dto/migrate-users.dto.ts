@@ -65,7 +65,9 @@ export class LegacyAddressDto {
 }
 
 export class LegacyUserDto {
-  @ApiProperty({ description: 'Legacy system user ID (MongoDB ObjectId or similar)' })
+  @ApiProperty({
+    description: 'Legacy system user ID (MongoDB ObjectId or similar)',
+  })
   @IsNotEmpty()
   @IsString()
   legacyId: string;
@@ -116,7 +118,10 @@ export class LegacyUserDto {
 // ─── Request DTO ──────────────────────────────────────
 
 export class MigrateUsersDto {
-  @ApiProperty({ type: [LegacyUserDto], description: 'Array of legacy users to import' })
+  @ApiProperty({
+    type: [LegacyUserDto],
+    description: 'Array of legacy users to import',
+  })
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => LegacyUserDto)

@@ -12,7 +12,12 @@ import {
   HttpStatus,
   ParseUUIDPipe,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+} from '@nestjs/swagger';
 import { Role } from '@prisma/client';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
@@ -22,7 +27,10 @@ import { CreateCategoryDto } from './dto/create-category.dto';
 import { UpdateCategoryDto } from './dto/update-category.dto';
 import { CreateSubCategoryDto } from './dto/create-subcategory.dto';
 import { UpdateSubCategoryDto } from './dto/update-subcategory.dto';
-import { BulkCreateCategoryDto, BulkCreateSubCategoryDto } from './dto/bulk-category.dto';
+import {
+  BulkCreateCategoryDto,
+  BulkCreateSubCategoryDto,
+} from './dto/bulk-category.dto';
 import { QuerySubCategoryDto } from './dto/query-subcategory.dto';
 
 @ApiTags('Admin - Categories')
@@ -49,7 +57,9 @@ export class CategoriesController {
 
   @Get('categories')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'List all categories with subcategories (admin only)' })
+  @ApiOperation({
+    summary: 'List all categories with subcategories (admin only)',
+  })
   @ApiResponse({ status: 200, description: 'Categories returned' })
   async findAllCategories() {
     const data = await this.categoriesService.findAllCategories();
@@ -58,7 +68,9 @@ export class CategoriesController {
 
   @Get('categories/map')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Get category name-to-ID map (for migration scripts)' })
+  @ApiOperation({
+    summary: 'Get category name-to-ID map (for migration scripts)',
+  })
   @ApiResponse({ status: 200, description: 'Category map returned' })
   async getCategoryMap() {
     const data = await this.categoriesService.getCategoryMap();
@@ -106,7 +118,10 @@ export class CategoriesController {
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Create a subcategory (admin only)' })
   @ApiResponse({ status: 201, description: 'SubCategory created' })
-  @ApiResponse({ status: 409, description: 'SubCategory already exists under category' })
+  @ApiResponse({
+    status: 409,
+    description: 'SubCategory already exists under category',
+  })
   async createSubCategory(@Body() dto: CreateSubCategoryDto) {
     const data = await this.categoriesService.createSubCategory(dto);
     return { message: 'SubCategory created successfully', data };
@@ -114,7 +129,9 @@ export class CategoriesController {
 
   @Get('subcategories')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'List subcategories (optionally filter by categoryId)' })
+  @ApiOperation({
+    summary: 'List subcategories (optionally filter by categoryId)',
+  })
   @ApiResponse({ status: 200, description: 'SubCategories returned' })
   async findAllSubCategories(@Query() query: QuerySubCategoryDto) {
     const data = await this.categoriesService.findAllSubCategories(query);
@@ -123,7 +140,9 @@ export class CategoriesController {
 
   @Get('subcategories/map')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Get subcategory name-to-ID map (for migration scripts)' })
+  @ApiOperation({
+    summary: 'Get subcategory name-to-ID map (for migration scripts)',
+  })
   @ApiResponse({ status: 200, description: 'SubCategory map returned' })
   async getSubCategoryMap() {
     const data = await this.categoriesService.getSubCategoryMap();
@@ -155,7 +174,9 @@ export class CategoriesController {
 
   @Post('subcategories/bulk')
   @HttpCode(HttpStatus.CREATED)
-  @ApiOperation({ summary: 'Bulk create subcategories (for migration/seeding)' })
+  @ApiOperation({
+    summary: 'Bulk create subcategories (for migration/seeding)',
+  })
   @ApiResponse({ status: 201, description: 'Bulk creation result' })
   async bulkCreateSubCategories(@Body() dto: BulkCreateSubCategoryDto) {
     const data = await this.categoriesService.bulkCreateSubCategories(dto);

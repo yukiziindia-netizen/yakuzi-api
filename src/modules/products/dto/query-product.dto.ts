@@ -9,7 +9,10 @@ import {
 import { ApiPropertyOptional } from '@nestjs/swagger';
 
 export class QueryProductDto {
-  @ApiPropertyOptional({ example: 'paracetamol', description: 'Search by name, manufacturer, or composition' })
+  @ApiPropertyOptional({
+    example: 'paracetamol',
+    description: 'Search by name, manufacturer, or composition',
+  })
   @IsString()
   @IsOptional()
   search?: string;
@@ -47,7 +50,11 @@ export class QueryProductDto {
   @IsOptional()
   sortBy?: string = 'name';
 
-  @ApiPropertyOptional({ example: 'asc', default: 'asc', enum: ['asc', 'desc'] })
+  @ApiPropertyOptional({
+    example: 'asc',
+    default: 'asc',
+    enum: ['asc', 'desc'],
+  })
   @IsString()
   @IsOptional()
   sortOrder?: 'asc' | 'desc' = 'asc';

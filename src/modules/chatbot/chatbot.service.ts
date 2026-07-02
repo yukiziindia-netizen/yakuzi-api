@@ -1,4 +1,9 @@
-import { Injectable, Logger, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  OnModuleInit,
+  OnModuleDestroy,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { exec, spawn, ChildProcess } from 'child_process';
 import * as path from 'path';
@@ -17,7 +22,9 @@ export class ChatbotService implements OnModuleInit, OnModuleDestroy {
   }
 
   async onModuleInit() {
-    this.logger.log('Python Chatbot Sidecar is managed externally via concurrently script.');
+    this.logger.log(
+      'Python Chatbot Sidecar is managed externally via concurrently script.',
+    );
   }
 
   onModuleDestroy() {
@@ -36,7 +43,7 @@ export class ChatbotService implements OnModuleInit, OnModuleDestroy {
     return new Promise((resolve, reject) => {
       const venvPath = path.join(this.chatbotDir, '.venv');
       const reqPath = path.join(this.chatbotDir, 'requirements.txt');
-      
+
       // If venv doesn't exist, create it
       if (!fs.existsSync(venvPath)) {
         this.logger.log('Creating Python virtual environment (.venv)...');
@@ -44,19 +51,30 @@ export class ChatbotService implements OnModuleInit, OnModuleDestroy {
           if (err) {
             return reject(new Error(`Failed to create venv: ${err.message}`));
           }
-          
-          this.logger.log('Installing Python dependencies from requirements.txt...');
-          const pipPath = process.platform === 'win32'
-            ? path.join(venvPath, 'Scripts', 'pip.exe')
-            : path.join(venvPath, 'bin', 'pip');
-            
-          exec(`"${pipPath}" install -r "${reqPath}"`, { cwd: this.chatbotDir }, (pipErr) => {
-            if (pipErr) {
-              return reject(new Error(`Failed to install dependencies: ${pipErr.message}`));
-            }
-            this.logger.log('Python dependencies installed successfully.');
-            resolve();
-          });
+
+          this.logger.log(
+            'Installing Python dependencies from requirements.txt...',
+          );
+          const pipPath =
+            process.platform === 'win32'
+              ? path.join(venvPath, 'Scripts', 'pip.exe')
+              : path.join(venvPath, 'bin', 'pip');
+
+          exec(
+            `"${pipPath}" install -r "${reqPath}"`,
+            { cwd: this.chatbotDir },
+            (pipErr) => {
+              if (pipErr) {
+                return reject(
+                  new Error(
+                    `Failed to install dependencies: ${pipErr.message}`,
+                  ),
+                );
+              }
+              this.logger.log('Python dependencies installed successfully.');
+              resolve();
+            },
+          );
         });
       } else {
         resolve();
@@ -65,16 +83,17 @@ export class ChatbotService implements OnModuleInit, OnModuleDestroy {
   }
 
   private startPythonApp() {
-    const pythonExe = process.platform === 'win32'
-      ? path.join(this.chatbotDir, '.venv', 'Scripts', 'python.exe')
-      : path.join(this.chatbotDir, '.venv', 'bin', 'python');
-      
+    const pythonExe =
+      process.platform === 'win32'
+        ? path.join(this.chatbotDir, '.venv', 'Scripts', 'python.exe')
+        : path.join(this.chatbotDir, '.venv', 'bin', 'python');
+
     const mainPy = path.join(this.chatbotDir, 'main.py');
-    
+
     this.logger.log(`Starting FastAPI application via: ${pythonExe}`);
-    
+
     const geminiApiKey = this.configService.get<string>('GEMINI_API_KEY') || '';
-    
+
     this.pythonProcess = spawn(pythonExe, [mainPy], {
       cwd: this.chatbotDir,
       env: {
@@ -94,21 +113,28 @@ export class ChatbotService implements OnModuleInit, OnModuleDestroy {
     });
 
     this.pythonProcess.on('close', (code) => {
-      this.logger.warn(`Python chatbot sidecar process exited with code ${code}`);
+      this.logger.warn(
+        `Python chatbot sidecar process exited with code ${code}`,
+      );
       this.pythonProcess = null;
     });
   }
 
-  async sendMessage(message: string, history: Array<{ role: string; content?: string; attachments?: any[] }>, attachments?: any[]): Promise<string> {
+  async sendMessage(
+    message: string,
+    history: Array<{ role: string; content?: string; attachments?: any[] }>,
+    attachments?: any[],
+  ): Promise<string> {
     const geminiApiKey = this.configService.get<string>('GEMINI_API_KEY') || '';
-    
+
     // We rely on the external Python sidecar process.
     if (!geminiApiKey) {
       this.logger.warn('GEMINI_API_KEY is not set in the environment.');
     }
 
     try {
-      const apiUrl = process.env.CHATBOT_API_URL || `http://127.0.0.1:${this.port}`;
+      const apiUrl =
+        process.env.CHATBOT_API_URL || `http://127.0.0.1:${this.port}`;
       const response = await axios.post(`${apiUrl}/chat`, {
         message,
         history,
@@ -116,7 +142,9 @@ export class ChatbotService implements OnModuleInit, OnModuleDestroy {
       });
       return response.data.response;
     } catch (err) {
-      this.logger.error(`Error communicating with Python chatbot sidecar: ${err.message}`);
+      this.logger.error(
+        `Error communicating with Python chatbot sidecar: ${err.message}`,
+      );
       return `I'm sorry, I encountered an issue communicating with my AI model. Raw error: ${err.message}`;
     }
   }

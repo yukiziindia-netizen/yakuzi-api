@@ -10,7 +10,9 @@ export class CreateOrderDto {
   @ApiProperty({ example: '7777777777' })
   @IsString()
   @IsNotEmpty({ message: 'Phone is required' })
-  @Matches(/^[6-9]\d{9}$/, { message: 'Enter a valid 10-digit Indian phone number' })
+  @Matches(/^[6-9]\d{9}$/, {
+    message: 'Enter a valid 10-digit Indian phone number',
+  })
   phone: string;
 
   @ApiProperty({ example: '123, MG Road, Andheri East' })

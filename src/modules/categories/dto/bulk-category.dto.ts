@@ -5,7 +5,10 @@ import { CreateCategoryDto } from './create-category.dto';
 import { CreateSubCategoryDto } from './create-subcategory.dto';
 
 export class BulkCreateCategoryDto {
-  @ApiProperty({ type: [CreateCategoryDto], description: 'Array of categories to create' })
+  @ApiProperty({
+    type: [CreateCategoryDto],
+    description: 'Array of categories to create',
+  })
   @IsArray()
   @ArrayMinSize(1)
   @ValidateNested({ each: true })
@@ -14,7 +17,10 @@ export class BulkCreateCategoryDto {
 }
 
 export class BulkCreateSubCategoryDto {
-  @ApiProperty({ type: [CreateSubCategoryDto], description: 'Array of subcategories to create' })
+  @ApiProperty({
+    type: [CreateSubCategoryDto],
+    description: 'Array of subcategories to create',
+  })
   @IsArray()
   @ArrayMinSize(1)
   @ValidateNested({ each: true })

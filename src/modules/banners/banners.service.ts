@@ -38,7 +38,12 @@ export class UpdateBannerDto {
 export class BannersService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async create(data: { title?: string; link?: string; imageUrl: string; order: number }) {
+  async create(data: {
+    title?: string;
+    link?: string;
+    imageUrl: string;
+    order: number;
+  }) {
     return this.prisma.banner.create({
       data: {
         title: data.title,
@@ -56,7 +61,16 @@ export class BannersService {
     });
   }
 
-  async update(id: string, data: { title?: string; link?: string; imageUrl?: string; isActive?: boolean; order?: number }) {
+  async update(
+    id: string,
+    data: {
+      title?: string;
+      link?: string;
+      imageUrl?: string;
+      isActive?: boolean;
+      order?: number;
+    },
+  ) {
     const existing = await this.prisma.banner.findUnique({ where: { id } });
     if (!existing) throw new NotFoundException('Banner not found');
 

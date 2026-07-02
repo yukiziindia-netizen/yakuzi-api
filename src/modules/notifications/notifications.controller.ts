@@ -9,7 +9,12 @@ import {
   HttpStatus,
   ParseUUIDPipe,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+} from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { NotificationsService } from './notifications.service';
@@ -47,7 +52,10 @@ export class NotificationsController {
     @CurrentUser('id') userId: string,
     @Param('id', ParseUUIDPipe) notificationId: string,
   ) {
-    const data = await this.notificationsService.markAsRead(userId, notificationId);
+    const data = await this.notificationsService.markAsRead(
+      userId,
+      notificationId,
+    );
     return { message: 'Notification marked as read', data };
   }
 
@@ -59,7 +67,10 @@ export class NotificationsController {
     @CurrentUser('id') userId: string,
     @Param('id', ParseUUIDPipe) notificationId: string,
   ) {
-    const data = await this.notificationsService.deleteNotification(userId, notificationId);
+    const data = await this.notificationsService.deleteNotification(
+      userId,
+      notificationId,
+    );
     return { message: 'Notification deleted', data };
   }
 }

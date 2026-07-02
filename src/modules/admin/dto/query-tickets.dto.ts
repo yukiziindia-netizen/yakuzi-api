@@ -4,7 +4,11 @@ import { ApiPropertyOptional } from '@nestjs/swagger';
 import { TicketStatus } from '@prisma/client';
 
 export class AdminQueryTicketsDto {
-  @ApiPropertyOptional({ enum: TicketStatus, example: 'OPEN', description: 'Filter by ticket status' })
+  @ApiPropertyOptional({
+    enum: TicketStatus,
+    example: 'OPEN',
+    description: 'Filter by ticket status',
+  })
   @IsOptional()
   @IsEnum(TicketStatus)
   status?: TicketStatus;
@@ -16,7 +20,11 @@ export class AdminQueryTicketsDto {
   @Min(1)
   page?: number = 1;
 
-  @ApiPropertyOptional({ example: 20, default: 20, description: 'Items per page (max 500)' })
+  @ApiPropertyOptional({
+    example: 20,
+    default: 20,
+    description: 'Items per page (max 500)',
+  })
   @IsOptional()
   @Type(() => Number)
   @IsInt()

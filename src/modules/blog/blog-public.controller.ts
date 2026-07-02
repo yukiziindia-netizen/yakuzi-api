@@ -47,10 +47,7 @@ export class BlogPublicController {
   @Get('tag/:tag')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Get blogs by tag' })
-  async getPostsByTag(
-    @Param('tag') tag: string,
-    @Query() query: QueryBlogDto,
-  ) {
+  async getPostsByTag(@Param('tag') tag: string, @Query() query: QueryBlogDto) {
     const data = await this.blogService.getPostsByTag(tag, query);
     return { message: 'Blogs retrieved successfully', data };
   }
@@ -58,7 +55,10 @@ export class BlogPublicController {
   @Get(':slug')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Get a single blog post by slug (SEO URL)' })
-  @ApiResponse({ status: 200, description: 'Blog post with JSON-LD structured data' })
+  @ApiResponse({
+    status: 200,
+    description: 'Blog post with JSON-LD structured data',
+  })
   async getPostBySlug(@Param('slug') slug: string) {
     const data = await this.blogService.getPostBySlug(slug);
     return { message: 'Blog post retrieved successfully', data };
@@ -81,7 +81,9 @@ export class SitemapController {
   @Get('sitemap.xml')
   @HttpCode(HttpStatus.OK)
   @Header('Content-Type', 'application/xml')
-  @ApiOperation({ summary: 'Auto-generated XML sitemap for published blog posts' })
+  @ApiOperation({
+    summary: 'Auto-generated XML sitemap for published blog posts',
+  })
   async getSitemap(@Res() res: Response) {
     const posts = await this.blogService.getSitemapData();
     const baseUrl = 'https://yukizi.com';
@@ -105,7 +107,9 @@ export class SitemapController {
 
     // Individual blog posts
     for (const post of posts) {
-      const lastmod = (post.updatedAt || post.publishedAt)?.toISOString().split('T')[0];
+      const lastmod = (post.updatedAt || post.publishedAt)
+        ?.toISOString()
+        .split('T')[0];
       xml += '  <url>\n';
       xml += `    <loc>${baseUrl}/blog/${post.slug}</loc>\n`;
       if (lastmod) {

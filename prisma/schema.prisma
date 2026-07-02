@@ -87,7 +87,7 @@ model SellerProfile {
   id                 String             @id @default(uuid())
   userId             String             @unique
   companyName        String
-  gstNumber          String
+  gstNumber          String?
   panNumber          String?
   aadhaarNumber      String?
   drugLicenseNumber  String
@@ -204,6 +204,7 @@ model SellerOffer {
   description          String?
   mrp                  Float
   gstPercent           Float
+  isTaxIncluded        Boolean               @default(false)
   minimumOrderQuantity Int                   @default(1)
   maximumOrderQuantity Int?
   isActive             Boolean               @default(false)
@@ -295,6 +296,22 @@ model Order {
   buyer             User          @relation(fields: [buyerId], references: [id], onDelete: Cascade)
   referralCode      ReferralCode? @relation(fields: [referralCodeId], references: [id])
   payments          Payment[]
+
+  // Shipping dimensions
+  packageLength     Float?
+  packageBreadth    Float?
+  packageHeight     Float?
+  packageWeight     Float?
+
+  // Dimension images
+  lengthImage       String?
+  breadthImage      String?
+  heightImage       String?
+  weightImage       String?
+
+  // Shipping documents
+  invoiceUrl        String?
+  manifestUrl       String?
 
   @@index([buyerId])
   @@index([orderStatus])
@@ -642,11 +659,13 @@ model CatalogProduct {
   name                 String
   slug                 String?               @unique
   externalId           String?               @unique
+  sku                  String?
+  specifications       String?
   manufacturer         String
-
   description          String?
   mrp                  Float?
   gstPercent           Float?
+  isTaxIncluded        Boolean               @default(false)
   categoryId           String
   subCategoryId        String
   therapeuticClass     String?

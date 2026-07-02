@@ -7,7 +7,9 @@ export class CreateBlogAuthorDto {
   @MaxLength(100)
   name: string;
 
-  @ApiPropertyOptional({ example: 'Pharmaceutical expert with 10+ years experience' })
+  @ApiPropertyOptional({
+    example: 'Pharmaceutical expert with 10+ years experience',
+  })
   @IsOptional()
   @IsString()
   @MaxLength(1000)

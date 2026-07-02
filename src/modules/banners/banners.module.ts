@@ -1,5 +1,8 @@
 import { Module } from '@nestjs/common';
-import { BannersController, AdminBannersController } from './banners.controller';
+import {
+  BannersController,
+  AdminBannersController,
+} from './banners.controller';
 import { BannersService } from './banners.service';
 import { DatabaseModule } from '../../database/database.module';
 import { StorageModule } from '../storage/storage.module';

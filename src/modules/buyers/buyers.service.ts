@@ -39,7 +39,9 @@ export class BuyersService {
     }
 
     if (!dto.gstNumber && !dto.panNumber && !dto.aadhaarNumber) {
-      throw new BadRequestException('Either GST number, Aadhaar number, or PAN number is required');
+      throw new BadRequestException(
+        'Either GST number, Aadhaar number, or PAN number is required',
+      );
     }
 
     // Use pre-verified response if provided, otherwise verify via IDFY
@@ -57,19 +59,26 @@ export class BuyersService {
       if (dto.gstNumber) {
         const result = await this.idfyService.verifyGst(dto.gstNumber);
         if (!result.status) {
-          throw new BadRequestException(result.message || 'GST verification failed');
+          throw new BadRequestException(
+            result.message || 'GST verification failed',
+          );
         }
         gstPanResponse = result;
       } else if (dto.panNumber) {
         const result = await this.idfyService.verifyPan(dto.panNumber);
         if (!result.status) {
-          throw new BadRequestException(result.message || 'PAN verification failed');
+          throw new BadRequestException(
+            result.message || 'PAN verification failed',
+          );
         }
         gstPanResponse = result;
       }
     }
 
-    if (!gstPanResponse || (!gstPanResponse.status && !gstPanResponse.success)) {
+    if (
+      !gstPanResponse ||
+      (!gstPanResponse.status && !gstPanResponse.success)
+    ) {
       throw new BadRequestException(
         'IDFY verification is required. Please verify GST, Aadhaar, or PAN before submitting.',
       );
@@ -88,11 +97,11 @@ export class BuyersService {
       const ref = await (this.prisma as any).referralCode.findUnique({
         where: { code: cleanCode },
       });
-      
+
       if (!ref) {
         throw new BadRequestException('Invalid referral code');
       }
-      
+
       referralCodeId = ref.id;
     }
 
@@ -103,10 +112,14 @@ export class BuyersService {
       aadhaarNumber: dto.aadhaarNumber ?? null,
       drugLicenseNumber: dto.drugLicenseNumber ?? null,
       drugLicenseUrl: dto.drugLicenseUrl ?? null,
-      drugLicenseExpiry: dto.drugLicenseExpiry ? new Date(dto.drugLicenseExpiry) : null,
+      drugLicenseExpiry: dto.drugLicenseExpiry
+        ? new Date(dto.drugLicenseExpiry)
+        : null,
       drugLicenseNumber2: dto.drugLicenseNumber2 ?? null,
       drugLicenseUrl2: dto.drugLicenseUrl2 ?? null,
-      drugLicenseExpiry2: dto.drugLicenseExpiry2 ? new Date(dto.drugLicenseExpiry2) : null,
+      drugLicenseExpiry2: dto.drugLicenseExpiry2
+        ? new Date(dto.drugLicenseExpiry2)
+        : null,
       address: dto.address,
       city: city || null,
       state: state || null,
@@ -150,7 +163,9 @@ export class BuyersService {
    */
   async onboardBuyer(sellerId: string, dto: CreateBuyerProfileDto) {
     if (!dto.gstNumber && !dto.panNumber && !dto.aadhaarNumber) {
-      throw new BadRequestException('Either GST number, Aadhaar number, or PAN number is required');
+      throw new BadRequestException(
+        'Either GST number, Aadhaar number, or PAN number is required',
+      );
     }
 
     let gstPanResponse = dto.gstPanResponse;
@@ -163,7 +178,10 @@ export class BuyersService {
       dto.gstPanResponse = gstPanResponse;
     }
 
-    if (!gstPanResponse || (!gstPanResponse.status && !gstPanResponse.success)) {
+    if (
+      !gstPanResponse ||
+      (!gstPanResponse.status && !gstPanResponse.success)
+    ) {
       throw new BadRequestException(
         'IDFY verification is required. Verify GST, Aadhaar, or PAN before submitting.',
       );
@@ -176,7 +194,9 @@ export class BuyersService {
     });
 
     if (existingUser?.buyerProfile) {
-      throw new ConflictException('A buyer with this phone number already has a profile');
+      throw new ConflictException(
+        'A buyer with this phone number already has a profile',
+      );
     }
 
     // Extract address fields
@@ -188,7 +208,6 @@ export class BuyersService {
     let userId: string;
 
     if (existingUser) {
-
       // User exists but no buyer profile — reuse
       userId = existingUser.id;
     } else {
@@ -221,7 +240,6 @@ export class BuyersService {
       referralCodeId = ref.id;
     }
 
-
     const profile = await this.prisma.buyerProfile.create({
       data: {
         userId,
@@ -231,10 +249,14 @@ export class BuyersService {
         aadhaarNumber: dto.aadhaarNumber ?? null,
         drugLicenseNumber: dto.drugLicenseNumber ?? null,
         drugLicenseUrl: dto.drugLicenseUrl ?? null,
-        drugLicenseExpiry: dto.drugLicenseExpiry ? new Date(dto.drugLicenseExpiry) : null,
+        drugLicenseExpiry: dto.drugLicenseExpiry
+          ? new Date(dto.drugLicenseExpiry)
+          : null,
         drugLicenseNumber2: dto.drugLicenseNumber2 ?? null,
         drugLicenseUrl2: dto.drugLicenseUrl2 ?? null,
-        drugLicenseExpiry2: dto.drugLicenseExpiry2 ? new Date(dto.drugLicenseExpiry2) : null,
+        drugLicenseExpiry2: dto.drugLicenseExpiry2
+          ? new Date(dto.drugLicenseExpiry2)
+          : null,
         address: dto.address,
         city: city || null,
         state: state || null,
@@ -252,7 +274,6 @@ export class BuyersService {
         creditTier: null,
       },
     });
-
 
     // Set user status to PENDING
     await this.prisma.user.update({
@@ -277,7 +298,13 @@ export class BuyersService {
         take: limit,
         include: {
           user: {
-            select: { id: true, phone: true, email: true, status: true, createdAt: true },
+            select: {
+              id: true,
+              phone: true,
+              email: true,
+              status: true,
+              createdAt: true,
+            },
           },
         },
       }),
@@ -294,7 +321,15 @@ export class BuyersService {
     const profile = await this.prisma.buyerProfile.findUnique({
       where: { userId },
       include: {
-        user: { select: { id: true, phone: true, email: true, username: true, status: true } },
+        user: {
+          select: {
+            id: true,
+            phone: true,
+            email: true,
+            username: true,
+            status: true,
+          },
+        },
       },
     });
 
@@ -389,8 +424,10 @@ export class BuyersService {
       updateData.verificationStatus = 'PENDING';
     }
 
-    if (dto.drugLicenseExpiry) updateData.drugLicenseExpiry = new Date(dto.drugLicenseExpiry);
-    if (dto.drugLicenseExpiry2) updateData.drugLicenseExpiry2 = new Date(dto.drugLicenseExpiry2);
+    if (dto.drugLicenseExpiry)
+      updateData.drugLicenseExpiry = new Date(dto.drugLicenseExpiry);
+    if (dto.drugLicenseExpiry2)
+      updateData.drugLicenseExpiry2 = new Date(dto.drugLicenseExpiry2);
 
     // Update User table if any user fields are present
     const userUpdateData: any = {};

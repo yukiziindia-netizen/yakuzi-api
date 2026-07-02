@@ -36,7 +36,9 @@ export class IdfyService {
         apiKey,
         apiBaseUrl: 'https://eve.idfy.com/v3',
       };
-      this.logger.log('IDFY service initialized with production/sandbox API credentials');
+      this.logger.log(
+        'IDFY service initialized with production/sandbox API credentials',
+      );
     } else {
       this.config = null;
       this.isMockMode = true;
@@ -70,7 +72,8 @@ export class IdfyService {
         legalName: 'Simulated Pharma Distributor Private Limited',
         gstNumber,
         natureOfBusinessActivity: 'Wholesale, Distribution',
-        address: 'Plot No. 42, GIDC Industrial Estate, Sector-2, Gandhinagar, Gujarat, 382010',
+        address:
+          'Plot No. 42, GIDC Industrial Estate, Sector-2, Gandhinagar, Gujarat, 382010',
         message: 'GST Number is valid',
         verifiedDocumentType: 'ind_gst_certificate',
       };
@@ -96,7 +99,7 @@ export class IdfyService {
       if (response.status === 'completed' && response.result?.source_output) {
         const sourceOut = response.result.source_output;
         const legalName = sourceOut.trade_name || sourceOut.legal_name || 'N/A';
-        
+
         let businessActivity = 'N/A';
         if (sourceOut.nba && Array.isArray(sourceOut.nba)) {
           businessActivity = sourceOut.nba.join(', ');
@@ -156,10 +159,13 @@ export class IdfyService {
   // ─────────────────────────────────────────────────
 
   async verifyPan(panNumber: string): Promise<any> {
-    this.logger.warn('PAN verification requested but has been deprecated in favor of Aadhaar verification.');
+    this.logger.warn(
+      'PAN verification requested but has been deprecated in favor of Aadhaar verification.',
+    );
     return {
       status: false,
-      message: 'PAN verification is deprecated. Please verify using Aadhaar OTP instead.',
+      message:
+        'PAN verification is deprecated. Please verify using Aadhaar OTP instead.',
       verifiedDocumentType: null,
     };
   }
@@ -172,11 +178,13 @@ export class IdfyService {
     let retries = 0;
     while (retries < MAX_POLL_RETRIES) {
       await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
-      
+
       try {
         const url = `${this.config!.apiBaseUrl}/tasks/${taskId}`;
-        this.logger.debug(`[IDFY] Polling task status for: ${taskId} (Attempt ${retries + 1})`);
-        
+        this.logger.debug(
+          `[IDFY] Polling task status for: ${taskId} (Attempt ${retries + 1})`,
+        );
+
         const task = await this.makeGetRequest(url);
         if (task.status === 'completed' || task.status === 'failed') {
           return task;
@@ -184,7 +192,7 @@ export class IdfyService {
       } catch (err: any) {
         this.logger.warn(`Error polling task status: ${err.message}`);
       }
-      
+
       retries++;
     }
     throw new Error('Task polling timed out or failed to complete.');
@@ -194,7 +202,10 @@ export class IdfyService {
   // HTTP METHODS
   // ─────────────────────────────────────────────────
 
-  private makePostRequest(url: string, payload: Record<string, any>): Promise<any> {
+  private makePostRequest(
+    url: string,
+    payload: Record<string, any>,
+  ): Promise<any> {
     return new Promise((resolve, reject) => {
       const body = JSON.stringify(payload);
       const parsedUrl = new URL(url);
@@ -209,7 +220,7 @@ export class IdfyService {
           'account-id': this.config!.accountId,
           'api-key': this.config!.apiKey,
           'User-Agent': 'Yukizi/1.0.0',
-          'Accept': 'application/json',
+          Accept: 'application/json',
         },
         timeout: TIMEOUT_MS,
       };
@@ -219,8 +230,15 @@ export class IdfyService {
         res.on('data', (chunk: Buffer) => chunks.push(chunk));
         res.on('end', () => {
           const raw = Buffer.concat(chunks).toString('utf-8');
-          if (res.statusCode && (res.statusCode < 200 || res.statusCode >= 300)) {
-            return reject(new Error(`IDFY API HTTP ${res.statusCode}: ${raw.slice(0, 200)}`));
+          if (
+            res.statusCode &&
+            (res.statusCode < 200 || res.statusCode >= 300)
+          ) {
+            return reject(
+              new Error(
+                `IDFY API HTTP ${res.statusCode}: ${raw.slice(0, 200)}`,
+              ),
+            );
           }
           try {
             resolve(JSON.parse(raw));
@@ -249,7 +267,7 @@ export class IdfyService {
           'account-id': this.config!.accountId,
           'api-key': this.config!.apiKey,
           'User-Agent': 'Yukizi/1.0.0',
-          'Accept': 'application/json',
+          Accept: 'application/json',
         },
         timeout: TIMEOUT_MS,
       };
@@ -259,8 +277,15 @@ export class IdfyService {
         res.on('data', (chunk: Buffer) => chunks.push(chunk));
         res.on('end', () => {
           const raw = Buffer.concat(chunks).toString('utf-8');
-          if (res.statusCode && (res.statusCode < 200 || res.statusCode >= 300)) {
-            return reject(new Error(`IDFY API HTTP ${res.statusCode}: ${raw.slice(0, 200)}`));
+          if (
+            res.statusCode &&
+            (res.statusCode < 200 || res.statusCode >= 300)
+          ) {
+            return reject(
+              new Error(
+                `IDFY API HTTP ${res.statusCode}: ${raw.slice(0, 200)}`,
+              ),
+            );
           }
           try {
             resolve(JSON.parse(raw));

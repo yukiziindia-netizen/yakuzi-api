@@ -13,7 +13,6 @@ export class CreateSellerProfileDto {
   @IsNotEmpty()
   companyName: string;
 
-
   @ApiPropertyOptional({ example: 'business@example.com' })
   @IsEmail()
   @IsOptional()
@@ -24,7 +23,14 @@ export class CreateSellerProfileDto {
   @IsOptional()
   fssaiNumber?: string;
 
-  @ApiPropertyOptional({ example: { accountHolder: 'John Doe', accountNumber: '1234567890', bankName: 'HDFC', ifsc: 'HDFC0001234' } })
+  @ApiPropertyOptional({
+    example: {
+      accountHolder: 'John Doe',
+      accountNumber: '1234567890',
+      bankName: 'HDFC',
+      ifsc: 'HDFC0001234',
+    },
+  })
   @IsOptional()
   bankAccount?: any;
 
@@ -33,13 +39,13 @@ export class CreateSellerProfileDto {
   @IsOptional()
   cancelCheck?: string;
 
-  @ApiProperty({ example: '27AABCU9603R1ZM', description: '15-char GSTIN' })
+  @ApiPropertyOptional({ example: '27AABCU9603R1ZM', description: '15-char GSTIN' })
   @IsString()
-  @IsNotEmpty()
+  @IsOptional()
   @Matches(/^\d{2}[A-Z]{5}\d{4}[A-Z]{1}[A-Z\d]{1}[Z]{1}[A-Z\d]{1}$/, {
     message: 'gstNumber must be a valid 15-character GSTIN',
   })
-  gstNumber: string;
+  gstNumber?: string;
 
   @ApiPropertyOptional({ example: 'ABCDE1234F', description: '10-char PAN' })
   @IsString()
@@ -49,7 +55,10 @@ export class CreateSellerProfileDto {
   })
   panNumber?: string;
 
-  @ApiPropertyOptional({ example: '123456789012', description: '12-digit Aadhaar Card number' })
+  @ApiPropertyOptional({
+    example: '123456789012',
+    description: '12-digit Aadhaar Card number',
+  })
   @IsOptional()
   @IsString()
   @Matches(/^\d{12}$/, {

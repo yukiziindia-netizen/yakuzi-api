@@ -1,8 +1,23 @@
-import { Controller, Post, Get, Delete, Body, Param, HttpCode, HttpStatus } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Get,
+  Delete,
+  Body,
+  Param,
+  HttpCode,
+  HttpStatus,
+} from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { ChatbotService } from './chatbot.service';
 import { PrismaService } from '../../database/prisma.service';
-import { IsString, IsNotEmpty, IsArray, IsOptional, ValidateNested } from 'class-validator';
+import {
+  IsString,
+  IsNotEmpty,
+  IsArray,
+  IsOptional,
+  ValidateNested,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 import axios from 'axios';
 
@@ -63,39 +78,41 @@ export class ChatbotController {
   ) {}
 
   @Post('job-status')
-  async saveJobStatus(@Body() body: { jobId: string, status: string, history?: any[] }) {
+  async saveJobStatus(
+    @Body() body: { jobId: string; status: string; history?: any[] },
+  ) {
     // Save to SystemSetting (for latest)
     await this.prisma.systemSetting.upsert({
       where: { key: 'chatbot_job_id' },
       update: { value: body.jobId },
-      create: { key: 'chatbot_job_id', value: body.jobId }
+      create: { key: 'chatbot_job_id', value: body.jobId },
     });
     await this.prisma.systemSetting.upsert({
       where: { key: 'chatbot_job_status' },
       update: { value: body.status },
-      create: { key: 'chatbot_job_status', value: body.status }
+      create: { key: 'chatbot_job_status', value: body.status },
     });
 
     // Also insert into history if it doesn't exist, or update if it does
     const existingJob = await this.prisma.chatbotJob.findFirst({
-      where: { jobId: body.jobId }
+      where: { jobId: body.jobId },
     });
 
     if (existingJob) {
       await this.prisma.chatbotJob.update({
         where: { id: existingJob.id },
-        data: { 
+        data: {
           status: body.status,
-          ...(body.history && { history: body.history })
-        }
+          ...(body.history && { history: body.history }),
+        },
       });
     } else {
       await this.prisma.chatbotJob.create({
         data: {
           jobId: body.jobId,
           status: body.status,
-          ...(body.history && { history: body.history })
-        }
+          ...(body.history && { history: body.history }),
+        },
       });
     }
 
@@ -104,18 +121,22 @@ export class ChatbotController {
 
   @Get('job-status')
   async getJobStatus() {
-    const jobId = await this.prisma.systemSetting.findUnique({ where: { key: 'chatbot_job_id' } });
-    const status = await this.prisma.systemSetting.findUnique({ where: { key: 'chatbot_job_status' } });
+    const jobId = await this.prisma.systemSetting.findUnique({
+      where: { key: 'chatbot_job_id' },
+    });
+    const status = await this.prisma.systemSetting.findUnique({
+      where: { key: 'chatbot_job_status' },
+    });
     return {
-      jobId: jobId?.value || "",
-      status: status?.value || null
+      jobId: jobId?.value || '',
+      status: status?.value || null,
     };
   }
 
   @Get('job-history')
   async getJobHistory() {
     const jobs = await this.prisma.chatbotJob.findMany({
-      orderBy: { createdAt: 'desc' }
+      orderBy: { createdAt: 'desc' },
     });
     return jobs;
   }
@@ -123,7 +144,7 @@ export class ChatbotController {
   @Delete('job-history/:id')
   async deleteJob(@Param('id') id: string) {
     await this.prisma.chatbotJob.delete({
-      where: { id }
+      where: { id },
     });
     return { success: true };
   }
@@ -134,9 +155,9 @@ export class ChatbotController {
   @ApiResponse({ status: 200, description: 'AI response returned' })
   async chat(@Body() dto: ChatRequestDto) {
     const response = await this.chatbotService.sendMessage(
-      dto.message || '', 
-      dto.history || [], 
-      dto.attachments || []
+      dto.message || '',
+      dto.history || [],
+      dto.attachments || [],
     );
     return { response };
   }
@@ -152,9 +173,13 @@ export class ChatbotController {
       return response.data;
     } catch (error: any) {
       if (error.response) {
-        throw new Error(`Python sidecar error: ${JSON.stringify(error.response.data)}`);
+        throw new Error(
+          `Python sidecar error: ${JSON.stringify(error.response.data)}`,
+        );
       }
-      throw new Error(`Failed to communicate with Python sidecar: ${error.message}`);
+      throw new Error(
+        `Failed to communicate with Python sidecar: ${error.message}`,
+      );
     }
   }
 }

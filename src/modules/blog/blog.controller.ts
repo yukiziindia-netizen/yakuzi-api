@@ -1,13 +1,13 @@
-import { 
-  Controller, 
-  Get, 
-  Post, 
-  Body, 
-  Patch, 
-  Param, 
-  Delete, 
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Patch,
+  Param,
+  Delete,
   UseGuards,
-  Query
+  Query,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { BlogService } from './blog.service';
@@ -33,7 +33,10 @@ export class BlogController {
 
   @Get('posts')
   @ApiOperation({ summary: 'Get all public blog posts' })
-  findAll(@Query('category') categoryId?: string, @Query('status') status?: BlogStatus) {
+  findAll(
+    @Query('category') categoryId?: string,
+    @Query('status') status?: BlogStatus,
+  ) {
     return this.blogService.findAllPosts({ categoryId, status });
   }
 

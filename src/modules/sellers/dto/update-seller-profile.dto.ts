@@ -1,9 +1,4 @@
-import {
-  IsString,
-  IsOptional,
-  Matches,
-  IsEmail,
-} from 'class-validator';
+import { IsString, IsOptional, Matches, IsEmail } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 
 export class UpdateSellerProfileDto {
@@ -22,7 +17,14 @@ export class UpdateSellerProfileDto {
   @IsOptional()
   fssaiNumber?: string;
 
-  @ApiPropertyOptional({ example: { accountHolder: 'John Doe', accountNumber: '1234567890', bankName: 'HDFC', ifsc: 'HDFC0001234' } })
+  @ApiPropertyOptional({
+    example: {
+      accountHolder: 'John Doe',
+      accountNumber: '1234567890',
+      bankName: 'HDFC',
+      ifsc: 'HDFC0001234',
+    },
+  })
   @IsOptional()
   bankAccount?: any;
 
@@ -65,7 +67,9 @@ export class UpdateSellerProfileDto {
   @IsString()
   drugLicenseNumber?: string;
 
-  @ApiPropertyOptional({ example: 'https://s3.amazonaws.com/yukizi-images/drug-license.pdf' })
+  @ApiPropertyOptional({
+    example: 'https://s3.amazonaws.com/yukizi-images/drug-license.pdf',
+  })
   @IsOptional()
   @IsString()
   drugLicenseUrl?: string;
@@ -75,7 +79,9 @@ export class UpdateSellerProfileDto {
   @IsString()
   drugLicenseNumber2?: string;
 
-  @ApiPropertyOptional({ example: 'https://s3.amazonaws.com/yukizi-images/drug-license2.pdf' })
+  @ApiPropertyOptional({
+    example: 'https://s3.amazonaws.com/yukizi-images/drug-license2.pdf',
+  })
   @IsOptional()
   @IsString()
   drugLicenseUrl2?: string;

@@ -80,9 +80,15 @@ export class AuthService {
 
     if (isEmail) {
       // Mock email sending for now
-      console.log(`[AUTH-SERVICE] OTP service NOT configured for email. Using dev mode...`);
-      console.log(`\n=== EMAIL OTP ===\nTo: ${contact}\nOTP: ${otp}\n=================\n`);
-      this.logger.warn(`[AUTH-SERVICE] Email OTP logged for development only to ${contact}`);
+      console.log(
+        `[AUTH-SERVICE] OTP service NOT configured for email. Using dev mode...`,
+      );
+      console.log(
+        `\n=== EMAIL OTP ===\nTo: ${contact}\nOTP: ${otp}\n=================\n`,
+      );
+      this.logger.warn(
+        `[AUTH-SERVICE] Email OTP logged for development only to ${contact}`,
+      );
       return { message: 'OTP sent to email successfully' };
     }
 
@@ -90,22 +96,32 @@ export class AuthService {
     try {
       console.log(`[AUTH-SERVICE] sendOtp called for phone: ${contact}`);
       console.log(`[AUTH-SERVICE] Checking if OTP service is configured...`);
-      
+
       if (this.otpSmsService.isConfigured()) {
         // Production: Send via Nimbus IT SMS API
-        console.log(`[AUTH-SERVICE] OTP service IS configured. Attempting to send SMS...`);
+        console.log(
+          `[AUTH-SERVICE] OTP service IS configured. Attempting to send SMS...`,
+        );
         await this.otpSmsService.sendOtp(contact, otp);
         console.log(`[AUTH-SERVICE] OTP sent successfully via Nimbus IT SMS`);
-        this.logger.log(`[AUTH-SERVICE] OTP sent to ${contact} via Nimbus IT SMS`);
+        this.logger.log(
+          `[AUTH-SERVICE] OTP sent to ${contact} via Nimbus IT SMS`,
+        );
       } else {
         // Development: Log OTP without sending
-        console.log(`[AUTH-SERVICE] OTP service NOT configured. Using dev mode...`);
+        console.log(
+          `[AUTH-SERVICE] OTP service NOT configured. Using dev mode...`,
+        );
         this.otpSmsService.logOtpForDevelopment(contact, otp);
-        this.logger.warn('[AUTH-SERVICE] OTP service not configured. OTP logged for development only.');
+        this.logger.warn(
+          '[AUTH-SERVICE] OTP service not configured. OTP logged for development only.',
+        );
       }
     } catch (error) {
       console.error(`[AUTH-SERVICE] Error during SMS send:`, error);
-      this.logger.error(`[AUTH-SERVICE] Failed to send OTP: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      this.logger.error(
+        `[AUTH-SERVICE] Failed to send OTP: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      );
       // Don't throw - OTP is already stored in Redis, user can still verify it
       // In production, you might want to throw and fail the request
     }
@@ -115,19 +131,34 @@ export class AuthService {
 
   // ─── VERIFY OTP ────────────────────────────────────
 
-  async verifyOtp(phone: string, otp: string, suggestedRole?: Role): Promise<AuthResponse> {
+  async verifyOtp(
+    phone: string,
+    otp: string,
+    suggestedRole?: Role,
+  ): Promise<AuthResponse> {
     const redisKey = `otp:${phone}`;
 
     // Special case for bypass number — skip Redis entirely
     const cleanPhone = phone.replace(/\D/g, '');
-    const isBypassNumber = (cleanPhone.includes('9831864222') || cleanPhone.includes('9999999999') || cleanPhone.includes('9876543210') || cleanPhone.includes('7777777777') || cleanPhone.includes('8888888888') || cleanPhone.includes('8888888889')) && (otp.trim() === '123456' || otp.trim() === '1234' || otp.trim() === '000000');
+    const isBypassNumber =
+      (cleanPhone.includes('9831864222') ||
+        cleanPhone.includes('9999999999') ||
+        cleanPhone.includes('9876543210') ||
+        cleanPhone.includes('7777777777') ||
+        cleanPhone.includes('8888888888') ||
+        cleanPhone.includes('8888888889')) &&
+      (otp.trim() === '123456' ||
+        otp.trim() === '1234' ||
+        otp.trim() === '000000');
 
     if (!isBypassNumber) {
       // Fetch stored OTP from Redis
       const storedOtp = await this.redis.get(redisKey);
 
       if (!storedOtp) {
-        throw new BadRequestException('OTP expired or not found. Please request a new OTP.');
+        throw new BadRequestException(
+          'OTP expired or not found. Please request a new OTP.',
+        );
       }
 
       // Normalize both values before comparison
@@ -137,7 +168,10 @@ export class AuthService {
       // Constant-time comparison to prevent timing attacks
       if (
         normalizedOtp.length !== normalizedStoredOtp.length ||
-        !crypto.timingSafeEqual(Buffer.from(normalizedOtp), Buffer.from(normalizedStoredOtp))
+        !crypto.timingSafeEqual(
+          Buffer.from(normalizedOtp),
+          Buffer.from(normalizedStoredOtp),
+        )
       ) {
         throw new BadRequestException('Invalid OTP');
       }
@@ -156,7 +190,14 @@ export class AuthService {
         email: true,
         role: true,
         status: true,
-        adminProfile: { select: { id: true, displayName: true, department: true, permissions: true } },
+        adminProfile: {
+          select: {
+            id: true,
+            displayName: true,
+            department: true,
+            permissions: true,
+          },
+        },
       },
     });
 
@@ -164,13 +205,18 @@ export class AuthService {
     if (cleanPhone === '9999999999') {
       suggestedRole = Role.ADMIN;
     }
-    
+
     // Force 8888888888 and 8888888889 to ALWAYS be a Seller
     if (cleanPhone === '8888888888' || cleanPhone === '8888888889') {
       suggestedRole = Role.SELLER;
     }
 
-    if (user && suggestedRole && user.role !== suggestedRole && (suggestedRole !== Role.ADMIN || cleanPhone === '9999999999')) {
+    if (
+      user &&
+      suggestedRole &&
+      user.role !== suggestedRole &&
+      (suggestedRole !== Role.ADMIN || cleanPhone === '9999999999')
+    ) {
       // User exists but has a different role (e.g. BUYER logging into SELLER app)
       // Update the user's role so the new token allows access to the requested app
       user = await this.prisma.user.update({
@@ -182,10 +228,19 @@ export class AuthService {
           email: true,
           role: true,
           status: true,
-          adminProfile: { select: { id: true, displayName: true, department: true, permissions: true } },
+          adminProfile: {
+            select: {
+              id: true,
+              displayName: true,
+              department: true,
+              permissions: true,
+            },
+          },
         },
       });
-      this.logger.log(`User ${user.id} role updated from previous role to ${suggestedRole} upon login`);
+      this.logger.log(
+        `User ${user.id} role updated from previous role to ${suggestedRole} upon login`,
+      );
     }
 
     if (!user) {
@@ -207,7 +262,14 @@ export class AuthService {
           email: true,
           role: true,
           status: true,
-          adminProfile: { select: { id: true, displayName: true, department: true, permissions: true } },
+          adminProfile: {
+            select: {
+              id: true,
+              displayName: true,
+              department: true,
+              permissions: true,
+            },
+          },
         },
       });
 
@@ -228,7 +290,9 @@ export class AuthService {
             permissions: '*',
           },
         });
-        this.logger.log(`Lazily created AdminProfile for existing user ${user.id}`);
+        this.logger.log(
+          `Lazily created AdminProfile for existing user ${user.id}`,
+        );
       }
     } else if (user.role === Role.SELLER) {
       const profile = await this.prisma.sellerProfile.findUnique({
@@ -251,7 +315,9 @@ export class AuthService {
             rating: 0,
           },
         });
-        this.logger.log(`Lazily created SellerProfile for existing user ${user.id}`);
+        this.logger.log(
+          `Lazily created SellerProfile for existing user ${user.id}`,
+        );
       }
     } else if (user.role === Role.BUYER) {
       const profile = await this.prisma.buyerProfile.findUnique({
@@ -272,7 +338,9 @@ export class AuthService {
             pincode: '',
           },
         });
-        this.logger.log(`Lazily created BuyerProfile for existing user ${user.id}`);
+        this.logger.log(
+          `Lazily created BuyerProfile for existing user ${user.id}`,
+        );
       }
     }
 
@@ -295,14 +363,19 @@ export class AuthService {
     // Verify OTP using Redis
     const storedOtp = await this.redis.get(redisKey);
     if (!storedOtp) {
-      throw new BadRequestException('OTP expired or not found. Please request a new OTP.');
+      throw new BadRequestException(
+        'OTP expired or not found. Please request a new OTP.',
+      );
     }
     const normalizedOtp = otp.trim();
     const normalizedStoredOtp = storedOtp.trim();
 
     if (
       normalizedOtp.length !== normalizedStoredOtp.length ||
-      !crypto.timingSafeEqual(Buffer.from(normalizedOtp), Buffer.from(normalizedStoredOtp))
+      !crypto.timingSafeEqual(
+        Buffer.from(normalizedOtp),
+        Buffer.from(normalizedStoredOtp),
+      )
     ) {
       throw new BadRequestException('Invalid OTP');
     }
@@ -329,7 +402,9 @@ export class AuthService {
         isNewUser = true;
         // Check if username is taken
         if (username) {
-          const existingUsername = await prisma.user.findUnique({ where: { username } });
+          const existingUsername = await prisma.user.findUnique({
+            where: { username },
+          });
           if (existingUsername) {
             throw new BadRequestException('Username is already taken');
           }
@@ -361,7 +436,9 @@ export class AuthService {
       } else {
         // Update existing user
         if (username && username !== user.username) {
-          const existingUsername = await prisma.user.findUnique({ where: { username } });
+          const existingUsername = await prisma.user.findUnique({
+            where: { username },
+          });
           if (existingUsername) {
             throw new BadRequestException('Username is already taken');
           }
@@ -379,7 +456,9 @@ export class AuthService {
         });
 
         // Update profile
-        const profile = await prisma.buyerProfile.findUnique({ where: { userId: user.id } });
+        const profile = await prisma.buyerProfile.findUnique({
+          where: { userId: user.id },
+        });
         if (profile) {
           await prisma.buyerProfile.update({
             where: { userId: user.id },
@@ -424,14 +503,19 @@ export class AuthService {
     // Verify OTP using Redis
     const storedOtp = await this.redis.get(redisKey);
     if (!storedOtp) {
-      throw new BadRequestException('OTP expired or not found. Please request a new OTP.');
+      throw new BadRequestException(
+        'OTP expired or not found. Please request a new OTP.',
+      );
     }
     const normalizedOtp = otp.trim();
     const normalizedStoredOtp = storedOtp.trim();
 
     if (
       normalizedOtp.length !== normalizedStoredOtp.length ||
-      !crypto.timingSafeEqual(Buffer.from(normalizedOtp), Buffer.from(normalizedStoredOtp))
+      !crypto.timingSafeEqual(
+        Buffer.from(normalizedOtp),
+        Buffer.from(normalizedStoredOtp),
+      )
     ) {
       throw new BadRequestException('Invalid OTP');
     }
@@ -444,7 +528,9 @@ export class AuthService {
 
     // Update the user's password
     const user = await this.prisma.user.updateMany({
-      where: isEmail ? { email: contact } : { OR: [{ phone: contact }, { username: contact }] },
+      where: isEmail
+        ? { email: contact }
+        : { OR: [{ phone: contact }, { username: contact }] },
       data: { password: hashedPassword },
     });
 
@@ -458,8 +544,10 @@ export class AuthService {
   // ─── LOGIN WITH SIMPLE PASSWORD ───────────────────
 
   async loginWithSimplePassword(password: string): Promise<AuthResponse> {
-    const configPassword = this.configService.get<string>('ADMIN_BLOG_PASSWORD');
-    
+    const configPassword = this.configService.get<string>(
+      'ADMIN_BLOG_PASSWORD',
+    );
+
     if (!configPassword || password.trim() !== configPassword.trim()) {
       throw new UnauthorizedException('Invalid admin password');
     }
@@ -491,11 +579,16 @@ export class AuthService {
 
   // ─── LOGIN WITH PASSWORD ───────────────────────────
 
-  async loginWithPassword(contact: string, password: string): Promise<AuthResponse> {
+  async loginWithPassword(
+    contact: string,
+    password: string,
+  ): Promise<AuthResponse> {
     const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contact);
-    
+
     const user = await this.prisma.user.findFirst({
-      where: isEmail ? { email: contact } : { OR: [{ phone: contact }, { username: contact }] },
+      where: isEmail
+        ? { email: contact }
+        : { OR: [{ phone: contact }, { username: contact }] },
       select: {
         id: true,
         phone: true,
@@ -520,7 +613,7 @@ export class AuthService {
 
     const isPasswordValid = await bcrypt.compare(password, user.password);
     if (!isPasswordValid) {
-       throw new UnauthorizedException('Invalid credentials');
+      throw new UnauthorizedException('Invalid credentials');
     }
 
     const tokens = await this.generateTokens(user.id, user.role);
@@ -629,8 +722,14 @@ export class AuthService {
   private async generateTokens(userId: string, role: Role): Promise<TokenPair> {
     const payload = { sub: userId, role };
 
-    const accessExpiresIn = this.configService.get<string>('JWT_ACCESS_EXPIRES', '15m');
-    const refreshExpiresIn = this.configService.get<string>('JWT_REFRESH_EXPIRES', '7d');
+    const accessExpiresIn = this.configService.get<string>(
+      'JWT_ACCESS_EXPIRES',
+      '15m',
+    );
+    const refreshExpiresIn = this.configService.get<string>(
+      'JWT_REFRESH_EXPIRES',
+      '7d',
+    );
 
     const [accessToken, refreshToken] = await Promise.all([
       this.jwtService.signAsync(payload, {

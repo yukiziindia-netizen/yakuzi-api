@@ -41,7 +41,11 @@ export class NotificationsService {
   /**
    * Notify buyer when payment is confirmed by admin.
    */
-  async notifyPaymentConfirmed(buyerId: string, orderId: string, amount: number) {
+  async notifyPaymentConfirmed(
+    buyerId: string,
+    orderId: string,
+    amount: number,
+  ) {
     return this.createNotification(
       buyerId,
       `Payment of ₹${amount.toFixed(2)} for order ${orderId.slice(0, 8)}… has been confirmed.`,

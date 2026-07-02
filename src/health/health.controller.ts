@@ -9,7 +9,10 @@ export class HealthController {
 
   @Get()
   @ApiOperation({ summary: 'System health check' })
-  @ApiResponse({ status: 200, description: 'Service health status with DB & Redis connectivity' })
+  @ApiResponse({
+    status: 200,
+    description: 'Service health status with DB & Redis connectivity',
+  })
   async check() {
     return this.healthService.check();
   }

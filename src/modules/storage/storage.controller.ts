@@ -8,7 +8,14 @@ import {
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiConsumes, ApiBody } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+  ApiConsumes,
+  ApiBody,
+} from '@nestjs/swagger';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Role } from '@prisma/client';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -58,7 +65,10 @@ export class StorageController {
   @ApiOperation({ summary: 'Upload drug license image (seller onboarding)' })
   @ApiConsumes('multipart/form-data')
   @ApiBody(fileUploadBody)
-  @ApiResponse({ status: 201, description: 'Drug license uploaded, secure KEY returned' })
+  @ApiResponse({
+    status: 201,
+    description: 'Drug license uploaded, secure KEY returned',
+  })
   async uploadDrugLicense(@UploadedFile() file: Express.Multer.File) {
     const key = await this.storageService.uploadDrugLicense(file);
     return { message: 'Drug license uploaded securely', data: { key } };
@@ -72,7 +82,10 @@ export class StorageController {
   @ApiOperation({ summary: 'Upload payment proof (buyer)' })
   @ApiConsumes('multipart/form-data')
   @ApiBody(fileUploadBody)
-  @ApiResponse({ status: 201, description: 'Proof uploaded, secure KEY returned' })
+  @ApiResponse({
+    status: 201,
+    description: 'Proof uploaded, secure KEY returned',
+  })
   async uploadPaymentProof(@UploadedFile() file: Express.Multer.File) {
     const key = await this.storageService.uploadPaymentProof(file);
     return { message: 'Payment proof uploaded securely', data: { key } };
@@ -86,14 +99,18 @@ export class StorageController {
   @ApiOperation({ summary: 'Upload KYC document (buyer/seller)' })
   @ApiConsumes('multipart/form-data')
   @ApiBody(fileUploadBody)
-  @ApiResponse({ status: 201, description: 'KYC document uploaded, secure KEY returned' })
+  @ApiResponse({
+    status: 201,
+    description: 'KYC document uploaded, secure KEY returned',
+  })
   async uploadKycDocument(@UploadedFile() file: Express.Multer.File) {
     const key = await this.storageService.uploadKycDocument(file);
     return {
       message: 'KYC document uploaded securely',
       data: {
         key,
-        explanation: 'This is a private key. Use the /storage/view endpoint to get a temporary access link.',
+        explanation:
+          'This is a private key. Use the /storage/view endpoint to get a temporary access link.',
       },
     };
   }
@@ -126,11 +143,27 @@ export class StorageController {
     return { message: 'Settlement proof uploaded', data: { url } };
   }
 
+  @Post('order-document')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.SELLER, Role.ADMIN)
+  @UseInterceptors(FileInterceptor('file'))
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({ summary: 'Upload order document/image (seller)' })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody(fileUploadBody)
+  @ApiResponse({ status: 201, description: 'File uploaded, URL returned' })
+  async uploadOrderDocument(@UploadedFile() file: Express.Multer.File) {
+    const url = await this.storageService.uploadOrderDocument(file);
+    return { message: 'Order document uploaded', data: { url } };
+  }
+
   @Post('view')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.BUYER, Role.SELLER, Role.ADMIN)
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Generate a temporary presigned URL for a private file' })
+  @ApiOperation({
+    summary: 'Generate a temporary presigned URL for a private file',
+  })
   @ApiResponse({ status: 200, description: 'Temporary URL generated' })
   async getPresignedUrl(@Body('key') key: string) {
     const url = await this.storageService.getPresignedUrl(key);
@@ -148,17 +181,21 @@ export class StorageController {
       properties: {
         product_id: { type: 'string', nullable: true },
         filename: { type: 'string' },
-        content_type: { type: 'string' }
+        content_type: { type: 'string' },
       },
-      required: ['filename', 'content_type']
-    }
+      required: ['filename', 'content_type'],
+    },
   })
   async generateUploadUrl(
     @Body('product_id') productId: string,
     @Body('filename') filename: string,
     @Body('content_type') contentType: string,
   ) {
-    const data = await this.storageService.generateUploadUrl(productId, filename, contentType);
+    const data = await this.storageService.generateUploadUrl(
+      productId,
+      filename,
+      contentType,
+    );
     return { data };
   }
 }

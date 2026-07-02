@@ -1,9 +1,19 @@
-import { IsNotEmpty, IsOptional, IsString, Length, Matches, ValidateIf } from 'class-validator';
+import {
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  Length,
+  Matches,
+  ValidateIf,
+} from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class VerifyOtpDto {
-  @ApiPropertyOptional({ example: '9831864222', description: '10-digit Indian mobile number' })
-  @ValidateIf(o => !o.contact)
+  @ApiPropertyOptional({
+    example: '9831864222',
+    description: '10-digit Indian mobile number',
+  })
+  @ValidateIf((o) => !o.contact)
   @IsString()
   @IsNotEmpty()
   @Matches(/^[6-9]\d{9}$/, {
@@ -11,8 +21,11 @@ export class VerifyOtpDto {
   })
   phone?: string;
 
-  @ApiPropertyOptional({ example: '9831864222', description: 'Alias for phone number' })
-  @ValidateIf(o => !o.phone)
+  @ApiPropertyOptional({
+    example: '9831864222',
+    description: 'Alias for phone number',
+  })
+  @ValidateIf((o) => !o.phone)
   @IsString()
   @IsNotEmpty()
   @Matches(/^[6-9]\d{9}$/, {
@@ -27,7 +40,11 @@ export class VerifyOtpDto {
   @Matches(/^\d{6}$/, { message: 'OTP must contain only digits' })
   otp: string;
 
-  @ApiProperty({ example: 'SELLER', enum: ['BUYER', 'SELLER', 'ADMIN'], required: false })
+  @ApiProperty({
+    example: 'SELLER',
+    enum: ['BUYER', 'SELLER', 'ADMIN'],
+    required: false,
+  })
   @IsString()
   @IsOptional()
   role?: 'BUYER' | 'SELLER' | 'ADMIN';

@@ -5,7 +5,7 @@ import axios from 'axios';
 export class ShiprocketService {
   private readonly logger = new Logger(ShiprocketService.name);
   private readonly SHIPROCKET_BASE = 'https://apiv2.shiprocket.in/v1/external';
-  
+
   private tokenCache: { token: string | null; expiresAt: number } = {
     token: null,
     expiresAt: 0,
@@ -28,28 +28,32 @@ export class ShiprocketService {
     const { email, password } = this.getCredentials();
 
     if (!password) {
-       this.logger.warn("Shiprocket password is not set in environment variables");
-       // Throw error or handle gracefully
+      this.logger.warn(
+        'Shiprocket password is not set in environment variables',
+      );
+      // Throw error or handle gracefully
     }
 
     try {
-      const response = await axios.post(`${this.SHIPROCKET_BASE}/auth/local/login`, {
-        email,
-        password,
-      });
+      const response = await axios.post(
+        `${this.SHIPROCKET_BASE}/auth/local/login`,
+        {
+          email,
+          password,
+        },
+      );
 
       this.tokenCache.token = response.data.token;
       // Valid for 24h, expire in 23h
       this.tokenCache.expiresAt = now + 82800 * 1000;
-      
-      this.logger.log("Successfully retrieved Shiprocket auth token");
+
+      this.logger.log('Successfully retrieved Shiprocket auth token');
       return this.tokenCache.token as string;
     } catch (error: any) {
-      this.logger.error(`Shiprocket auth failed: ${error?.response?.data?.message || error.message}`);
-      throw new HttpException(
-        'Shiprocket auth failed',
-        HttpStatus.BAD_GATEWAY,
+      this.logger.error(
+        `Shiprocket auth failed: ${error?.response?.data?.message || error.message}`,
       );
+      throw new HttpException('Shiprocket auth failed', HttpStatus.BAD_GATEWAY);
     }
   }
 
@@ -57,15 +61,21 @@ export class ShiprocketService {
     const token = await this.getAuthToken();
 
     try {
-      const response = await axios.post(`${this.SHIPROCKET_BASE}/orders/create/adhoc`, payload, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
+      const response = await axios.post(
+        `${this.SHIPROCKET_BASE}/orders/create/adhoc`,
+        payload,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
         },
-      });
+      );
       return response.data;
     } catch (error: any) {
-      this.logger.error(`Shiprocket create order failed: ${JSON.stringify(error?.response?.data || error.message)}`);
+      this.logger.error(
+        `Shiprocket create order failed: ${JSON.stringify(error?.response?.data || error.message)}`,
+      );
       throw new HttpException(
         `Shiprocket error: ${error?.response?.data?.message || 'Unknown error'}`,
         error?.response?.status || HttpStatus.BAD_GATEWAY,
@@ -77,12 +87,15 @@ export class ShiprocketService {
     const token = await this.getAuthToken();
 
     try {
-      const response = await axios.get(`${this.SHIPROCKET_BASE}/courier/track`, {
-        params: { order_id: orderId },
-        headers: {
-          Authorization: `Bearer ${token}`,
+      const response = await axios.get(
+        `${this.SHIPROCKET_BASE}/courier/track`,
+        {
+          params: { order_id: orderId },
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
         },
-      });
+      );
 
       const trackingData = response.data?.tracking_data || {};
       const shipmentTrack = trackingData.shipment_track?.[0] || {};
@@ -97,7 +110,9 @@ export class ShiprocketService {
         activities: trackingData.shipment_track_activities || [],
       };
     } catch (error: any) {
-      this.logger.error(`Shiprocket tracking failed: ${error?.response?.data?.message || error.message}`);
+      this.logger.error(
+        `Shiprocket tracking failed: ${error?.response?.data?.message || error.message}`,
+      );
       throw new HttpException(
         `Shiprocket tracking error`,
         error?.response?.status || HttpStatus.BAD_GATEWAY,
@@ -109,15 +124,20 @@ export class ShiprocketService {
     const token = await this.getAuthToken();
 
     try {
-      const response = await axios.get(`${this.SHIPROCKET_BASE}/courier/track/shipment/${shipmentId}`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
+      const response = await axios.get(
+        `${this.SHIPROCKET_BASE}/courier/track/shipment/${shipmentId}`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
         },
-      });
+      );
 
       return response.data;
     } catch (error: any) {
-      this.logger.error(`Shiprocket tracking by shipment failed: ${error?.response?.data?.message || error.message}`);
+      this.logger.error(
+        `Shiprocket tracking by shipment failed: ${error?.response?.data?.message || error.message}`,
+      );
       throw new HttpException(
         `Shiprocket tracking error`,
         error?.response?.status || HttpStatus.BAD_GATEWAY,

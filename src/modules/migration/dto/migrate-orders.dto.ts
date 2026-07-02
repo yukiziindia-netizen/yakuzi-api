@@ -19,7 +19,9 @@ export class LegacyOrderItemDto {
   @IsString()
   legacyId?: string;
 
-  @ApiProperty({ description: 'Legacy product ID (maps to Product.externalId)' })
+  @ApiProperty({
+    description: 'Legacy product ID (maps to Product.externalId)',
+  })
   @IsNotEmpty()
   @IsString()
   legacyProductId: string;
@@ -97,9 +99,25 @@ export class LegacyOrderDto {
   @Min(0)
   totalAmount: number;
 
-  @ApiPropertyOptional({ enum: ['PLACED', 'ACCEPTED', 'SHIPPED', 'OUT_FOR_DELIVERY', 'DELIVERED', 'CANCELLED'] })
+  @ApiPropertyOptional({
+    enum: [
+      'PLACED',
+      'ACCEPTED',
+      'SHIPPED',
+      'OUT_FOR_DELIVERY',
+      'DELIVERED',
+      'CANCELLED',
+    ],
+  })
   @IsOptional()
-  @IsEnum(['PLACED', 'ACCEPTED', 'SHIPPED', 'OUT_FOR_DELIVERY', 'DELIVERED', 'CANCELLED'] as const)
+  @IsEnum([
+    'PLACED',
+    'ACCEPTED',
+    'SHIPPED',
+    'OUT_FOR_DELIVERY',
+    'DELIVERED',
+    'CANCELLED',
+  ] as const)
   orderStatus?: string;
 
   @ApiPropertyOptional({ enum: ['PENDING', 'PARTIAL', 'SUCCESS', 'FAILED'] })
@@ -107,7 +125,9 @@ export class LegacyOrderDto {
   @IsEnum(['PENDING', 'PARTIAL', 'SUCCESS', 'FAILED'] as const)
   paymentStatus?: string;
 
-  @ApiPropertyOptional({ description: 'ISO date string of original order creation' })
+  @ApiPropertyOptional({
+    description: 'ISO date string of original order creation',
+  })
   @IsOptional()
   @IsString()
   createdAt?: string;
@@ -128,7 +148,10 @@ export class LegacyOrderDto {
 // ─── Request DTO ──────────────────────────────────────
 
 export class MigrateOrdersDto {
-  @ApiProperty({ type: [LegacyOrderDto], description: 'Array of legacy orders to import' })
+  @ApiProperty({
+    type: [LegacyOrderDto],
+    description: 'Array of legacy orders to import',
+  })
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => LegacyOrderDto)

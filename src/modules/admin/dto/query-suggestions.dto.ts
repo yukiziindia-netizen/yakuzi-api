@@ -3,7 +3,9 @@ import { IsOptional, IsString, IsInt, Min, Max } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class AdminQuerySuggestionsDto {
-  @ApiPropertyOptional({ description: 'Search by name, manufacturer, or chemical composition' })
+  @ApiPropertyOptional({
+    description: 'Search by name, manufacturer, or chemical composition',
+  })
   @IsOptional()
   @IsString()
   search?: string;

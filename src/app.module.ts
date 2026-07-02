@@ -74,7 +74,10 @@ import { BannersModule } from './modules/banners/banners.module';
       pinoHttp: {
         transport:
           process.env.NODE_ENV !== 'production'
-            ? { target: 'pino-pretty', options: { colorize: true, singleLine: true } }
+            ? {
+                target: 'pino-pretty',
+                options: { colorize: true, singleLine: true },
+              }
             : undefined,
         autoLogging: true,
         serializers: {
@@ -129,4 +132,4 @@ import { BannersModule } from './modules/banners/banners.module';
     { provide: APP_GUARD, useClass: ThrottlerGuard },
   ],
 })
-export class AppModule { }
+export class AppModule {}

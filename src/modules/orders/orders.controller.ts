@@ -11,7 +11,12 @@ import {
   HttpStatus,
   ParseUUIDPipe,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+} from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { Role } from '@prisma/client';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -22,6 +27,7 @@ import { OrdersService } from './orders.service';
 import { ShiprocketService } from './shiprocket.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
+import { UpdateShippingDetailsDto } from './dto/update-shipping-details.dto';
 
 @ApiTags('Orders')
 @ApiBearerAuth('JWT-auth')
@@ -43,7 +49,10 @@ export class OrdersController {
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Checkout — create order from cart' })
   @ApiResponse({ status: 201, description: 'Order placed' })
-  @ApiResponse({ status: 400, description: 'Cart is empty or validation error' })
+  @ApiResponse({
+    status: 400,
+    description: 'Cart is empty or validation error',
+  })
   async checkout(
     @CurrentUser('id') userId: string,
     @Body() dto: CreateOrderDto,
@@ -72,7 +81,11 @@ export class OrdersController {
     @Query('dateFrom') dateFrom?: string,
     @Query('dateTo') dateTo?: string,
   ) {
-    const data = await this.ordersService.getSellerOrders(userId, dateFrom, dateTo);
+    const data = await this.ordersService.getSellerOrders(
+      userId,
+      dateFrom,
+      dateTo,
+    );
     return { message: 'Seller orders retrieved successfully', data };
   }
 
@@ -118,8 +131,30 @@ export class OrdersController {
     @Param('id', ParseUUIDPipe) orderId: string,
     @Body() dto: UpdateOrderStatusDto,
   ) {
-    const data = await this.ordersService.updateOrderStatus(userId, orderId, dto);
+    const data = await this.ordersService.updateOrderStatus(
+      userId,
+      orderId,
+      dto,
+    );
     return { message: 'Order status updated successfully', data };
+  }
+
+  @Patch(':id/shipping-details')
+  @Roles(Role.SELLER)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Update shipping dimensions and documents (seller)' })
+  @ApiResponse({ status: 200, description: 'Shipping details updated' })
+  async updateShippingDetails(
+    @CurrentUser('id') userId: string,
+    @Param('id', ParseUUIDPipe) orderId: string,
+    @Body() dto: UpdateShippingDetailsDto,
+  ) {
+    const data = await this.ordersService.updateShippingDetails(
+      userId,
+      orderId,
+      dto,
+    );
+    return { message: 'Shipping details updated successfully', data };
   }
 
   // ──────────────────────────────────────────────
@@ -137,12 +172,17 @@ export class OrdersController {
   ) {
     // Basic check to ensure order exists and user has access
     const order = await this.ordersService.getOrderDetail(userId, orderId);
-    
+
     if (!order.shiprocketOrderId) {
-      return { message: 'Tracking not available yet (not pushed to Shiprocket)', data: null };
+      return {
+        message: 'Tracking not available yet (not pushed to Shiprocket)',
+        data: null,
+      };
     }
 
-    const data = await this.shiprocketService.trackOrder(order.shiprocketOrderId);
+    const data = await this.shiprocketService.trackOrder(
+      order.shiprocketOrderId,
+    );
     return { message: 'Tracking details retrieved successfully', data };
   }
 }

@@ -1,15 +1,19 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { BlogStatus, BlogCategory, BlogAuthor, BlogPost } from '@prisma/client';
-import { 
-  CreateBlogPostDto, 
-  UpdateBlogPostDto, 
-  UpdateBlogStatusDto, 
+import {
+  CreateBlogPostDto,
+  UpdateBlogPostDto,
+  UpdateBlogStatusDto,
   QueryBlogDto,
   CreateBlogAuthorDto,
   UpdateBlogAuthorDto,
   CreateBlogCategoryDto,
-  UpdateBlogCategoryDto
+  UpdateBlogCategoryDto,
 } from './dto';
 
 @Injectable()
@@ -21,25 +25,37 @@ export class BlogService {
   // ──────────────────────────────────────────────
 
   async createPost(dto: CreateBlogPostDto, authorUserId?: string) {
-    const { 
-      title, slug, excerpt, content, featuredImage, images, 
-      authorId, categoryId, tags, status, 
-      metaTitle, metaDescription, metaKeywords, canonicalUrl, ogImage 
+    const {
+      title,
+      slug,
+      excerpt,
+      content,
+      featuredImage,
+      images,
+      authorId,
+      categoryId,
+      tags,
+      status,
+      metaTitle,
+      metaDescription,
+      metaKeywords,
+      canonicalUrl,
+      ogImage,
     } = dto;
 
     let finalAuthorId = authorId;
 
-    // If authorId is not provided (though required in DTO, might be any/legacy call), 
+    // If authorId is not provided (though required in DTO, might be any/legacy call),
     // try to find/create author from user
     if (!finalAuthorId && authorUserId) {
       const user = await this.prisma.user.findUnique({
         where: { id: authorUserId },
-        include: { adminProfile: true }
+        include: { adminProfile: true },
       });
 
       if (user) {
         let author = await this.prisma.blogAuthor.findFirst({
-          where: { name: user.adminProfile?.displayName || 'Admin' }
+          where: { name: user.adminProfile?.displayName || 'Admin' },
         });
 
         if (!author) {
@@ -47,8 +63,8 @@ export class BlogService {
             data: {
               name: user.adminProfile?.displayName || 'Admin',
               bio: 'Yukizi Admin',
-              avatar: ''
-            }
+              avatar: '',
+            },
           });
         }
         finalAuthorId = author.id;
@@ -59,19 +75,24 @@ export class BlogService {
       throw new BadRequestException('Author ID is required');
     }
 
-    const finalSlug = slug || title.toLowerCase()
-      .trim()
-      .replace(/[^\w\s-]/g, '')
-      .replace(/[\s_-]+/g, '-')
-      .replace(/^-+|-+$/g, '');
+    const finalSlug =
+      slug ||
+      title
+        .toLowerCase()
+        .trim()
+        .replace(/[^\w\s-]/g, '')
+        .replace(/[\s_-]+/g, '-')
+        .replace(/^-+|-+$/g, '');
 
     // Check if slug already exists
     const existingPost = await this.prisma.blogPost.findUnique({
-      where: { slug: finalSlug }
+      where: { slug: finalSlug },
     });
 
     if (existingPost) {
-      throw new BadRequestException('A blog post with this slug already exists');
+      throw new BadRequestException(
+        'A blog post with this slug already exists',
+      );
     }
 
     let finalContent = content;
@@ -109,8 +130,8 @@ export class BlogService {
       data: createData,
       include: {
         author: true,
-        category: true
-      }
+        category: true,
+      },
     });
   }
 
@@ -125,8 +146,8 @@ export class BlogService {
         OR: [
           { title: { contains: search, mode: 'insensitive' as any } },
           { excerpt: { contains: search, mode: 'insensitive' as any } },
-        ]
-      })
+        ],
+      }),
     };
 
     const [items, total] = await Promise.all([
@@ -134,13 +155,13 @@ export class BlogService {
         where,
         include: {
           author: true,
-          category: true
+          category: true,
         },
         orderBy: { createdAt: 'desc' },
         skip,
         take: limit,
       }),
-      this.prisma.blogPost.count({ where })
+      this.prisma.blogPost.count({ where }),
     ]);
 
     return {
@@ -149,8 +170,8 @@ export class BlogService {
         total,
         page,
         limit,
-        totalPages: Math.ceil(total / limit)
-      }
+        totalPages: Math.ceil(total / limit),
+      },
     };
   }
 
@@ -159,8 +180,8 @@ export class BlogService {
       where: { id },
       include: {
         author: true,
-        category: true
-      }
+        category: true,
+      },
     });
 
     if (!post) {
@@ -175,9 +196,12 @@ export class BlogService {
     if (!existing) throw new NotFoundException('Blog post not found');
 
     const { status } = dto;
-    
+
     let publishedAt = existing.publishedAt;
-    if (status === BlogStatus.PUBLISHED && existing.status !== BlogStatus.PUBLISHED) {
+    if (
+      status === BlogStatus.PUBLISHED &&
+      existing.status !== BlogStatus.PUBLISHED
+    ) {
       publishedAt = new Date();
     } else if (status === BlogStatus.DRAFT) {
       publishedAt = null;
@@ -187,12 +211,12 @@ export class BlogService {
       where: { id },
       data: {
         ...dto,
-        publishedAt
+        publishedAt,
       },
       include: {
         author: true,
-        category: true
-      }
+        category: true,
+      },
     });
   }
 
@@ -201,9 +225,12 @@ export class BlogService {
     if (!existing) throw new NotFoundException('Blog post not found');
 
     const { status } = dto;
-    
+
     let publishedAt = existing.publishedAt;
-    if (status === BlogStatus.PUBLISHED && existing.status !== BlogStatus.PUBLISHED) {
+    if (
+      status === BlogStatus.PUBLISHED &&
+      existing.status !== BlogStatus.PUBLISHED
+    ) {
       publishedAt = new Date();
     } else if (status === BlogStatus.DRAFT) {
       publishedAt = null;
@@ -213,15 +240,15 @@ export class BlogService {
       where: { id },
       data: {
         status,
-        publishedAt
-      }
+        publishedAt,
+      },
     });
   }
 
   async deletePost(id: string) {
     const existing = await this.prisma.blogPost.findUnique({ where: { id } });
     if (!existing) throw new NotFoundException('Blog post not found');
-    
+
     return this.prisma.blogPost.delete({ where: { id } });
   }
 
@@ -240,8 +267,8 @@ export class BlogService {
         OR: [
           { title: { contains: search, mode: 'insensitive' as any } },
           { excerpt: { contains: search, mode: 'insensitive' as any } },
-        ]
-      })
+        ],
+      }),
     };
 
     const [items, total] = await Promise.all([
@@ -249,13 +276,13 @@ export class BlogService {
         where,
         include: {
           author: true,
-          category: true
+          category: true,
         },
         orderBy: { publishedAt: 'desc' },
         skip,
         take: Number(limit),
       }),
-      this.prisma.blogPost.count({ where })
+      this.prisma.blogPost.count({ where }),
     ]);
 
     return {
@@ -264,8 +291,8 @@ export class BlogService {
         total,
         page,
         limit,
-        totalPages: Math.ceil(total / limit)
-      }
+        totalPages: Math.ceil(total / limit),
+      },
     };
   }
 
@@ -274,7 +301,7 @@ export class BlogService {
       where: { status: BlogStatus.PUBLISHED },
       include: {
         author: true,
-        category: true
+        category: true,
       },
       orderBy: { views: 'desc' },
       take: Number(limit),
@@ -287,7 +314,7 @@ export class BlogService {
 
     const where = {
       status: BlogStatus.PUBLISHED,
-      tags: { has: tag }
+      tags: { has: tag },
     };
 
     const [items, total] = await Promise.all([
@@ -295,13 +322,13 @@ export class BlogService {
         where,
         include: {
           author: true,
-          category: true
+          category: true,
         },
         orderBy: { publishedAt: 'desc' },
         skip,
         take: Number(limit),
       }),
-      this.prisma.blogPost.count({ where })
+      this.prisma.blogPost.count({ where }),
     ]);
 
     return {
@@ -310,8 +337,8 @@ export class BlogService {
         total,
         page,
         limit,
-        totalPages: Math.ceil(total / limit)
-      }
+        totalPages: Math.ceil(total / limit),
+      },
     };
   }
 
@@ -320,8 +347,8 @@ export class BlogService {
       where: { slug },
       include: {
         author: true,
-        category: true
-      }
+        category: true,
+      },
     });
 
     if (!post || post.status !== BlogStatus.PUBLISHED) {
@@ -335,7 +362,7 @@ export class BlogService {
   async incrementViews(slug: string) {
     return this.prisma.blogPost.update({
       where: { slug },
-      data: { views: { increment: 1 } }
+      data: { views: { increment: 1 } },
     });
   }
 
@@ -345,9 +372,9 @@ export class BlogService {
       select: {
         slug: true,
         publishedAt: true,
-        updatedAt: true
+        updatedAt: true,
       },
-      orderBy: { publishedAt: 'desc' }
+      orderBy: { publishedAt: 'desc' },
     });
   }
 
@@ -357,7 +384,7 @@ export class BlogService {
 
   async createAuthor(dto: CreateBlogAuthorDto) {
     return this.prisma.blogAuthor.create({
-      data: dto
+      data: dto,
     });
   }
 
@@ -365,10 +392,10 @@ export class BlogService {
     return this.prisma.blogAuthor.findMany({
       include: {
         _count: {
-          select: { posts: true }
-        }
+          select: { posts: true },
+        },
       },
-      orderBy: { name: 'asc' }
+      orderBy: { name: 'asc' },
     });
   }
 
@@ -377,9 +404,9 @@ export class BlogService {
       where: { id },
       include: {
         _count: {
-          select: { posts: true }
-        }
-      }
+          select: { posts: true },
+        },
+      },
     });
 
     if (!author) throw new NotFoundException('Author not found');
@@ -392,7 +419,7 @@ export class BlogService {
 
     return this.prisma.blogAuthor.update({
       where: { id },
-      data: dto
+      data: dto,
     });
   }
 
@@ -401,9 +428,13 @@ export class BlogService {
     if (!existing) throw new NotFoundException('Author not found');
 
     // Check if author has posts
-    const postCount = await this.prisma.blogPost.count({ where: { authorId: id } });
+    const postCount = await this.prisma.blogPost.count({
+      where: { authorId: id },
+    });
     if (postCount > 0) {
-      throw new BadRequestException('Cannot delete author with existing blog posts');
+      throw new BadRequestException(
+        'Cannot delete author with existing blog posts',
+      );
     }
 
     return this.prisma.blogAuthor.delete({ where: { id } });
@@ -415,13 +446,18 @@ export class BlogService {
 
   async createCategory(dto: CreateBlogCategoryDto) {
     const { name, slug } = dto;
-    const finalSlug = slug || name.toLowerCase().replace(/ /g, '-').replace(/[^\w-]+/g, '');
-    
+    const finalSlug =
+      slug ||
+      name
+        .toLowerCase()
+        .replace(/ /g, '-')
+        .replace(/[^\w-]+/g, '');
+
     return this.prisma.blogCategory.create({
       data: {
         name,
-        slug: finalSlug
-      }
+        slug: finalSlug,
+      },
     });
   }
 
@@ -429,31 +465,39 @@ export class BlogService {
     return this.prisma.blogCategory.findMany({
       include: {
         _count: {
-          select: { posts: { where: { status: BlogStatus.PUBLISHED } } }
-        }
+          select: { posts: { where: { status: BlogStatus.PUBLISHED } } },
+        },
       },
-      orderBy: { name: 'asc' }
+      orderBy: { name: 'asc' },
     });
   }
 
   async updateCategory(id: string, dto: UpdateBlogCategoryDto) {
-    const existing = await this.prisma.blogCategory.findUnique({ where: { id } });
+    const existing = await this.prisma.blogCategory.findUnique({
+      where: { id },
+    });
     if (!existing) throw new NotFoundException('Category not found');
 
     return this.prisma.blogCategory.update({
       where: { id },
-      data: dto
+      data: dto,
     });
   }
 
   async deleteCategory(id: string) {
-    const existing = await this.prisma.blogCategory.findUnique({ where: { id } });
+    const existing = await this.prisma.blogCategory.findUnique({
+      where: { id },
+    });
     if (!existing) throw new NotFoundException('Category not found');
 
     // Check if category has posts
-    const postCount = await this.prisma.blogPost.count({ where: { categoryId: id } });
+    const postCount = await this.prisma.blogPost.count({
+      where: { categoryId: id },
+    });
     if (postCount > 0) {
-      throw new BadRequestException('Cannot delete category with existing blog posts');
+      throw new BadRequestException(
+        'Cannot delete category with existing blog posts',
+      );
     }
 
     return this.prisma.blogCategory.delete({ where: { id } });
@@ -464,16 +508,16 @@ export class BlogService {
     return this.prisma.blogPost.findMany({
       where: query,
       include: { author: true, category: true },
-      orderBy: { createdAt: 'desc' }
+      orderBy: { createdAt: 'desc' },
     });
   }
 
   async findOnePost(idOrSlug: string) {
     return this.prisma.blogPost.findFirst({
       where: {
-        OR: [{ id: idOrSlug }, { slug: idOrSlug }]
+        OR: [{ id: idOrSlug }, { slug: idOrSlug }],
       },
-      include: { author: true, category: true }
+      include: { author: true, category: true },
     });
   }
 

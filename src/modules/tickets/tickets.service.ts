@@ -85,7 +85,7 @@ export class TicketsService {
       },
     });
 
-    return tickets.map(ticket => ({
+    return tickets.map((ticket) => ({
       ...ticket,
       description: ticket.messages[0]?.message || '',
     }));

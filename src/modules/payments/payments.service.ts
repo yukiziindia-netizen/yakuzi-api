@@ -119,7 +119,11 @@ export class PaymentsService {
     return updated;
   }
 
-  async uploadProofByOrder(userId: string, orderId: string, dto: UploadProofDto) {
+  async uploadProofByOrder(
+    userId: string,
+    orderId: string,
+    dto: UploadProofDto,
+  ) {
     const order = await this.prisma.order.findUnique({
       where: { id: orderId },
       include: { payments: true },
@@ -151,7 +155,9 @@ export class PaymentsService {
       });
     }
 
-    this.logger.log(`Proof uploaded for order ${orderId} — payment ${payment.id}`);
+    this.logger.log(
+      `Proof uploaded for order ${orderId} — payment ${payment.id}`,
+    );
     return payment;
   }
 
@@ -195,7 +201,10 @@ export class PaymentsService {
       totalAmount: order.totalAmount,
       totalPaid: confirmedTotal,
       remaining,
-      paymentStatus: this.computePaymentStatus(confirmedTotal, order.totalAmount),
+      paymentStatus: this.computePaymentStatus(
+        confirmedTotal,
+        order.totalAmount,
+      ),
       payments,
     };
   }

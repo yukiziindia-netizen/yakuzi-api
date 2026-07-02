@@ -6,7 +6,8 @@ import { CreateProductDto } from './create-product.dto';
 export class BulkCreateProductDto {
   @ApiProperty({
     type: [CreateProductDto],
-    description: 'Array of products to create (same schema as single product creation)',
+    description:
+      'Array of products to create (same schema as single product creation)',
   })
   @IsArray()
   @ArrayMinSize(1)

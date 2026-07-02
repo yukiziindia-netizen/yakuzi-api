@@ -1,4 +1,14 @@
-import { Controller, Get, Post, Delete, Patch, Body, Param, Query, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Delete,
+  Patch,
+  Body,
+  Param,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { Role } from '@prisma/client';
@@ -28,10 +38,12 @@ export class ReferralController {
     return { data };
   }
 
-
   @Patch(':id/active')
   @ApiOperation({ summary: 'Toggle referral code active status' })
-  async toggleActive(@Param('id') id: string, @Body('isActive') isActive: boolean) {
+  async toggleActive(
+    @Param('id') id: string,
+    @Body('isActive') isActive: boolean,
+  ) {
     return this.referralService.toggleActive(id, isActive);
   }
 

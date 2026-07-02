@@ -7,7 +7,10 @@ export class AddMarketingProductDto {
   @IsUUID()
   productId: string;
 
-  @ApiProperty({ enum: ['HOMEPAGE_CAROUSEL', 'LOGIN_CAROUSEL'], example: 'HOMEPAGE_CAROUSEL' })
+  @ApiProperty({
+    enum: ['HOMEPAGE_CAROUSEL', 'LOGIN_CAROUSEL'],
+    example: 'HOMEPAGE_CAROUSEL',
+  })
   @IsEnum(['HOMEPAGE_CAROUSEL', 'LOGIN_CAROUSEL'])
   slot: MarketingSlot;
 

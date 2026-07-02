@@ -68,7 +68,9 @@ export class UpdateBuyerProfileDto {
   @IsString()
   drugLicenseNumber2?: string;
 
-  @ApiPropertyOptional({ example: 'https://s3.amazonaws.com/drug-license2.pdf' })
+  @ApiPropertyOptional({
+    example: 'https://s3.amazonaws.com/drug-license2.pdf',
+  })
   @IsOptional()
   @IsString()
   drugLicenseUrl2?: string;

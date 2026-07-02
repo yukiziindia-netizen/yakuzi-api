@@ -29,7 +29,9 @@ export class LegacyPaymentDto {
   @Min(0)
   amount: number;
 
-  @ApiPropertyOptional({ enum: ['BANK_TRANSFER', 'UPI', 'COD', 'PARTIAL', 'CREDIT'] })
+  @ApiPropertyOptional({
+    enum: ['BANK_TRANSFER', 'UPI', 'COD', 'PARTIAL', 'CREDIT'],
+  })
   @IsOptional()
   @IsEnum(['BANK_TRANSFER', 'UPI', 'COD', 'PARTIAL', 'CREDIT'] as const)
   method?: string;
@@ -52,7 +54,9 @@ export class LegacyPaymentDto {
   @IsEnum(['PENDING', 'CONFIRMED', 'REJECTED'] as const)
   verificationStatus?: string;
 
-  @ApiPropertyOptional({ description: 'ISO date string of original payment creation' })
+  @ApiPropertyOptional({
+    description: 'ISO date string of original payment creation',
+  })
   @IsOptional()
   @IsString()
   createdAt?: string;
@@ -61,7 +65,10 @@ export class LegacyPaymentDto {
 // ─── Request DTO ──────────────────────────────────────
 
 export class MigratePaymentsDto {
-  @ApiProperty({ type: [LegacyPaymentDto], description: 'Array of legacy payments to import' })
+  @ApiProperty({
+    type: [LegacyPaymentDto],
+    description: 'Array of legacy payments to import',
+  })
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => LegacyPaymentDto)

@@ -18,7 +18,11 @@ export class SettlementsService {
   /**
    * Get all settlements for the authenticated seller.
    */
-  async getSellerSettlements(userId: string, dateFrom?: string, dateTo?: string) {
+  async getSellerSettlements(
+    userId: string,
+    dateFrom?: string,
+    dateTo?: string,
+  ) {
     const seller = await this.prisma.sellerProfile.findUnique({
       where: { userId },
     });

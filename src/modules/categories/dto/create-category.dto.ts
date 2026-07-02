@@ -8,7 +8,10 @@ export class CreateCategoryDto {
   @MaxLength(255)
   name: string;
 
-  @ApiProperty({ example: 'https://cdn.example.com/image.jpg', required: false })
+  @ApiProperty({
+    example: 'https://cdn.example.com/image.jpg',
+    required: false,
+  })
   @IsString()
   @IsOptional()
   image?: string;

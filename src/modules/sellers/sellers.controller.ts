@@ -8,7 +8,12 @@ import {
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+} from '@nestjs/swagger';
 import { Role } from '@prisma/client';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
@@ -63,7 +68,10 @@ export class SellersController {
   @Get('dashboard')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Get seller dashboard metrics' })
-  @ApiResponse({ status: 200, description: 'Seller dashboard metrics returned' })
+  @ApiResponse({
+    status: 200,
+    description: 'Seller dashboard metrics returned',
+  })
   async getDashboard(@CurrentUser('id') userId: string) {
     const data = await this.sellersService.getDashboard(userId);
     return { message: 'Seller dashboard retrieved successfully', data };

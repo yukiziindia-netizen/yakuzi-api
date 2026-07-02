@@ -21,7 +21,10 @@ export class HealthService {
     const uptimeSeconds = Math.floor((Date.now() - this.startTime) / 1000);
 
     return {
-      status: database === 'connected' && redisStatus === 'connected' ? 'ok' : 'degraded',
+      status:
+        database === 'connected' && redisStatus === 'connected'
+          ? 'ok'
+          : 'degraded',
       database,
       redis: redisStatus,
       uptime: uptimeSeconds,

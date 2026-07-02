@@ -8,16 +8,17 @@ export const createRedisClient = (
   port: number = 6379,
   password?: string,
 ): Redis => {
-  const isUrl = urlOrHost.startsWith('redis://') || urlOrHost.startsWith('rediss://');
+  const isUrl =
+    urlOrHost.startsWith('redis://') || urlOrHost.startsWith('rediss://');
 
   const client = isUrl
     ? new Redis(urlOrHost, {
-      maxRetriesPerRequest: null, // Required for BullMQ
-      retryStrategy(times: number) {
-        const delay = Math.min(times * 50, 2000);
-        return delay;
-      },
-    })
+        maxRetriesPerRequest: null, // Required for BullMQ
+        retryStrategy(times: number) {
+          const delay = Math.min(times * 50, 2000);
+          return delay;
+        },
+      })
     : new Redis({
         host: urlOrHost,
         port,

@@ -10,7 +10,12 @@ import {
   HttpStatus,
   ParseUUIDPipe,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+} from '@nestjs/swagger';
 import { Role } from '@prisma/client';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
@@ -38,7 +43,11 @@ export class SettlementsController {
     @Query('dateFrom') dateFrom?: string,
     @Query('dateTo') dateTo?: string,
   ) {
-    const data = await this.settlementsService.getSellerSettlements(userId, dateFrom, dateTo);
+    const data = await this.settlementsService.getSellerSettlements(
+      userId,
+      dateFrom,
+      dateTo,
+    );
     return { message: 'Settlements retrieved', data };
   }
 

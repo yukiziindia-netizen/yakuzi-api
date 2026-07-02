@@ -42,10 +42,10 @@ async function bootstrap() {
     .get<string>(
       'CORS_ORIGINS',
       'http://localhost:3000,http://localhost:3001,http://localhost:3002,http://localhost:3003,http://localhost:5173,http://localhost:5174,http://localhost:5175,' +
-      'http://127.0.0.1:3000,http://127.0.0.1:3001,http://127.0.0.1:3002,http://127.0.0.1:3003,http://127.0.0.1:5173,http://127.0.0.1:5174,http://127.0.0.1:5175,' +
-      'https://yukizi-web-admin.vercel.app,https://yukizi-web-seller.vercel.app,https://yukizi-web-buyer.vercel.app,' +
-      'https://buyer.yukizi.com,https://seller.yukizi.com,https://admin.yukizi.com,' +
-      'https://www.yukizi.in,https://admin.yukizi.in,https://seller.yukizi.in,https://api.yukizi.in,'
+        'http://127.0.0.1:3000,http://127.0.0.1:3001,http://127.0.0.1:3002,http://127.0.0.1:3003,http://127.0.0.1:5173,http://127.0.0.1:5174,http://127.0.0.1:5175,' +
+        'https://yukizi-web-admin.vercel.app,https://yukizi-web-seller.vercel.app,https://yukizi-web-buyer.vercel.app,' +
+        'https://buyer.yukizi.com,https://seller.yukizi.com,https://admin.yukizi.com,' +
+        'https://www.yukizi.in,https://admin.yukizi.in,https://seller.yukizi.in,https://api.yukizi.in,',
     )
     .split(',')
     .map((o) => o.trim());
@@ -64,9 +64,9 @@ async function bootstrap() {
     .setTitle('Yukizi API')
     .setDescription(
       'Yukizi B2B Marketplace — REST API documentation.\n\n' +
-      '**Auth:** Phone OTP → JWT Bearer token.\n' +
-      '**Roles:** BUYER, SELLER, ADMIN.\n' +
-      'Attach the JWT token using the **Authorize** button.',
+        '**Auth:** Phone OTP → JWT Bearer token.\n' +
+        '**Roles:** BUYER, SELLER, ADMIN.\n' +
+        'Attach the JWT token using the **Authorize** button.',
     )
     .setVersion('1.0.0')
     .addBearerAuth(

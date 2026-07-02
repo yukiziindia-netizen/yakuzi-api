@@ -13,7 +13,12 @@ import {
   ParseUUIDPipe,
   BadRequestException,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+} from '@nestjs/swagger';
 import { Role } from '@prisma/client';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
@@ -64,7 +69,9 @@ export class AdminController {
 
   @Get('users')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'List all users (paginated, filterable by role/status/search)' })
+  @ApiOperation({
+    summary: 'List all users (paginated, filterable by role/status/search)',
+  })
   @ApiResponse({ status: 200, description: 'Paginated users list returned' })
   async getAllUsers(@Query() query: QueryUsersDto) {
     const data = await this.adminService.getAllUsers(query);
@@ -82,7 +89,9 @@ export class AdminController {
 
   @Get('users/:id')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Get a single user by ID with full profile and counts' })
+  @ApiOperation({
+    summary: 'Get a single user by ID with full profile and counts',
+  })
   @ApiResponse({ status: 200, description: 'User details returned' })
   @ApiResponse({ status: 404, description: 'User not found' })
   async getUserById(@Param('id', ParseUUIDPipe) id: string) {
@@ -146,7 +155,10 @@ export class AdminController {
 
   @Get('products')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'List all products (paginated, filterable by seller/category/active/search)' })
+  @ApiOperation({
+    summary:
+      'List all products (paginated, filterable by seller/category/active/search)',
+  })
   @ApiResponse({ status: 200, description: 'Paginated products list returned' })
   async getAllProducts(@Query() query: AdminQueryProductsDto) {
     const data = await this.adminService.getAllProducts(query);
@@ -187,7 +199,9 @@ export class AdminController {
 
   @Patch('products/:id/approve')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Approve a product (sets approvalStatus=APPROVED, isActive=true)' })
+  @ApiOperation({
+    summary: 'Approve a product (sets approvalStatus=APPROVED, isActive=true)',
+  })
   @ApiResponse({ status: 200, description: 'Product approved' })
   @ApiResponse({ status: 400, description: 'Product is already approved' })
   @ApiResponse({ status: 404, description: 'Product not found' })
@@ -198,7 +212,9 @@ export class AdminController {
 
   @Patch('products/:id/reject')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Reject a product (sets approvalStatus=REJECTED, isActive=false)' })
+  @ApiOperation({
+    summary: 'Reject a product (sets approvalStatus=REJECTED, isActive=false)',
+  })
   @ApiResponse({ status: 200, description: 'Product rejected' })
   @ApiResponse({ status: 400, description: 'Product is already rejected' })
   @ApiResponse({ status: 404, description: 'Product not found' })
@@ -212,7 +228,9 @@ export class AdminController {
 
   @Delete('products/:id')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Soft-delete a product (sets deletedAt + isActive=false)' })
+  @ApiOperation({
+    summary: 'Soft-delete a product (sets deletedAt + isActive=false)',
+  })
   @ApiResponse({ status: 200, description: 'Product soft-deleted' })
   @ApiResponse({ status: 400, description: 'Product is already deleted' })
   @ApiResponse({ status: 404, description: 'Product not found' })
@@ -227,7 +245,10 @@ export class AdminController {
 
   @Get('orders')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'List all orders (paginated, filterable by status/buyer/seller/date)' })
+  @ApiOperation({
+    summary:
+      'List all orders (paginated, filterable by status/buyer/seller/date)',
+  })
   @ApiResponse({ status: 200, description: 'Paginated orders list returned' })
   async getAllOrders(@Query() query: AdminQueryOrdersDto) {
     const data = await this.adminService.getAllOrders(query);
@@ -236,7 +257,9 @@ export class AdminController {
 
   @Get('orders/:id')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Get full order details with buyer, items, payments' })
+  @ApiOperation({
+    summary: 'Get full order details with buyer, items, payments',
+  })
   @ApiResponse({ status: 200, description: 'Order details returned' })
   @ApiResponse({ status: 404, description: 'Order not found' })
   async getOrderById(@Param('id', ParseUUIDPipe) id: string) {
@@ -263,7 +286,10 @@ export class AdminController {
 
   @Get('payments')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'List all payments (paginated, filterable by verificationStatus/orderId)' })
+  @ApiOperation({
+    summary:
+      'List all payments (paginated, filterable by verificationStatus/orderId)',
+  })
   @ApiResponse({ status: 200, description: 'Paginated payments list returned' })
   async getAllPayments(@Query() query: AdminQueryPaymentsDto) {
     const data = await this.adminService.getAllPayments(query);
@@ -272,9 +298,15 @@ export class AdminController {
 
   @Patch('payments/:id/confirm')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Confirm a payment (recalculates order payment status, creates settlements if applicable)' })
+  @ApiOperation({
+    summary:
+      'Confirm a payment (recalculates order payment status, creates settlements if applicable)',
+  })
   @ApiResponse({ status: 200, description: 'Payment confirmed' })
-  @ApiResponse({ status: 400, description: 'Payment already confirmed or rejected' })
+  @ApiResponse({
+    status: 400,
+    description: 'Payment already confirmed or rejected',
+  })
   @ApiResponse({ status: 404, description: 'Payment not found' })
   async confirmPayment(@Param('id', ParseUUIDPipe) id: string) {
     const data = await this.adminService.adminConfirmPayment(id);
@@ -285,7 +317,10 @@ export class AdminController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Reject a payment' })
   @ApiResponse({ status: 200, description: 'Payment rejected' })
-  @ApiResponse({ status: 400, description: 'Payment already rejected or confirmed' })
+  @ApiResponse({
+    status: 400,
+    description: 'Payment already rejected or confirmed',
+  })
   @ApiResponse({ status: 404, description: 'Payment not found' })
   async rejectPayment(@Param('id', ParseUUIDPipe) id: string) {
     const data = await this.adminService.adminRejectPayment(id);
@@ -298,8 +333,13 @@ export class AdminController {
 
   @Get('settlements')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'List all settlements (paginated, filterable by status/sellerId)' })
-  @ApiResponse({ status: 200, description: 'Paginated settlements list returned' })
+  @ApiOperation({
+    summary: 'List all settlements (paginated, filterable by status/sellerId)',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Paginated settlements list returned',
+  })
   async getAllSettlements(@Query() query: AdminQuerySettlementsDto) {
     const data = await this.adminService.getAllSettlements(query);
     return { message: 'Settlements retrieved successfully', data };
@@ -307,7 +347,9 @@ export class AdminController {
 
   @Post('settlements/sync')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Sync missing settlements for all delivered and paid orders' })
+  @ApiOperation({
+    summary: 'Sync missing settlements for all delivered and paid orders',
+  })
   async syncSettlements() {
     const data = await this.adminService.syncSettlements();
     return { message: 'Settlement sync completed', data };
@@ -323,7 +365,11 @@ export class AdminController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: MarkPaidDto,
   ) {
-    const data = await this.adminService.markSettlementPaid(id, dto.payoutReference, dto.paymentProofUrl);
+    const data = await this.adminService.markSettlementPaid(
+      id,
+      dto.payoutReference,
+      dto.paymentProofUrl,
+    );
     return { message: 'Settlement marked as paid', data };
   }
 
@@ -333,7 +379,9 @@ export class AdminController {
 
   @Get('tickets')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'List all support tickets (paginated, filterable by status)' })
+  @ApiOperation({
+    summary: 'List all support tickets (paginated, filterable by status)',
+  })
   @ApiResponse({ status: 200, description: 'Paginated tickets list returned' })
   async getAllTickets(@Query() query: AdminQueryTicketsDto) {
     const data = await this.adminService.getAllTickets(query);
@@ -352,7 +400,9 @@ export class AdminController {
 
   @Post('tickets/:id/reply')
   @HttpCode(HttpStatus.CREATED)
-  @ApiOperation({ summary: 'Reply to a ticket (creates message + sets status to IN_PROGRESS)' })
+  @ApiOperation({
+    summary: 'Reply to a ticket (creates message + sets status to IN_PROGRESS)',
+  })
   @ApiResponse({ status: 201, description: 'Reply sent' })
   @ApiResponse({ status: 404, description: 'Ticket not found' })
   async replyToTicket(
@@ -366,7 +416,9 @@ export class AdminController {
 
   @Patch('tickets/:id/status')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Update ticket status (OPEN, IN_PROGRESS, RESOLVED, CLOSED)' })
+  @ApiOperation({
+    summary: 'Update ticket status (OPEN, IN_PROGRESS, RESOLVED, CLOSED)',
+  })
   @ApiResponse({ status: 200, description: 'Ticket status updated' })
   @ApiResponse({ status: 404, description: 'Ticket not found' })
   async updateTicketStatus(
@@ -383,13 +435,19 @@ export class AdminController {
 
   @Post('notifications/broadcast')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Broadcast a notification to all, buyers, or sellers' })
+  @ApiOperation({
+    summary: 'Broadcast a notification to all, buyers, or sellers',
+  })
   @ApiResponse({ status: 200, description: 'Notification sent successfully' })
   async broadcastNotification(
-    @Body() dto: import('./dto/admin-broadcast-notification.dto').AdminBroadcastNotificationDto,
+    @Body()
+    dto: import('./dto/admin-broadcast-notification.dto').AdminBroadcastNotificationDto,
     @CurrentUser() user: any,
   ) {
-    const data = await this.adminService.adminBroadcastNotification(user.id, dto);
+    const data = await this.adminService.adminBroadcastNotification(
+      user.id,
+      dto,
+    );
     return { message: 'Broadcast initiated successfully', data };
   }
 
@@ -404,7 +462,9 @@ export class AdminController {
 
   @Get('notifications/broadcasts/me')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Get current admin\'s history of broadcasted notifications' })
+  @ApiOperation({
+    summary: "Get current admin's history of broadcasted notifications",
+  })
   @ApiResponse({ status: 200, description: 'Own broadcast history returned' })
   async getMyBroadcastHistory(@CurrentUser('id') adminId: string) {
     const data = await this.adminService.getMyBroadcastHistory(adminId);
@@ -438,7 +498,9 @@ export class AdminController {
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Create a new admin with role-based permissions' })
   @ApiResponse({ status: 201, description: 'Admin created successfully' })
-  async createAdmin(@Body() dto: import('./dto/create-admin.dto').CreateAdminDto) {
+  async createAdmin(
+    @Body() dto: import('./dto/create-admin.dto').CreateAdminDto,
+  ) {
     const data = await this.adminService.createAdmin(dto);
     return { message: 'Admin created successfully', data };
   }
@@ -508,7 +570,9 @@ export class AdminController {
 
   @Patch('buyers/:id/gst-pan-status')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Update buyer GST/PAN verification status and credit tier' })
+  @ApiOperation({
+    summary: 'Update buyer GST/PAN verification status and credit tier',
+  })
   @ApiResponse({ status: 200, description: 'Buyer GST/PAN status updated' })
   @ApiResponse({ status: 404, description: 'Buyer profile not found' })
   async updateBuyerGstPanStatus(
@@ -521,14 +585,19 @@ export class AdminController {
 
   @Patch('sellers/:id/gst-pan-status')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Update seller GST/PAN verification status and credit tier' })
+  @ApiOperation({
+    summary: 'Update seller GST/PAN verification status and credit tier',
+  })
   @ApiResponse({ status: 200, description: 'Seller GST/PAN status updated' })
   @ApiResponse({ status: 404, description: 'Seller profile not found' })
   async updateSellerGstPanStatus(
     @Param('id', ParseUUIDPipe) sellerId: string,
     @Body() dto: UpdateGstPanStatusDto,
   ) {
-    const data = await this.adminService.updateSellerGstPanStatus(sellerId, dto);
+    const data = await this.adminService.updateSellerGstPanStatus(
+      sellerId,
+      dto,
+    );
     return { message: 'Seller GST/PAN status updated', data };
   }
 
@@ -626,4 +695,3 @@ export class AdminController {
     return { message: 'Product removed from marketing successfully', data };
   }
 }
-

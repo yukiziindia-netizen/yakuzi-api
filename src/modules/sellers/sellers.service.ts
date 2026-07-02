@@ -38,7 +38,9 @@ export class SellersService {
     if (this.idfyService.isConfigured() && dto.gstNumber) {
       const result = await this.idfyService.verifyGst(dto.gstNumber);
       if (!result.status) {
-        throw new BadRequestException(result.message || 'GST verification failed');
+        throw new BadRequestException(
+          result.message || 'GST verification failed',
+        );
       }
       gstPanResponse = result;
     }
@@ -52,10 +54,14 @@ export class SellersService {
         aadhaarNumber: dto.aadhaarNumber ?? null,
         drugLicenseNumber: dto.drugLicenseNumber,
         drugLicenseUrl: dto.drugLicenseUrl,
-        drugLicenseExpiry: dto.drugLicenseExpiry ? new Date(dto.drugLicenseExpiry) : null,
+        drugLicenseExpiry: dto.drugLicenseExpiry
+          ? new Date(dto.drugLicenseExpiry)
+          : null,
         drugLicenseNumber2: dto.drugLicenseNumber2 ?? null,
         drugLicenseUrl2: dto.drugLicenseUrl2 ?? null,
-        drugLicenseExpiry2: dto.drugLicenseExpiry2 ? new Date(dto.drugLicenseExpiry2) : null,
+        drugLicenseExpiry2: dto.drugLicenseExpiry2
+          ? new Date(dto.drugLicenseExpiry2)
+          : null,
         address: dto.address,
         city: dto.city,
         state: dto.state,
@@ -69,7 +75,8 @@ export class SellersService {
         // @ts-ignore
         cancelCheck: dto.cancelCheck,
         gstPanResponse,
-        verificationStatus: (gstPanResponse || dto.aadhaarNumber) ? 'PENDING' : 'UNVERIFIED',
+        verificationStatus:
+          gstPanResponse || dto.aadhaarNumber ? 'PENDING' : 'UNVERIFIED',
         rating: 0,
       },
     });
@@ -136,8 +143,12 @@ export class SellersService {
       where: { userId },
       data: {
         ...dto,
-        drugLicenseExpiry: dto.drugLicenseExpiry ? new Date(dto.drugLicenseExpiry) : undefined,
-        drugLicenseExpiry2: dto.drugLicenseExpiry2 ? new Date(dto.drugLicenseExpiry2) : undefined,
+        drugLicenseExpiry: dto.drugLicenseExpiry
+          ? new Date(dto.drugLicenseExpiry)
+          : undefined,
+        drugLicenseExpiry2: dto.drugLicenseExpiry2
+          ? new Date(dto.drugLicenseExpiry2)
+          : undefined,
         // @ts-ignore
         email: dto.email,
         // @ts-ignore
@@ -184,7 +195,9 @@ export class SellersService {
         where: {
           sellerId: seller.id,
           order: {
-            orderStatus: { in: ['PLACED', 'ACCEPTED', 'SHIPPED', 'OUT_FOR_DELIVERY'] },
+            orderStatus: {
+              in: ['PLACED', 'ACCEPTED', 'SHIPPED', 'OUT_FOR_DELIVERY'],
+            },
           },
         },
       }),

@@ -14,6 +14,8 @@ import {
   MaxLength,
   ValidateIf,
 } from 'class-validator';
+import { Prisma } from '@prisma/client';
+import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { DiscountType } from '@prisma/client';
 
@@ -43,14 +45,12 @@ export class CreateProductDto {
   @ApiProperty({ example: 'Paracetamol IP 500mg' })
   @IsString()
   @IsNotEmpty()
-
-
   @ApiPropertyOptional({ example: 'Analgesic and antipyretic tablet' })
   @IsString()
   @IsOptional()
   description?: string;
 
-  @ApiProperty({ example: 25.50, description: 'MRP in INR' })
+  @ApiProperty({ example: 25.5, description: 'MRP in INR' })
   @IsNumber()
   @Min(0)
   mrp: number;
@@ -59,6 +59,11 @@ export class CreateProductDto {
   @IsNumber()
   @Min(0)
   gstPercent: number;
+
+  @ApiPropertyOptional({ example: false })
+  @IsBoolean()
+  @IsOptional()
+  isTaxIncluded?: boolean;
 
   @ApiPropertyOptional({ example: 10, minimum: 1 })
   @IsInt()
@@ -93,25 +98,30 @@ export class CreateProductDto {
   @IsOptional()
   images?: string[];
 
-  // ── Discount Engine ────────────────────────────
+  // 🛒 Discount Engine ----------------------------
   @ApiPropertyOptional({
     enum: DiscountType,
     example: 'SAME_PRODUCT_BONUS',
     description: 'Type of discount applied to this product',
   })
+  @ValidateIf((object, value) => value !== null)
   @IsEnum(DiscountType)
   @IsOptional()
-  discountType?: DiscountType;
+  discountType?: DiscountType | null;
 
   @ApiPropertyOptional({
     example: { discountPercent: 10 },
-    description: 'Configuration for the discount (e.g. buy/get quantities, percentages)',
+    description: 'JSON metadata for the discount',
   })
+  @ValidateIf((object, value) => value !== null)
   @IsObject()
   @IsOptional()
-  discountMeta?: any;
+  discountMeta?: Prisma.InputJsonValue;
 
-  @ApiPropertyOptional({ example: 'Tomorrow', description: 'Dynamic delivery timeframe text' })
+  @ApiPropertyOptional({
+    example: 'Tomorrow',
+    description: 'Dynamic delivery timeframe text',
+  })
   @IsString()
   @IsOptional()
   deliveryText?: string;
@@ -119,7 +129,8 @@ export class CreateProductDto {
   // ── Migration / Idempotency ────────────────────
   @ApiPropertyOptional({
     example: '507f1f77bcf86cd799439011',
-    description: 'External ID from legacy system (MongoDB ObjectId) for idempotent migration',
+    description:
+      'External ID from legacy system (MongoDB ObjectId) for idempotent migration',
   })
   @IsString()
   @IsOptional()
@@ -135,7 +146,8 @@ export class CreateProductDto {
 
   @ApiPropertyOptional({
     example: true,
-    description: 'Set to true during data migration to relax non-critical validations',
+    description:
+      'Set to true during data migration to relax non-critical validations',
   })
   @IsBoolean()
   @IsOptional()
@@ -143,7 +155,8 @@ export class CreateProductDto {
 
   @ApiPropertyOptional({
     example: 'uuid-of-master-product',
-    description: 'ID of the master product from catalog (if used, bypasses approval)',
+    description:
+      'ID of the master product from catalog (if used, bypasses approval)',
   })
   @IsString()
   @IsOptional()

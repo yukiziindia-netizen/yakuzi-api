@@ -7,7 +7,12 @@ import {
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+} from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
 import { SendOtpDto } from './dto/send-otp.dto';
@@ -49,7 +54,10 @@ export class AuthController {
   @Throttle({ default: { limit: 5, ttl: 60000 } })
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Register a new buyer with full profile' })
-  @ApiResponse({ status: 200, description: 'Registration successful, tokens returned' })
+  @ApiResponse({
+    status: 200,
+    description: 'Registration successful, tokens returned',
+  })
   async registerBuyer(@Body() dto: RegisterBuyerDto) {
     return this.authService.registerBuyer(dto);
   }
@@ -66,7 +74,10 @@ export class AuthController {
   @Post('login-simple')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Login with ONLY password (Blog Admin OTP-less)' })
-  @ApiResponse({ status: 200, description: 'Login successful, tokens returned' })
+  @ApiResponse({
+    status: 200,
+    description: 'Login successful, tokens returned',
+  })
   @ApiResponse({ status: 401, description: 'Invalid password' })
   async loginWithSimplePassword(@Body('password') password: string) {
     return this.authService.loginWithSimplePassword(password);
@@ -74,8 +85,14 @@ export class AuthController {
 
   @Post('login-password')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Login with contact (email/phone/username) and password (Buyers only)' })
-  @ApiResponse({ status: 200, description: 'Login successful, tokens returned' })
+  @ApiOperation({
+    summary:
+      'Login with contact (email/phone/username) and password (Buyers only)',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Login successful, tokens returned',
+  })
   @ApiResponse({ status: 401, description: 'Invalid credentials' })
   async loginWithPassword(@Body() dto: LoginPasswordDto) {
     return this.authService.loginWithPassword(dto.contact, dto.password);

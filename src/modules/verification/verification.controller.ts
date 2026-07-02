@@ -20,16 +20,16 @@ export class VerificationController {
   @ApiOperation({ summary: 'Verify GST or PAN number via IDFY' })
   @ApiResponse({ status: 200, description: 'Verification result returned' })
   @ApiResponse({ status: 400, description: 'Validation error' })
-  async verifyGstPan(
-    @Body() dto: VerifyGstPanDto,
-  ): Promise<any> {
+  async verifyGstPan(@Body() dto: VerifyGstPanDto): Promise<any> {
     if (!this.idfyService.isConfigured()) {
       throw new BadRequestException(
         'IDFY verification service is not configured',
       );
     }
 
-    console.log(`[Verification] Received request - Type: ${dto.type}, Value: ${dto.value}`);
+    console.log(
+      `[Verification] Received request - Type: ${dto.type}, Value: ${dto.value}`,
+    );
 
     let response;
     if (dto.type === VerificationType.PAN) {

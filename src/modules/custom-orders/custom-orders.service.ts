@@ -12,7 +12,9 @@ export class CustomOrdersService {
     });
 
     if (!buyerProfile) {
-      throw new NotFoundException('Buyer profile not found. Please complete onboarding.');
+      throw new NotFoundException(
+        'Buyer profile not found. Please complete onboarding.',
+      );
     }
 
     let finalProductId = dto.catalogProductId;
@@ -35,7 +37,7 @@ export class CustomOrdersService {
         if (sellerProduct?.variant?.catalogProductId) {
           finalProductId = sellerProduct.variant.catalogProductId;
         } else {
-          // 3. Fallback: If ID cannot be resolved to a MasterProduct, 
+          // 3. Fallback: If ID cannot be resolved to a MasterProduct,
           // set to undefined to prevent foreign key violation. The message remains.
           finalProductId = undefined;
         }
@@ -65,9 +67,9 @@ export class CustomOrdersService {
           buyer: {
             include: {
               user: {
-                select: { phone: true, email: true }
-              }
-            }
+                select: { phone: true, email: true },
+              },
+            },
           },
           product: true,
         },
