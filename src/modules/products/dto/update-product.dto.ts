@@ -62,9 +62,13 @@ export class UpdateProductDto {
   gstPercent?: number;
 
   @ApiPropertyOptional({ example: false })
-  @IsBoolean()
   @IsOptional()
+  @IsBoolean()
   isTaxIncluded?: boolean;
+
+  @IsOptional()
+  @IsNumber()
+  shippingCharges?: number;
 
   @ApiPropertyOptional({ example: 10, minimum: 1 })
   @IsInt()

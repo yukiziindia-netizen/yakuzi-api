@@ -205,6 +205,7 @@ model SellerOffer {
   mrp                  Float
   gstPercent           Float
   isTaxIncluded        Boolean               @default(false)
+  shippingCharges      Float                 @default(0)
   minimumOrderQuantity Int                   @default(1)
   maximumOrderQuantity Int?
   isActive             Boolean               @default(false)
@@ -666,6 +667,7 @@ model CatalogProduct {
   mrp                  Float?
   gstPercent           Float?
   isTaxIncluded        Boolean               @default(false)
+  shippingCharges      Float                 @default(0)
   categoryId           String
   subCategoryId        String
   therapeuticClass     String?

@@ -1995,6 +1995,9 @@ export class AdminService {
         mrp: dto.mrp !== undefined ? dto.mrp : dto.price,
         gstPercent: dto.gstPercent,
         isTaxIncluded: dto.isTaxIncluded ?? false,
+        shippingCharges: dto.shippingCharges ?? 0,
+        sku: dto.sku || null,
+        specifications: dto.specifications || null,
         categoryId: resolvedCategoryId,
         subCategoryId: resolvedSubCategoryId,
         packSize: dto.packSize,
@@ -2126,9 +2129,12 @@ export class AdminService {
         ...(dto.packSize !== undefined ? { packSize: dto.packSize } : {}),
         ...(dto.gstPercent !== undefined ? { gstPercent: dto.gstPercent } : {}),
         ...(dto.isTaxIncluded !== undefined ? { isTaxIncluded: dto.isTaxIncluded } : {}),
-        ...(resolvedCategoryId ? { categoryId: resolvedCategoryId } : {}),
+        ...(dto.shippingCharges !== undefined ? { shippingCharges: dto.shippingCharges ?? null } : {}),
+        ...(dto.sku !== undefined ? { sku: dto.sku ?? null } : {}),
+        ...(dto.specifications !== undefined ? { specifications: dto.specifications ?? null } : {}),
+        ...(resolvedCategoryId ? { categoryId: resolvedCategoryId as string } : {}),
         ...(resolvedSubCategoryId
-          ? { subCategoryId: resolvedSubCategoryId }
+          ? { subCategoryId: resolvedSubCategoryId as string }
           : {}),
         options: finalOptions,
         ...(dto.isActive !== undefined ? { isActive: dto.isActive } : {}),
@@ -2139,7 +2145,7 @@ export class AdminService {
           ? { isBestSeller: dto.isBestSeller }
           : {}),
         ...(dto.isAd !== undefined ? { isAd: dto.isAd } : {}),
-      },
+      } as Prisma.CatalogProductUpdateInput,
       include: {
         category: { select: { id: true, name: true } },
         subCategory: { select: { id: true, name: true } },

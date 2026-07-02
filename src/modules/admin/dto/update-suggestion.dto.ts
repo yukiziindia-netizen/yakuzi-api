@@ -76,9 +76,14 @@ export class UpdateSuggestionDto {
   gstPercent?: number | null;
 
   @ApiPropertyOptional({ example: false })
-  @IsBoolean()
   @IsOptional()
+  @IsBoolean()
   isTaxIncluded?: boolean;
+
+  @ApiPropertyOptional({ example: 50.0 })
+  @IsNumber()
+  @IsOptional()
+  shippingCharges?: number | null;
 
   @ApiPropertyOptional({ example: 'uuid-category-id' })
   @IsString()
