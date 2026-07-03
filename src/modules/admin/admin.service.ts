@@ -1987,7 +1987,8 @@ export class AdminService {
       : [];
     const finalOptions = [meta, ...userOptions];
 
-    const product = await this.prisma.catalogProduct.create({
+    try {
+      const product = await this.prisma.catalogProduct.create({
       data: {
         name: dto.name || '',
         manufacturer: dto.manufacturer || '',
@@ -2035,7 +2036,13 @@ export class AdminService {
         subCategory: { select: { id: true, name: true } },
       },
     });
-    return product;
+      return product;
+    } catch (error: any) {
+      if (error.code === 'P2002') {
+        throw new BadRequestException('A product or variant with this SKU (or another unique field) already exists.');
+      }
+      throw error;
+    }
   }
 
   async updateSuggestion(
@@ -2117,8 +2124,9 @@ export class AdminService {
 
     const finalOptions = [newMeta, ...newOptions];
 
-    const updated = await this.prisma.catalogProduct.update({
-      where: { id },
+    try {
+      const updated = await this.prisma.catalogProduct.update({
+        where: { id },
       data: {
         ...(dto.name ? { name: dto.name } : {}),
         ...(dto.manufacturer ? { manufacturer: dto.manufacturer } : {}),
@@ -2158,7 +2166,7 @@ export class AdminService {
     });
 
     // Handle variants update if provided
-    if (dto.variants) {
+    if (dto.variants !== undefined) {
       // Simple approach: delete existing variants and recreate
       await this.prisma.productVariant.deleteMany({
         where: { catalogProductId: id },
@@ -2200,6 +2208,12 @@ export class AdminService {
     }
 
     return updated;
+    } catch (error: any) {
+      if (error.code === 'P2002') {
+        throw new BadRequestException('A product or variant with this SKU (or another unique field) already exists.');
+      }
+      throw error;
+    }
   }
 
   async deleteSuggestion(id: string) {
