@@ -1277,7 +1277,8 @@ export class ProductsService {
           name: true,
           manufacturer: true,
           slug: true,
-
+          sku: true,
+          specifications: true,
           mrp: true,
           gstPercent: true,
           categoryId: true,
@@ -1291,9 +1292,11 @@ export class ProductsService {
         id: s.id,
         productName: s.name,
         companyName: s.manufacturer,
-
         slug: s.slug,
+        sku: s.sku ?? undefined,
+        specifications: s.specifications ?? undefined,
         mrp: s.mrp,
+        gstPercent: s.gstPercent,
         categoryId: s.categoryId,
         subCategoryId: s.subCategoryId,
       }));
