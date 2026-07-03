@@ -44,7 +44,13 @@ export class CreateProductDto {
 
   @ApiProperty({ example: 'Paracetamol IP 500mg' })
   @IsString()
-  @IsNotEmpty()
+  @IsOptional()
+  specifications?: string;
+
+  @IsString()
+  @IsOptional()
+  sku?: string;
+
   @ApiPropertyOptional({ example: 'Analgesic and antipyretic tablet' })
   @IsString()
   @IsOptional()

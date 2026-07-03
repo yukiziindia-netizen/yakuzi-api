@@ -1232,6 +1232,8 @@ export class ProductsService {
                 ? v.options.available.toString()
                 : '0',
           image: v.options?.image || null,
+          sku: v.sku || v.options?.sku || '',
+          shippingCharges: v.options?.shippingCharges || 0,
         };
       }),
     };
