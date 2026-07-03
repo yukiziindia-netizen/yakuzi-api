@@ -258,6 +258,7 @@ export class AdminService {
             drugLicenseExpiry2: true,
             verificationStatus: true,
             updatedAt: true,
+            additionalDocuments: true,
           },
         },
         _count: { select: { orders: true, reviews: true, tickets: true } },
@@ -2011,10 +2012,14 @@ export class AdminService {
           ? {
               create: dto.variants.map((v: any) => ({
                 name: v.name,
+                sku: v.sku || undefined,
                 options: {
                   price: v.price,
                   available: v.available,
                   image: v.image,
+                  images: v.images,
+                  sku: v.sku,
+                  shippingCharges: v.shippingCharges !== undefined ? Number(v.shippingCharges) : 0,
                 },
               })),
             }
@@ -2164,7 +2169,15 @@ export class AdminService {
           data: dto.variants.map((v: any) => ({
             catalogProductId: id,
             name: v.name,
-            options: { price: v.price, available: v.available, image: v.image },
+            sku: v.sku || undefined,
+            options: { 
+              price: v.price, 
+              available: v.available, 
+              image: v.image,
+              images: v.images,
+              sku: v.sku,
+              shippingCharges: v.shippingCharges !== undefined ? Number(v.shippingCharges) : 0,
+            },
           })),
         });
       }
