@@ -100,6 +100,16 @@ export class UpdateSuggestionDto {
   @IsOptional()
   commissionGstPercent?: number | null;
 
+  @ApiPropertyOptional({ example: 18.0 })
+  @IsNumber()
+  @IsOptional()
+  fixedFeeGstPercent?: number | null;
+
+  @ApiPropertyOptional({ example: 18.0 })
+  @IsNumber()
+  @IsOptional()
+  shippingGstPercent?: number | null;
+
   @ApiPropertyOptional({ example: 'uuid-category-id' })
   @IsString()
   @IsOptional()

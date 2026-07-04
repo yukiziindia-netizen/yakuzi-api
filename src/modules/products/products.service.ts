@@ -1291,6 +1291,8 @@ export class ProductsService {
           commissionPercent: true,
           fixedFee: true,
           commissionGstPercent: true,
+          fixedFeeGstPercent: true,
+          shippingGstPercent: true,
         },
         take: 10,
         orderBy: { name: 'asc' },
@@ -1310,6 +1312,8 @@ export class ProductsService {
         commissionPercent: s.commissionPercent,
         fixedFee: s.fixedFee,
         commissionGstPercent: s.commissionGstPercent,
+        fixedFeeGstPercent: s.fixedFeeGstPercent,
+        shippingGstPercent: s.shippingGstPercent,
       }));
     }
 

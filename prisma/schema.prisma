@@ -680,6 +680,8 @@ model CatalogProduct {
   commissionPercent    Float?
   fixedFee             Float?
   commissionGstPercent Float?
+  fixedFeeGstPercent   Float?
+  shippingGstPercent   Float?
 
   categoryId           String
   subCategoryId        String

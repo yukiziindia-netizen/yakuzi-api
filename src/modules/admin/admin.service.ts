@@ -2001,6 +2001,8 @@ export class AdminService {
         commissionPercent: dto.commissionPercent ?? null,
         fixedFee: dto.fixedFee ?? null,
         commissionGstPercent: dto.commissionGstPercent ?? null,
+        fixedFeeGstPercent: dto.fixedFeeGstPercent ?? null,
+        shippingGstPercent: dto.shippingGstPercent ?? null,
         sku: dto.sku || null,
         specifications: dto.specifications || null,
         categoryId: resolvedCategoryId,

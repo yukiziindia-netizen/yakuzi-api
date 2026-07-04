@@ -702,16 +702,16 @@ export class OrdersService {
             where: { orderItemId: item.id },
           });
             if (!existing) {
-              const cat = (item.sellerOffer as any)?.category;
               const catalogProduct = (item.sellerOffer as any)?.variant?.catalogProduct;
               
-              const commissionPercent = catalogProduct?.commissionPercent ?? cat?.commissionPercent ?? 0;
-              const fixedFee = catalogProduct?.fixedFee ?? cat?.fixedFee ?? 0;
-              const commissionGstPercent = catalogProduct?.commissionGstPercent ?? cat?.commissionGstPercent ?? 18;
+              const commissionPercent = catalogProduct?.commissionPercent ?? 0;
+              const fixedFee = catalogProduct?.fixedFee ?? 0;
+              const commissionGstPercent = catalogProduct?.commissionGstPercent ?? 18;
+              const fixedFeeGstPercent = catalogProduct?.fixedFeeGstPercent ?? 18;
 
             const commissionAmount = +(item.totalPrice * (commissionPercent / 100)).toFixed(2);
             const commissionGst = +(commissionAmount * (commissionGstPercent / 100)).toFixed(2);
-            const fixedFeeGst = +(fixedFee * (commissionGstPercent / 100)).toFixed(2);
+            const fixedFeeGst = +(fixedFee * (fixedFeeGstPercent / 100)).toFixed(2);
 
             const totalPlatformFees = commissionAmount + commissionGst + fixedFee + fixedFeeGst;
             const sellerPayout = +(item.totalPrice - totalPlatformFees).toFixed(2);
