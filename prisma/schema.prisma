@@ -172,7 +172,10 @@ model Category {
   createdAt      DateTime         @default(now())
   masterProducts CatalogProduct[]
   sellerOffers   SellerOffer[]
-  subCategories  SubCategory[]
+  subCategories        SubCategory[]
+  commissionPercent    Float?
+  fixedFee             Float?
+  commissionGstPercent Float?
 
   @@map("categories")
 }
@@ -184,7 +187,10 @@ model SubCategory {
   categoryId      String
   createdAt       DateTime         @default(now())
   masterProducts  CatalogProduct[]
-  sellerOffers    SellerOffer[]
+  sellerOffers         SellerOffer[]
+  commissionPercent    Float?
+  fixedFee             Float?
+  commissionGstPercent Float?
   category        Category         @relation(fields: [categoryId], references: [id], onDelete: Cascade)
   thirdCategories ThirdCategory[]
 
@@ -670,6 +676,11 @@ model CatalogProduct {
   gstPercent           Float?
   isTaxIncluded        Boolean               @default(false)
   shippingCharges      Float                 @default(0)
+  
+  commissionPercent    Float?
+  fixedFee             Float?
+  commissionGstPercent Float?
+
   categoryId           String
   subCategoryId        String
   therapeuticClass     String?

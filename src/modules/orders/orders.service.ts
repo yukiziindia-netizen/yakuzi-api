@@ -675,7 +675,16 @@ export class OrdersService {
         items: {
           include: {
             sellerOffer: {
-              select: { id: true, name: true },
+              select: { 
+                id: true, 
+                name: true, 
+                category: true,
+                variant: {
+                  include: {
+                    catalogProduct: true,
+                  },
+                },
+              },
             },
           },
         },
@@ -688,23 +697,36 @@ export class OrdersService {
       updated.orderStatus === OrderStatus.DELIVERED &&
       updated.paymentStatus === PaymentStatus.SUCCESS
     ) {
-      for (const item of updated.items) {
-        const existing = await this.prisma.sellerSettlement.findUnique({
-          where: { orderItemId: item.id },
-        });
-        if (!existing) {
-          const commission = +(item.totalPrice * 0.05).toFixed(2);
-          await this.prisma.sellerSettlement.create({
-            data: {
-              sellerId: item.sellerId,
-              orderItemId: item.id,
-              amount: +(item.totalPrice - commission).toFixed(2),
-              commission,
-              payoutStatus: 'PENDING',
-            },
+        for (const item of updated.items) {
+          const existing = await this.prisma.sellerSettlement.findUnique({
+            where: { orderItemId: item.id },
           });
+            if (!existing) {
+              const cat = (item.sellerOffer as any)?.category;
+              const catalogProduct = (item.sellerOffer as any)?.variant?.catalogProduct;
+              
+              const commissionPercent = catalogProduct?.commissionPercent ?? cat?.commissionPercent ?? 0;
+              const fixedFee = catalogProduct?.fixedFee ?? cat?.fixedFee ?? 0;
+              const commissionGstPercent = catalogProduct?.commissionGstPercent ?? cat?.commissionGstPercent ?? 18;
+
+            const commissionAmount = +(item.totalPrice * (commissionPercent / 100)).toFixed(2);
+            const commissionGst = +(commissionAmount * (commissionGstPercent / 100)).toFixed(2);
+            const fixedFeeGst = +(fixedFee * (commissionGstPercent / 100)).toFixed(2);
+
+            const totalPlatformFees = commissionAmount + commissionGst + fixedFee + fixedFeeGst;
+            const sellerPayout = +(item.totalPrice - totalPlatformFees).toFixed(2);
+
+            await this.prisma.sellerSettlement.create({
+              data: {
+                sellerId: item.sellerId,
+                orderItemId: item.id,
+                amount: sellerPayout,
+                commission: commissionAmount,
+                payoutStatus: 'PENDING',
+              },
+            });
+          }
         }
-      }
     }
 
     this.logger.log(

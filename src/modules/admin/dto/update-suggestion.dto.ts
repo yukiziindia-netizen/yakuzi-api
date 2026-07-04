@@ -85,6 +85,21 @@ export class UpdateSuggestionDto {
   @IsOptional()
   shippingCharges?: number | null;
 
+  @ApiPropertyOptional({ example: 5.0 })
+  @IsNumber()
+  @IsOptional()
+  commissionPercent?: number | null;
+
+  @ApiPropertyOptional({ example: 20.0 })
+  @IsNumber()
+  @IsOptional()
+  fixedFee?: number | null;
+
+  @ApiPropertyOptional({ example: 18.0 })
+  @IsNumber()
+  @IsOptional()
+  commissionGstPercent?: number | null;
+
   @ApiPropertyOptional({ example: 'uuid-category-id' })
   @IsString()
   @IsOptional()

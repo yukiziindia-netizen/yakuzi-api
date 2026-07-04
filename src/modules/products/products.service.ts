@@ -1288,6 +1288,9 @@ export class ProductsService {
           gstPercent: true,
           categoryId: true,
           subCategoryId: true,
+          commissionPercent: true,
+          fixedFee: true,
+          commissionGstPercent: true,
         },
         take: 10,
         orderBy: { name: 'asc' },
@@ -1304,6 +1307,9 @@ export class ProductsService {
         gstPercent: s.gstPercent,
         categoryId: s.categoryId,
         subCategoryId: s.subCategoryId,
+        commissionPercent: s.commissionPercent,
+        fixedFee: s.fixedFee,
+        commissionGstPercent: s.commissionGstPercent,
       }));
     }
 
