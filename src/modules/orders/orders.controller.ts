@@ -156,6 +156,21 @@ export class OrdersController {
     );
     return { message: 'Shipping details updated successfully', data };
   }
+  // ──────────────────────────────────────────────
+  // ADMIN UPDATE SHIPPING DOCS
+  // ──────────────────────────────────────────────
+  @Patch(':id/admin-shipping-docs')
+  @Roles(Role.ADMIN)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Upload shipping documents by admin' })
+  @ApiResponse({ status: 200, description: 'Documents uploaded' })
+  async updateAdminShippingDocs(
+    @Param('id', ParseUUIDPipe) orderId: string,
+    @Body() dto: { adminShippingLabelUrl?: string; adminInvoiceUrl?: string },
+  ) {
+    const data = await this.ordersService.updateAdminShippingDocs(orderId, dto);
+    return { message: 'Documents uploaded successfully', data };
+  }
 
   // ──────────────────────────────────────────────
   // TRACKING ENDPOINT

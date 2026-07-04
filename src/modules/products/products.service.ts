@@ -578,6 +578,8 @@ export class ProductsService {
       where.OR = [
         { name: { contains: query.search, mode: 'insensitive' } },
         { manufacturer: { contains: query.search, mode: 'insensitive' } },
+        { id: { startsWith: query.search, mode: 'insensitive' } },
+        { variant: { sku: { contains: query.search, mode: 'insensitive' } } },
       ];
     }
 
@@ -612,6 +614,7 @@ export class ProductsService {
           category: true,
           subCategory: true,
           batches: true,
+          variant: true,
         },
         orderBy: { [sortBy]: sortOrder },
         skip,

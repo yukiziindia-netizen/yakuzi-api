@@ -324,8 +324,11 @@ export class OrdersService {
                 manufacturer: true,
                 mrp: true,
                 gstPercent: true,
+                shippingCharges: true,
                 variant: {
                   select: {
+                    name: true,
+                    sku: true,
                     catalogProduct: {
                       select: {
                         images: {
@@ -757,6 +760,34 @@ export class OrdersService {
       `Order ${orderId} shipping details updated by seller ${seller.id}`,
     );
 
+    return updated;
+  }
+
+  // ──────────────────────────────────────────────
+  // UPDATE ADMIN SHIPPING DOCS (Admin)
+  // ──────────────────────────────────────────────
+  async updateAdminShippingDocs(
+    orderId: string,
+    dto: { adminShippingLabelUrl?: string; adminInvoiceUrl?: string },
+  ) {
+    const order = await this.prisma.order.findUnique({
+      where: { id: orderId },
+    });
+
+    if (!order) {
+      throw new NotFoundException('Order not found');
+    }
+
+    if (!order.packageLength) {
+      throw new BadRequestException('Seller has not provided package details yet');
+    }
+
+    const updated = await this.prisma.order.update({
+      where: { id: orderId },
+      data: dto,
+    });
+
+    this.logger.log(`Order ${orderId} admin shipping docs updated`);
     return updated;
   }
 

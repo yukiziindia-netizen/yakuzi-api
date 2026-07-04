@@ -311,8 +311,10 @@ model Order {
   weightImage       String?
 
   // Shipping documents
-  invoiceUrl        String?
-  manifestUrl       String?
+  invoiceUrl            String?
+  manifestUrl           String?
+  adminShippingLabelUrl String?
+  adminInvoiceUrl       String?
 
   @@index([buyerId])
   @@index([orderStatus])
