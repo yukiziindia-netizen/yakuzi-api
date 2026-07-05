@@ -1909,6 +1909,54 @@ export class AdminService {
   async createSuggestion(
     dto: import('./dto/update-suggestion.dto').UpdateSuggestionDto,
   ) {
+    const skusToCheck = new Set<string>();
+    const serialNosToCheck = new Set<string>();
+    if (dto.sku) skusToCheck.add(dto.sku);
+    if (dto.serialNo) serialNosToCheck.add(dto.serialNo);
+    if (dto.variants) {
+      for (const v of dto.variants) {
+        if (v.sku) skusToCheck.add(v.sku);
+        if (v.serialNo) serialNosToCheck.add(v.serialNo);
+      }
+    }
+    
+    // Check Variants
+    if (skusToCheck.size > 0) {
+      const existingVariantSku = await this.prisma.productVariant.findFirst({
+        where: { sku: { in: Array.from(skusToCheck) } }
+      });
+      if (existingVariantSku) {
+        const matchedVariant = dto.variants?.find(v => v.sku === existingVariantSku.sku);
+        throw new BadRequestException(`SKU "${existingVariantSku.sku}" already exists${matchedVariant ? ` for variant "${matchedVariant.name}"` : ' in another variant'}. Please use a unique SKU.`);
+      }
+      
+      const existingProductSku = await this.prisma.catalogProduct.findFirst({
+        where: { sku: { in: Array.from(skusToCheck) } }
+      });
+      if (existingProductSku) {
+        const matchedVariant = dto.variants?.find(v => v.sku === existingProductSku.sku);
+        throw new BadRequestException(`SKU "${existingProductSku.sku}" already exists in a product. Please use a unique SKU.`);
+      }
+    }
+    
+    if (serialNosToCheck.size > 0) {
+      const existingVariantSerial = await this.prisma.productVariant.findFirst({
+        where: { serialNo: { in: Array.from(serialNosToCheck) } }
+      });
+      if (existingVariantSerial) {
+        const matchedVariant = dto.variants?.find(v => v.serialNo === existingVariantSerial.serialNo);
+        throw new BadRequestException(`Serial No "${existingVariantSerial.serialNo}" already exists${matchedVariant ? ` for variant "${matchedVariant.name}"` : ' in another variant'}. Please use a unique Serial No.`);
+      }
+      
+      // CatalogProduct doesn't have serialNo unique constraint technically right now, but check anyway if we decide to add it
+      const existingProductSerial = await this.prisma.catalogProduct.findFirst({
+        where: { serialNo: { in: Array.from(serialNosToCheck) } }
+      });
+      if (existingProductSerial) {
+        throw new BadRequestException(`Serial No "${existingProductSerial.serialNo}" already exists in a product. Please use a unique Serial No.`);
+      }
+    }
+
     const slug = slugify(`${dto.name}-${dto.manufacturer}`, {
       lower: true,
       strict: true,
@@ -2004,6 +2052,7 @@ export class AdminService {
         fixedFeeGstPercent: dto.fixedFeeGstPercent ?? null,
         shippingGstPercent: dto.shippingGstPercent ?? null,
         sku: dto.sku || null,
+        serialNo: dto.serialNo || null,
         specifications: dto.specifications || null,
         categoryId: resolvedCategoryId,
         subCategoryId: resolvedSubCategoryId,
@@ -2019,13 +2068,16 @@ export class AdminService {
               create: dto.variants.map((v: any) => ({
                 name: v.name,
                 sku: v.sku || undefined,
+                serialNo: v.serialNo || undefined,
                 options: {
                   price: v.price,
                   available: v.available,
                   image: v.image,
                   images: v.images,
                   sku: v.sku,
+                  serialNo: v.serialNo,
                   shippingCharges: v.shippingCharges !== undefined ? Number(v.shippingCharges) : 0,
+                  shippingGstPercent: v.shippingGstPercent !== undefined && v.shippingGstPercent !== null ? Number(v.shippingGstPercent) : null,
                 },
               })),
             }
@@ -2044,7 +2096,20 @@ export class AdminService {
       return product;
     } catch (error: any) {
       if (error.code === 'P2002') {
-        throw new BadRequestException('A product or variant with this SKU (or another unique field) already exists.');
+        const target = error.meta?.target;
+        const targetFields = Array.isArray(target) ? target.join(', ') : (typeof target === 'string' ? target : 'unknown field');
+        
+        if (targetFields.includes('sku')) {
+          throw new BadRequestException('SKU already exists. Please use a unique SKU.');
+        }
+        if (targetFields.includes('serialNo')) {
+          throw new BadRequestException('Serial No already exists. Please use a unique Serial No.');
+        }
+        if (targetFields.includes('slug')) {
+          throw new BadRequestException('A product with this name and manufacturer already exists.');
+        }
+        
+        throw new BadRequestException(`A product or variant with this unique field (${targetFields}) already exists.`);
       }
       throw error;
     }
@@ -2054,6 +2119,52 @@ export class AdminService {
     id: string,
     dto: import('./dto/update-suggestion.dto').UpdateSuggestionDto,
   ) {
+    const skusToCheck = new Set<string>();
+    const serialNosToCheck = new Set<string>();
+    if (dto.sku) skusToCheck.add(dto.sku);
+    if (dto.serialNo) serialNosToCheck.add(dto.serialNo);
+    if (dto.variants) {
+      for (const v of dto.variants) {
+        if (v.sku) skusToCheck.add(v.sku);
+        if (v.serialNo) serialNosToCheck.add(v.serialNo);
+      }
+    }
+    
+    // Check Variants
+    if (skusToCheck.size > 0) {
+      const existingVariantSku = await this.prisma.productVariant.findFirst({
+        where: { sku: { in: Array.from(skusToCheck) }, catalogProductId: { not: id } }
+      });
+      if (existingVariantSku) {
+        const matchedVariant = dto.variants?.find(v => v.sku === existingVariantSku.sku);
+        throw new BadRequestException(`SKU "${existingVariantSku.sku}" already exists${matchedVariant ? ` for variant "${matchedVariant.name}"` : ' in another variant'}. Please use a unique SKU.`);
+      }
+      
+      const existingProductSku = await this.prisma.catalogProduct.findFirst({
+        where: { sku: { in: Array.from(skusToCheck) }, id: { not: id } }
+      });
+      if (existingProductSku) {
+        throw new BadRequestException(`SKU "${existingProductSku.sku}" already exists in a product. Please use a unique SKU.`);
+      }
+    }
+    
+    if (serialNosToCheck.size > 0) {
+      const existingVariantSerial = await this.prisma.productVariant.findFirst({
+        where: { serialNo: { in: Array.from(serialNosToCheck) }, catalogProductId: { not: id } }
+      });
+      if (existingVariantSerial) {
+        const matchedVariant = dto.variants?.find(v => v.serialNo === existingVariantSerial.serialNo);
+        throw new BadRequestException(`Serial No "${existingVariantSerial.serialNo}" already exists${matchedVariant ? ` for variant "${matchedVariant.name}"` : ' in another variant'}. Please use a unique Serial No.`);
+      }
+      
+      const existingProductSerial = await this.prisma.catalogProduct.findFirst({
+        where: { serialNo: { in: Array.from(serialNosToCheck) }, id: { not: id } }
+      });
+      if (existingProductSerial) {
+        throw new BadRequestException(`Serial No "${existingProductSerial.serialNo}" already exists in a product. Please use a unique Serial No.`);
+      }
+    }
+
     const suggestion = await this.prisma.catalogProduct.findUnique({
       where: { id },
     });
@@ -2147,8 +2258,14 @@ export class AdminService {
         ...(dto.packSize !== undefined ? { packSize: dto.packSize } : {}),
         ...(dto.gstPercent !== undefined ? { gstPercent: dto.gstPercent } : {}),
         ...(dto.isTaxIncluded !== undefined ? { isTaxIncluded: dto.isTaxIncluded } : {}),
+        ...(dto.commissionPercent !== undefined ? { commissionPercent: dto.commissionPercent ?? null } : {}),
+        ...(dto.fixedFee !== undefined ? { fixedFee: dto.fixedFee ?? null } : {}),
+        ...(dto.commissionGstPercent !== undefined ? { commissionGstPercent: dto.commissionGstPercent ?? null } : {}),
+        ...(dto.fixedFeeGstPercent !== undefined ? { fixedFeeGstPercent: dto.fixedFeeGstPercent ?? null } : {}),
+        ...(dto.shippingGstPercent !== undefined ? { shippingGstPercent: dto.shippingGstPercent ?? null } : {}),
         ...(dto.shippingCharges !== undefined ? { shippingCharges: dto.shippingCharges ?? null } : {}),
         ...(dto.sku !== undefined ? { sku: dto.sku ?? null } : {}),
+        ...(dto.serialNo !== undefined ? { serialNo: dto.serialNo ?? null } : {}),
         ...(dto.specifications !== undefined ? { specifications: dto.specifications ?? null } : {}),
         ...(resolvedCategoryId ? { categoryId: resolvedCategoryId as string } : {}),
         ...(resolvedSubCategoryId
@@ -2183,13 +2300,16 @@ export class AdminService {
             catalogProductId: id,
             name: v.name,
             sku: v.sku || undefined,
+            serialNo: v.serialNo || undefined,
             options: { 
               price: v.price, 
               available: v.available, 
               image: v.image,
               images: v.images,
               sku: v.sku,
+              serialNo: v.serialNo,
               shippingCharges: v.shippingCharges !== undefined ? Number(v.shippingCharges) : 0,
+              shippingGstPercent: v.shippingGstPercent !== undefined && v.shippingGstPercent !== null ? Number(v.shippingGstPercent) : null,
             },
           })),
         });
@@ -2215,7 +2335,20 @@ export class AdminService {
     return updated;
     } catch (error: any) {
       if (error.code === 'P2002') {
-        throw new BadRequestException('A product or variant with this SKU (or another unique field) already exists.');
+        const target = error.meta?.target;
+        const targetFields = Array.isArray(target) ? target.join(', ') : (typeof target === 'string' ? target : 'unknown field');
+        
+        if (targetFields.includes('sku')) {
+          throw new BadRequestException('SKU already exists. Please use a unique SKU.');
+        }
+        if (targetFields.includes('serialNo')) {
+          throw new BadRequestException('Serial No already exists. Please use a unique Serial No.');
+        }
+        if (targetFields.includes('slug')) {
+          throw new BadRequestException('A product with this name and manufacturer already exists.');
+        }
+        
+        throw new BadRequestException(`A product or variant with this unique field (${targetFields}) already exists.`);
       }
       throw error;
     }
@@ -2227,10 +2360,31 @@ export class AdminService {
     });
     if (!suggestion) throw new NotFoundException('Suggestion not found');
 
-    return this.prisma.catalogProduct.update({
-      where: { id },
-      data: { deletedAt: new Date(), isActive: false },
+    const variants = await this.prisma.productVariant.findMany({
+      where: { catalogProductId: id },
+      select: { id: true },
     });
+
+    try {
+      if (variants.length > 0) {
+        await this.prisma.sellerOffer.deleteMany({
+          where: { variantId: { in: variants.map((v) => v.id) } },
+        });
+      }
+
+      const deleted = await this.prisma.catalogProduct.delete({
+        where: { id },
+      });
+
+      return deleted;
+    } catch (error: any) {
+      if (error.code === 'P2003') {
+        throw new BadRequestException(
+          'Cannot hard delete this suggestion because it has existing orders or active dependencies.',
+        );
+      }
+      throw error;
+    }
   }
 
   async importSuggestions(

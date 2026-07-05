@@ -29,6 +29,11 @@ export class UpdateSuggestionDto {
   @IsOptional()
   sku?: string;
 
+  @ApiPropertyOptional({ example: 'SN-001' })
+  @IsString()
+  @IsOptional()
+  serialNo?: string;
+
   @ApiPropertyOptional({ example: 'Material: Cotton' })
   @IsString()
   @IsOptional()

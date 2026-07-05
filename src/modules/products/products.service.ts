@@ -62,6 +62,10 @@ export class ProductsService {
         : this.generateSlug(dto.name),
       externalId: dto.externalId ? dto.externalId.trim() : undefined,
       variantId: dto.variantId ? dto.variantId.trim() : undefined,
+      // Ensure discountType is always uppercased to match Prisma enum
+      discountType: dto.discountType
+        ? (dto.discountType.toString().toUpperCase() as any)
+        : undefined,
     };
   }
 
@@ -77,6 +81,10 @@ export class ProductsService {
     });
     if (!seller) {
       throw new ForbiddenException('Seller profile not found');
+    }
+
+    if (!normalized.categoryId || !normalized.subCategoryId) {
+      throw new BadRequestException('categoryId and subCategoryId are required');
     }
 
     const [category, subCategory] = await Promise.all([
@@ -188,13 +196,18 @@ export class ProductsService {
               manufacturer: normalized.manufacturer,
               description: normalized.description,
               mrp: v.price > 0 ? v.price : normalized.mrp,
-              gstPercent: normalized.gstPercent,
+              gstPercent: v.gstPercent !== undefined ? Number(v.gstPercent) : normalized.gstPercent,
               isTaxIncluded: normalized.isTaxIncluded ?? false,
-              shippingCharges: normalized.shippingCharges ?? 0,
+              shippingCharges: v.shippingCharges !== undefined ? Number(v.shippingCharges) : (normalized.shippingCharges ?? 0),
               minimumOrderQuantity: normalized.minimumOrderQuantity ?? 1,
               maximumOrderQuantity: normalized.maximumOrderQuantity,
-              discountType: normalized.discountType,
-              discountMeta: normalized.discountMeta ?? undefined,
+              discountType: normalized.discountType ?? undefined,
+              discountMeta: (() => {
+                if (v.discountPercent && Number(v.discountPercent) > 0) {
+                  return { discountPercent: Number(v.discountPercent) };
+                }
+                return normalized.discountMeta ?? undefined;
+              })(),
               deliveryText: normalized.deliveryText,
             },
             include: { category: true, subCategory: true },
@@ -221,13 +234,18 @@ export class ProductsService {
             manufacturer: normalized.manufacturer,
             description: normalized.description,
             mrp: v.price > 0 ? v.price : normalized.mrp,
-            gstPercent: normalized.gstPercent,
+            gstPercent: v.gstPercent !== undefined ? Number(v.gstPercent) : normalized.gstPercent,
             isTaxIncluded: normalized.isTaxIncluded ?? false,
-            shippingCharges: normalized.shippingCharges ?? 0,
+            shippingCharges: v.shippingCharges !== undefined ? Number(v.shippingCharges) : (normalized.shippingCharges ?? 0),
             minimumOrderQuantity: normalized.minimumOrderQuantity ?? 1,
             maximumOrderQuantity: normalized.maximumOrderQuantity,
-            discountType: normalized.discountType,
-            discountMeta: normalized.discountMeta ?? undefined,
+            discountType: normalized.discountType ?? undefined,
+            discountMeta: (() => {
+              if (v.discountPercent && Number(v.discountPercent) > 0) {
+                return { discountPercent: Number(v.discountPercent) };
+              }
+              return normalized.discountMeta ?? undefined;
+            })(),
             deliveryText: normalized.deliveryText,
             approvalStatus: isFromMaster
               ? ProductApprovalStatus.APPROVED
@@ -1032,33 +1050,41 @@ export class ProductsService {
     discountType: string | null,
     discountMeta: any,
   ): number {
+    const gst = gstPercent || 0;
+
+    // If no discountType — use simple formula: MRP - discount% + GST
+    if (!discountType) {
+      const simpleDiscount = discountMeta?.discountPercent ?? 0;
+      const discountedPrice = Math.round((mrp - (mrp * simpleDiscount) / 100) * 100) / 100;
+      const gstValue = Math.round(((discountedPrice * gst) / 100) * 100) / 100;
+      return Math.round((discountedPrice + gstValue) * 100) / 100;
+    }
+
+    // PTR-based pricing (complex discount engine for discountType cases)
     const margins: Record<number, number> = {
       0: 18.12,
       5: 23.81,
       12: 28.67,
       18: 32.2,
     };
-    const retailMargin = margins[gstPercent] || 0;
+    const retailMargin = margins[gst] || 0;
     const ptr = Math.round((mrp - (mrp * retailMargin) / 100) * 100) / 100;
 
     let finalPtr = ptr;
-    let discountPercent = 0;
 
     if (
       discountType === 'PTR_DISCOUNT' ||
       discountType === 'PTR_PLUS_SAME_PRODUCT_BONUS' ||
       discountType === 'PTR_PLUS_DIFFERENT_PRODUCT_BONUS'
     ) {
-      discountPercent = discountMeta?.discountPercent ?? 0;
+      const discountPercent = discountMeta?.discountPercent ?? 0;
       finalPtr = Math.round((ptr - (ptr * discountPercent) / 100) * 100) / 100;
     } else if (discountType === 'SPECIAL_PRICE') {
       finalPtr = discountMeta?.specialPrice ?? ptr;
     }
 
-    const gstValue = Math.round(((finalPtr * gstPercent) / 100) * 100) / 100;
-    const perPtrWithGst = Math.round((finalPtr + gstValue) * 100) / 100;
-
-    return perPtrWithGst;
+    const gstValue = Math.round(((finalPtr * gst) / 100) * 100) / 100;
+    return Math.round((finalPtr + gstValue) * 100) / 100;
   }
 
   private getBestOffer(m: any) {
@@ -1160,6 +1186,7 @@ export class ProductsService {
       discountMeta: bestListing?.discountMeta || null,
       deliveryText: bestListing?.deliveryText || null,
       gstPercent: m.gstPercent,
+      shippingGstPercent: m.shippingGstPercent,
       images: m.images,
       category: m.category,
       subCategory: m.subCategory,
@@ -1186,9 +1213,12 @@ export class ProductsService {
             p.discountType,
             p.discountMeta,
           );
+          const shipping = p.shippingCharges || 0;
           return {
             id: p.id,
-            price: sellingPrice,
+            price: Math.round((sellingPrice + shipping) * 100) / 100,
+            basePrice: sellingPrice,
+            shippingCharges: shipping,
             mrp: p.mrp,
             discountType: p.discountType,
             discountMeta: p.discountMeta,
@@ -1236,7 +1266,12 @@ export class ProductsService {
                 : '0',
           image: v.options?.image || null,
           sku: v.sku || v.options?.sku || '',
+          serialNo: v.serialNo || '',
           shippingCharges: v.options?.shippingCharges || 0,
+          shippingGstPercent: v.options?.shippingGstPercent || null,
+          gstPercent: v.options?.gstPercent || null,
+          compareAtPrice: v.options?.compareAtPrice || null,
+          discount: v.options?.discount || null,
         };
       }),
     };
@@ -1265,6 +1300,8 @@ export class ProductsService {
                 mode: 'insensitive' as Prisma.QueryMode,
               },
             },
+            { sku: { contains: w, mode: 'insensitive' as Prisma.QueryMode } },
+            { serialNo: { contains: w, mode: 'insensitive' as Prisma.QueryMode } },
           ],
         })),
       };
@@ -1283,6 +1320,7 @@ export class ProductsService {
           manufacturer: true,
           slug: true,
           sku: true,
+          serialNo: true,
           specifications: true,
           mrp: true,
           gstPercent: true,
@@ -1293,6 +1331,7 @@ export class ProductsService {
           commissionGstPercent: true,
           fixedFeeGstPercent: true,
           shippingGstPercent: true,
+          images: { select: { url: true }, take: 1 },
         },
         take: 10,
         orderBy: { name: 'asc' },
@@ -1304,9 +1343,11 @@ export class ProductsService {
         companyName: s.manufacturer,
         slug: s.slug,
         sku: s.sku ?? undefined,
+        serialNo: s.serialNo ?? undefined,
         specifications: s.specifications ?? undefined,
         mrp: s.mrp,
         gstPercent: s.gstPercent,
+        images: s.images.map((img) => img.url),
         categoryId: s.categoryId,
         subCategoryId: s.subCategoryId,
         commissionPercent: s.commissionPercent,

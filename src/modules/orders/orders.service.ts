@@ -84,7 +84,7 @@ export class OrdersService {
 
     // 3. Calculate total amount
     const totalAmount = cart.items.reduce(
-      (sum, item) => sum + item.quantity * item.unitPrice,
+      (sum, item) => sum + (item.quantity * item.unitPrice) + (item.quantity * (item.sellerOffer.shippingCharges || 0)),
       0,
     );
 

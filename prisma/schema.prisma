@@ -668,7 +668,8 @@ model CatalogProduct {
   name                 String
   slug                 String?               @unique
   externalId           String?               @unique
-  sku                  String?
+  sku                  String?        @unique
+    serialNo                  String?
   specifications       String?
   manufacturer         String
   description          String?
@@ -823,6 +824,7 @@ model ProductVariant {
   catalogProductId String
   name             String
   sku              String?        @unique
+    serialNo              String?        @unique
   options          Json
   createdAt        DateTime       @default(now())
   updatedAt        DateTime       @updatedAt

@@ -140,6 +140,8 @@ export class CartService {
             mrp: true,
             minimumOrderQuantity: true,
             maximumOrderQuantity: true,
+                shippingCharges: true,
+
             variant: {
               select: {
                 catalogProduct: {
@@ -163,7 +165,7 @@ export class CartService {
     return {
       ...cartItem,
       sellerOffer: await this.formatCartItemOffer(cartItem.sellerOffer),
-      totalPrice: cartItem.quantity * cartItem.unitPrice,
+      totalPrice: (cartItem.quantity * cartItem.unitPrice) + (cartItem.quantity * (cartItem.sellerOffer.shippingCharges || 0)),
     };
   }
 
@@ -187,8 +189,11 @@ export class CartService {
                 gstPercent: true,
                 minimumOrderQuantity: true,
                 maximumOrderQuantity: true,
+                shippingCharges: true,
+
                 isActive: true,
                 deletedAt: true,
+    
                 variant: {
                   select: {
                     catalogProduct: {
@@ -231,7 +236,7 @@ export class CartService {
         sellerOffer: await this.formatCartItemOffer(item.sellerOffer),
         quantity: item.quantity,
         unitPrice: item.unitPrice,
-        totalPrice: item.quantity * item.unitPrice,
+        totalPrice: (item.quantity * item.unitPrice) + (item.quantity * (item.sellerOffer.shippingCharges || 0)),
         createdAt: item.createdAt,
         updatedAt: item.updatedAt,
       })),
@@ -324,6 +329,8 @@ export class CartService {
             mrp: true,
             minimumOrderQuantity: true,
             maximumOrderQuantity: true,
+                shippingCharges: true,
+
             variant: {
               select: {
                 catalogProduct: {
@@ -345,7 +352,7 @@ export class CartService {
     return {
       ...updated,
       sellerOffer: await this.formatCartItemOffer(updated.sellerOffer),
-      totalPrice: updated.quantity * updated.unitPrice,
+      totalPrice: (updated.quantity * updated.unitPrice) + (updated.quantity * (updated.sellerOffer.shippingCharges || 0)),
     };
   }
 
