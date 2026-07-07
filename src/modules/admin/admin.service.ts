@@ -631,12 +631,66 @@ export class AdminService {
       throw new BadRequestException('Product is already approved');
     }
 
+    let variantId = product.variantId;
+    if (!variantId) {
+      let existingMaster = await this.prisma.catalogProduct.findFirst({
+        where: {
+          name: { equals: product.name, mode: 'insensitive' },
+          manufacturer: { equals: product.manufacturer, mode: 'insensitive' },
+          deletedAt: null,
+        },
+      });
+
+      if (!existingMaster) {
+        const baseSlug = product.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '');
+        const uniqueSlug = `${baseSlug}-${Math.random().toString(36).substring(2, 8)}`;
+
+        existingMaster = await this.prisma.catalogProduct.create({
+          data: {
+            name: product.name,
+            slug: uniqueSlug,
+            manufacturer: product.manufacturer,
+            sku: product.sku,
+            serialNo: product.serialNo,
+            specifications: product.specifications,
+            description: product.description,
+            mrp: product.mrp,
+            gstPercent: product.gstPercent,
+            isTaxIncluded: product.isTaxIncluded,
+            shippingCharges: product.shippingCharges,
+            finalShippingPrice: product.finalShippingPrice,
+            categoryId: product.categoryId,
+            subCategoryId: product.subCategoryId,
+          },
+        });
+      }
+
+      let variant = await this.prisma.productVariant.findFirst({
+        where: { catalogProductId: existingMaster.id },
+      });
+
+      if (!variant) {
+        variant = await this.prisma.productVariant.create({
+          data: {
+            catalogProductId: existingMaster.id,
+            name: 'Default',
+            sku: product.sku,
+            serialNo: product.serialNo,
+            options: {},
+          },
+        });
+      }
+      
+      variantId = variant.id;
+    }
+
     const updated = await this.prisma.sellerOffer.update({
       where: { id: sellerOfferId },
       data: {
         approvalStatus: ProductApprovalStatus.APPROVED,
         isActive: true,
         rejectionReason: null,
+        variantId,
       },
       select: {
         id: true,

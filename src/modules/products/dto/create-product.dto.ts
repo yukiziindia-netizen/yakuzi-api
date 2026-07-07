@@ -51,6 +51,10 @@ export class CreateProductDto {
   @IsOptional()
   sku?: string;
 
+  @IsString()
+  @IsOptional()
+  serialNo?: string;
+
   @ApiPropertyOptional({ example: 'Analgesic and antipyretic tablet' })
   @IsString()
   @IsOptional()

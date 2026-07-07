@@ -206,6 +206,9 @@ model SellerOffer {
   subCategoryId        String
   name                 String
   manufacturer         String
+  sku                  String?
+  serialNo             String?
+  specifications       String?
 
   description          String?
   mrp                  Float
@@ -241,6 +244,8 @@ model SellerOffer {
   seller               SellerProfile         @relation(fields: [sellerId], references: [id], onDelete: Cascade)
   subCategory          SubCategory           @relation(fields: [subCategoryId], references: [id])
   variant              ProductVariant?       @relation(fields: [variantId], references: [id])
+  catalogProductId     String?
+  catalogProduct       CatalogProduct?       @relation(fields: [catalogProductId], references: [id])
 
   @@index([sellerId])
   @@index([categoryId])
@@ -720,6 +725,7 @@ model CatalogProduct {
   productAnalytics     ProductAnalytics?
   productSearchIndex   ProductSearchIndex?
   productVariants      ProductVariant[]
+  sellerOffers         SellerOffer[]
   reviews              Review[]
 
   @@index([name])

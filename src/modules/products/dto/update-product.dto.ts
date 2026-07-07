@@ -50,6 +50,10 @@ export class UpdateProductDto {
   @IsOptional()
   sku?: string;
 
+  @IsString()
+  @IsOptional()
+  serialNo?: string;
+
   @ApiPropertyOptional({ example: 'Analgesic and antipyretic tablet' })
   @IsString()
   @IsOptional()

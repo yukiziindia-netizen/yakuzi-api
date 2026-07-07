@@ -167,12 +167,24 @@ export class ProductsService {
       const createdOffers: any[] = [];
       for (const v of dto.variants) {
         // Find matching variant if from master
-        let matchedVariantId = undefined;
+        let matchedVariantId: string | undefined = undefined;
         if (catalogProduct) {
           const matched = catalogProduct.productVariants.find(
             (pv) => pv.name === v.name,
           );
-          if (matched) matchedVariantId = matched.id;
+          if (matched) {
+            matchedVariantId = matched.id;
+          } else {
+            const newVariant = await this.prisma.productVariant.create({
+              data: {
+                catalogProductId: catalogProduct.id,
+                name: v.name,
+                options: {},
+              },
+            });
+            matchedVariantId = newVariant.id;
+            catalogProduct.productVariants.push(newVariant);
+          }
         }
 
         // If from master but no match, could be a new variant not in master, or just a seller override
@@ -305,12 +317,13 @@ export class ProductsService {
 
     // Default flow: single product without specific variants array
     let variantId = normalized.variantId;
-    if (
-      !variantId &&
-      catalogProduct &&
-      catalogProduct.productVariants.length > 0
-    ) {
-      variantId = catalogProduct.productVariants[0].id;
+    let catalogProductId = undefined;
+    if (!variantId && catalogProduct) {
+      if (catalogProduct.productVariants.length > 0) {
+        variantId = catalogProduct.productVariants[0].id;
+      } else {
+        catalogProductId = catalogProduct.id;
+      }
     }
 
     const existingProduct = await this.prisma.sellerOffer.findFirst({
@@ -326,6 +339,9 @@ export class ProductsService {
           subCategory: { connect: { id: normalized.subCategoryId } },
           manufacturer: normalized.manufacturer,
           description: normalized.description,
+          sku: normalized.sku ?? undefined,
+          serialNo: normalized.serialNo ?? undefined,
+          specifications: normalized.specifications ?? undefined,
           mrp: normalized.mrp,
           gstPercent: normalized.gstPercent,
           isTaxIncluded: normalized.isTaxIncluded ?? false,
@@ -350,11 +366,15 @@ export class ProductsService {
         category: { connect: { id: normalized.categoryId } },
         subCategory: { connect: { id: normalized.subCategoryId } },
         variant: variantId ? { connect: { id: variantId } } : undefined,
+        catalogProduct: catalogProductId ? { connect: { id: catalogProductId } } : undefined,
         name: normalized.name,
         slug: normalized.slug,
         externalId: normalized.externalId,
         manufacturer: normalized.manufacturer,
         description: normalized.description,
+        sku: normalized.sku ?? undefined,
+        serialNo: normalized.serialNo ?? undefined,
+        specifications: normalized.specifications ?? undefined,
         mrp: normalized.mrp,
         gstPercent: normalized.gstPercent,
         isTaxIncluded: normalized.isTaxIncluded ?? false,
@@ -368,7 +388,7 @@ export class ProductsService {
         approvalStatus: isFromMaster
           ? ProductApprovalStatus.APPROVED
           : ProductApprovalStatus.PENDING,
-        isActive: isFromMaster ? true : false, // Auto-approve if from master catalog
+        isActive: isFromMaster ? true : false,
       };
 
       product = await this.prisma.sellerOffer.create({
@@ -1000,10 +1020,18 @@ export class ProductsService {
         });
         if (master) {
           this.analyticsService.recordView(master.id);
-          return this.formatMasterDetail(master);
+          return this.formatMasterDetail(master, listing);
         }
       }
-      return this.flattenProduct(listing as any);
+      
+      let catalogMatch: any = null;
+      if (!listing.variant?.catalogProductId) {
+        catalogMatch = await this.prisma.catalogProduct.findFirst({
+          where: { name: listing.name, deletedAt: null }
+        });
+      }
+
+      return this.flattenProduct(listing as any, catalogMatch);
     }
 
     // 2. Fallback: Check if 'id' is a Master Product (by ID or Slug)
@@ -1017,6 +1045,22 @@ export class ProductsService {
         subCategory: true,
         images: true,
 
+        sellerOffers: {
+          where: { deletedAt: null },
+          include: {
+            seller: {
+              select: {
+                id: true,
+                companyName: true,
+                rating: true,
+                city: true,
+                state: true,
+              },
+            },
+            batches: { orderBy: { expiryDate: 'asc' } },
+          },
+          orderBy: { mrp: 'asc' },
+        },
         productVariants: {
           include: {
             sellerOffers: {
@@ -1169,10 +1213,12 @@ export class ProductsService {
     };
   }
 
-  private formatMasterDetail(m: any) {
-    const allListings = (m.productVariants || []).flatMap(
-      (v: any) => v.sellerOffers || [],
+  private formatMasterDetail(m: any, sellerListing?: any) {
+    const directListings = m.sellerOffers || [];
+    const variantListings = (m.productVariants || []).flatMap(
+      (v: any) => (v.sellerOffers || []).map((o: any) => ({ ...o, variantName: v.name }))
     );
+    const allListings = [...directListings, ...variantListings];
     const bestListing =
       allListings.length > 0
         ? allListings.reduce((prev: any, curr: any) =>
@@ -1180,18 +1226,24 @@ export class ProductsService {
           )
         : null;
     return {
-      id: m.id,
+      id: sellerListing?.id || m.id,
+      masterProductId: m.id,
       name: m.name,
       slug: m.slug,
       manufacturer: m.manufacturer,
-
+      sku: sellerListing?.sku || sellerListing?.variant?.sku || m.sku || '',
+      serialNo: sellerListing?.serialNo || sellerListing?.variant?.serialNo || m.serialNo || '',
+      specifications: sellerListing?.specifications || m.specifications || '',
       description: m.description,
-      mrp: m.mrp,
+      mrp: sellerListing?.mrp || m.mrp,
       price: bestListing ? bestListing.mrp : m.mrp,
-      discountType: bestListing?.discountType || null,
-      discountMeta: bestListing?.discountMeta || null,
-      deliveryText: bestListing?.deliveryText || null,
-      gstPercent: m.gstPercent,
+      discountType: sellerListing?.discountType || bestListing?.discountType || null,
+      discountMeta: sellerListing?.discountMeta || bestListing?.discountMeta || null,
+      deliveryText: sellerListing?.deliveryText || bestListing?.deliveryText || null,
+      gstPercent: sellerListing?.gstPercent ?? m.gstPercent,
+      isTaxIncluded: sellerListing?.isTaxIncluded ?? false,
+      shippingCharges: sellerListing?.shippingCharges ?? m.shippingCharges ?? 0,
+      finalShippingPrice: sellerListing?.finalShippingPrice ?? m.finalShippingPrice ?? null,
       shippingGstPercent: m.shippingGstPercent,
       images: m.images,
       category: m.category,
@@ -1205,10 +1257,13 @@ export class ProductsService {
       isYukiziChoice: m.isYukiziChoice || false,
       isBestSeller: m.isBestSeller || false,
       isAd: m.isAd || false,
+      commissionPercent: m.commissionPercent,
+      fixedFee: m.fixedFee,
+      commissionGstPercent: m.commissionGstPercent,
+      fixedFeeGstPercent: m.fixedFeeGstPercent,
       // Group seller listings
-      listings: (m.productVariants || []).flatMap((v: any) =>
-        (v.sellerOffers || []).map((p: any) => {
-          const batches = p.batches || [];
+      listings: allListings.map((p: any) => {
+        const batches = p.batches || [];
           const stock = batches.reduce(
             (sum: number, b: any) => sum + b.stock,
             0,
@@ -1231,16 +1286,15 @@ export class ProductsService {
             discountType: p.discountType,
             discountMeta: p.discountMeta,
             deliveryText: p.deliveryText,
+            variantName: p.variantName,
             stock,
             expiryDate: batches.length > 0 ? batches[0].expiryDate : null,
             seller: p.seller,
             sellerName: p.seller?.companyName,
             images: p.images?.length > 0 ? p.images : m.images, // Fallback to master images
             moq: p.minimumOrderQuantity || 1,
-            variantName: v.name,
           };
         }),
-      ),
       options: Array.isArray(m.options)
         ? m.options.filter(
             (o: any) =>
@@ -1340,6 +1394,8 @@ export class ProductsService {
           commissionGstPercent: true,
           fixedFeeGstPercent: true,
           shippingGstPercent: true,
+          shippingCharges: true,
+          finalShippingPrice: true,
           images: { select: { url: true }, take: 1 },
         },
         take: 10,
@@ -1364,6 +1420,8 @@ export class ProductsService {
         commissionGstPercent: s.commissionGstPercent,
         fixedFeeGstPercent: s.fixedFeeGstPercent,
         shippingGstPercent: s.shippingGstPercent,
+        shippingCharges: s.shippingCharges,
+        finalShippingPrice: s.finalShippingPrice,
       }));
     }
 
@@ -1472,7 +1530,7 @@ export class ProductsService {
   /**
    * Flatten batches into top-level stock/expiryDate for Phase-1 compatibility.
    */
-  private flattenProduct(product: Record<string, any>) {
+  private flattenProduct(product: Record<string, any>, catalogMatch?: any) {
     const batches = (product.batches ?? []) as Array<{
       stock: number;
       expiryDate: Date;
@@ -1509,14 +1567,27 @@ export class ProductsService {
       batches: _batches,
       images: _images,
       category: _category,
+      subCategory: _subCategory,
       ...rest
     } = product;
+
+    const resolvedCommissionPercent = catalogMatch?.commissionPercent ?? _subCategory?.commissionPercent ?? _category?.commissionPercent ?? undefined;
+    const resolvedFixedFee = catalogMatch?.fixedFee ?? _subCategory?.fixedFee ?? _category?.fixedFee ?? undefined;
+    const resolvedCommissionGstPercent = catalogMatch?.commissionGstPercent ?? _subCategory?.commissionGstPercent ?? _category?.commissionGstPercent ?? undefined;
+    const resolvedFixedFeeGstPercent = catalogMatch?.fixedFeeGstPercent ?? _subCategory?.fixedFeeGstPercent ?? _category?.fixedFeeGstPercent ?? undefined;
+    const resolvedShippingGstPercent = catalogMatch?.shippingGstPercent ?? _subCategory?.shippingGstPercent ?? _category?.shippingGstPercent ?? undefined;
+
     return {
       ...rest,
       category: categoryName,
       images,
       stock: totalStock,
       expiryDate: nearestExpiry,
+      commissionPercent: resolvedCommissionPercent,
+      fixedFee: resolvedFixedFee,
+      commissionGstPercent: resolvedCommissionGstPercent,
+      fixedFeeGstPercent: resolvedFixedFeeGstPercent,
+      shippingGstPercent: resolvedShippingGstPercent,
     };
   }
 

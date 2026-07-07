@@ -3,19 +3,10 @@ import { PrismaClient } from '@prisma/client';
 const prisma = new PrismaClient();
 
 async function main() {
-  const totalCatalog = await prisma.catalogProduct.count();
-  const activeCatalog = await prisma.catalogProduct.count({ where: { isActive: true } });
-  
-  const totalOffers = await prisma.sellerOffer.count();
-  const activeOffers = await prisma.sellerOffer.count({ where: { isActive: true } });
-  const activeApprovedOffers = await prisma.sellerOffer.count({ where: { isActive: true, approvalStatus: 'APPROVED' } });
-
-  console.log(`Total Catalog Products: ${totalCatalog}`);
-  console.log(`Active Catalog Products: ${activeCatalog}`);
-  
-  console.log(`Total Seller Offers: ${totalOffers}`);
-  console.log(`Active Seller Offers: ${activeOffers}`);
-  console.log(`Active & Approved Seller Offers: ${activeApprovedOffers}`);
+  const p = await prisma.catalogProduct.findUnique({
+    where: { id: '79541502-2749-4982-8baf-82d5016da674' },
+  });
+  console.log('Product Naruto 1:', JSON.stringify(p, null, 2));
 }
 
 main().catch(console.error).finally(() => prisma.$disconnect());
