@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { MarkPaidDto } from './dto/mark-paid.dto';
+import { calculateSellerPayout, PayoutInput } from './payout-calculator';
 
 @Injectable()
 export class SettlementsService {
@@ -81,12 +82,12 @@ export class SettlementsService {
     let commissionPaid = 0;
 
     for (const s of settlements) {
-      totalEarnings += s.amount;
-      commissionPaid += s.commission;
+      totalEarnings += Number(s.amount);
+      commissionPaid += Number(s.commission);
       if (s.payoutStatus === 'PAID') {
-        paidPayouts += s.amount;
+        paidPayouts += Number(s.amount);
       } else {
-        pendingPayouts += s.amount;
+        pendingPayouts += Number(s.amount);
       }
     }
 
@@ -130,6 +131,71 @@ export class SettlementsService {
         },
       },
     });
+  }
+
+  // ─── CORE PAYOUT ENGINE ──────────────────────────────
+
+  /**
+   * Calculate and persist a seller settlement record inside a
+   * single Prisma transaction (ACID compliant).
+   *
+   * @param orderItemId - The OrderItem being settled.
+   * @param sellerId    - The SellerProfile.id for the seller.
+   * @param input       - Pricing inputs pulled from SellerOffer & CatalogProduct.
+   * @returns The created SellerSettlement record.
+   */
+  async calculateAndCreateSettlement(
+    orderItemId: string,
+    sellerId: string,
+    input: PayoutInput,
+  ) {
+    // Guard: prevent duplicate settlement for the same order item
+    const existing = await this.prisma.sellerSettlement.findUnique({
+      where: { orderItemId },
+    });
+    if (existing) {
+      this.logger.warn(
+        `Settlement already exists for orderItemId=${orderItemId}. Skipping.`,
+      );
+      return existing;
+    }
+
+    // Run pure decimal calculations (no DB touch, fully unit-testable)
+    const breakdown = calculateSellerPayout(input);
+
+    if (breakdown.status === 'DEFICIT_ESCALATED') {
+      this.logger.warn(
+        `DEFICIT_ESCALATED for orderItemId=${orderItemId}. ` +
+          `Gross=${breakdown.grossAmount}, Deductions=${breakdown.totalDeductions}. ` +
+          `Flagging for manual audit.`,
+      );
+    }
+
+    // Persist inside a transaction so ledger entry and balance update are atomic
+    const [settlement] = await this.prisma.$transaction([
+      this.prisma.sellerSettlement.create({
+        data: {
+          sellerId,
+          orderItemId,
+          amount: breakdown.netPayout.toDecimalPlaces(2).toString(),
+          grossAmount: breakdown.grossAmount.toString(),
+          commission: breakdown.commission.toString(),
+          commissionGst: breakdown.commissionGst.toString(),
+          fixedFee: '0',
+          fixedFeeGst: '0',
+          withholdingTax: '0',
+          netPayout: breakdown.netPayout.toString(),
+          payoutStatus: breakdown.status,
+        },
+      }),
+    ]);
+
+    this.logger.log(
+      `Settlement created for orderItemId=${orderItemId} | ` +
+        `gross=${breakdown.grossAmount} | net=${breakdown.netPayout} | status=${breakdown.status}`,
+    );
+
+    return settlement;
   }
 
   // ─── ADMIN-FACING ─────────────────────────────────────

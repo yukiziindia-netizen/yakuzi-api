@@ -13,6 +13,7 @@ import {
   PaymentVerificationStatus,
   OrderStatus,
 } from '@prisma/client';
+import { calculateSellerPayout } from '../settlements/payout-calculator';
 
 @Injectable()
 export class PaymentsService {
@@ -219,7 +220,24 @@ export class PaymentsService {
       include: {
         order: {
           include: {
-            items: { select: { id: true, sellerId: true, totalPrice: true } },
+            items: {
+              include: {
+                sellerOffer: {
+                  select: { 
+                    id: true, 
+                    name: true, 
+                    category: true,
+                    finalShippingPrice: true,
+                    shippingCharges: true,
+                    variant: {
+                      include: {
+                        catalogProduct: true,
+                      },
+                    },
+                  },
+                },
+              },
+            },
           },
         },
       },
@@ -357,10 +375,7 @@ export class PaymentsService {
   // HELPER: Create seller settlements
   // ──────────────────────────────────────────────
 
-  private async createSettlements(
-    tx: any,
-    items: { id: string; sellerId: string; totalPrice: number }[],
-  ) {
+  private async createSettlements(tx: any, items: any[]) {
     for (const item of items) {
       // Skip if settlement already exists for this order item
       const existing = await tx.sellerSettlement.findUnique({
@@ -368,16 +383,37 @@ export class PaymentsService {
       });
       if (existing) continue;
 
-      const commission = +(item.totalPrice * this.commissionRate).toFixed(2);
-      const sellerAmount = +(item.totalPrice - commission).toFixed(2);
+      const sellerOffer = item.sellerOffer;
+      const catalogProduct = sellerOffer?.variant?.catalogProduct;
+      
+      const baseSellingPrice = item.unitPrice;
+      const quantity = item.quantity;
+      const finalShippingPrice = sellerOffer?.finalShippingPrice ?? sellerOffer?.shippingCharges ?? 0;
+      
+      const commissionPercent = catalogProduct?.commissionPercent ?? 0;
+      const commissionGstPercent = catalogProduct?.commissionGstPercent ?? 18;
+
+      const breakdown = calculateSellerPayout({
+        baseSellingPrice,
+        quantity,
+        finalShippingPrice,
+        commissionPercent,
+        commissionGstPercent,
+      });
 
       await tx.sellerSettlement.create({
         data: {
           sellerId: item.sellerId,
           orderItemId: item.id,
-          amount: sellerAmount,
-          commission,
-          payoutStatus: 'PENDING',
+          amount: breakdown.netPayout.toDecimalPlaces(2).toString(),
+          grossAmount: breakdown.grossAmount.toString(),
+          commission: breakdown.commission.toString(),
+          commissionGst: breakdown.commissionGst.toString(),
+          fixedFee: '0',
+          fixedFeeGst: '0',
+          withholdingTax: '0',
+          netPayout: breakdown.netPayout.toString(),
+          payoutStatus: breakdown.status,
         },
       });
     }

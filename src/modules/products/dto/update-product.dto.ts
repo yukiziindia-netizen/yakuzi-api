@@ -76,6 +76,10 @@ export class UpdateProductDto {
   @IsNumber()
   shippingCharges?: number;
 
+  @IsOptional()
+  @IsNumber()
+  finalShippingPrice?: number;
+
   @ApiPropertyOptional({ example: 10, minimum: 1 })
   @IsInt()
   @Min(1)

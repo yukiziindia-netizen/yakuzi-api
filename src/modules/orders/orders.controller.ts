@@ -166,7 +166,12 @@ export class OrdersController {
   @ApiResponse({ status: 200, description: 'Documents uploaded' })
   async updateAdminShippingDocs(
     @Param('id', ParseUUIDPipe) orderId: string,
-    @Body() dto: { adminShippingLabelUrl?: string; adminInvoiceUrl?: string },
+    @Body() dto: { 
+      adminShippingLabelUrl?: string; 
+      adminInvoiceUrl?: string; 
+      manifestUrl?: string; 
+      invoiceUrl?: string;
+    },
   ) {
     const data = await this.ordersService.updateAdminShippingDocs(orderId, dto);
     return { message: 'Documents uploaded successfully', data };

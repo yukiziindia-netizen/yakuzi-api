@@ -243,7 +243,7 @@ export class SellersService {
         totalOrders,
         pendingOrders,
         totalRevenue: totalRevenue._sum.totalPrice || 0,
-        pendingPayouts: pendingPayouts._sum.amount || 0,
+        pendingPayouts: pendingPayouts._sum.amount ? Number(pendingPayouts._sum.amount) : 0,
         avgRating: seller.rating,
         lowStockItems,
       },

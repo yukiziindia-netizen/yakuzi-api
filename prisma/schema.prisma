@@ -212,6 +212,7 @@ model SellerOffer {
   gstPercent           Float
   isTaxIncluded        Boolean               @default(false)
   shippingCharges      Float                 @default(0)
+  finalShippingPrice   Float?
   minimumOrderQuantity Int                   @default(1)
   maximumOrderQuantity Int?
   isActive             Boolean               @default(false)
@@ -533,9 +534,15 @@ model InventoryAlert {
 model SellerSettlement {
   id              String        @id @default(uuid())
   sellerId        String
-  amount          Float
+  amount          Decimal       @db.Decimal(10, 2)
+  grossAmount     Decimal       @db.Decimal(10, 2)
+  commission      Decimal       @default(0) @db.Decimal(10, 2)
+  commissionGst   Decimal       @db.Decimal(10, 2)
+  fixedFee        Decimal       @db.Decimal(10, 2)
+  fixedFeeGst     Decimal       @db.Decimal(10, 2)
+  withholdingTax  Decimal       @db.Decimal(10, 2)
+  netPayout       Decimal       @db.Decimal(10, 2)
   createdAt       DateTime      @default(now())
-  commission      Float         @default(0)
   orderItemId     String        @unique
   payoutDate      DateTime?
   payoutReference String?
@@ -668,8 +675,8 @@ model CatalogProduct {
   name                 String
   slug                 String?               @unique
   externalId           String?               @unique
-  sku                  String?        @unique
-    serialNo                  String?
+  sku                  String?
+  serialNo             String?
   specifications       String?
   manufacturer         String
   description          String?
@@ -677,6 +684,7 @@ model CatalogProduct {
   gstPercent           Float?
   isTaxIncluded        Boolean               @default(false)
   shippingCharges      Float                 @default(0)
+  finalShippingPrice   Float?
   
   commissionPercent    Float?
   fixedFee             Float?
@@ -823,8 +831,8 @@ model ProductVariant {
   id               String         @id @default(uuid())
   catalogProductId String
   name             String
-  sku              String?        @unique
-    serialNo              String?        @unique
+  sku              String?
+  serialNo         String?
   options          Json
   createdAt        DateTime       @default(now())
   updatedAt        DateTime       @updatedAt

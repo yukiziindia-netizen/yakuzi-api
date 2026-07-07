@@ -141,6 +141,7 @@ export class CartService {
             minimumOrderQuantity: true,
             maximumOrderQuantity: true,
                 shippingCharges: true,
+                finalShippingPrice: true,
 
             variant: {
               select: {
@@ -165,7 +166,7 @@ export class CartService {
     return {
       ...cartItem,
       sellerOffer: await this.formatCartItemOffer(cartItem.sellerOffer),
-      totalPrice: (cartItem.quantity * cartItem.unitPrice) + (cartItem.quantity * (cartItem.sellerOffer.shippingCharges || 0)),
+      totalPrice: (cartItem.quantity * cartItem.unitPrice) + (cartItem.quantity * ((cartItem.sellerOffer.finalShippingPrice ?? cartItem.sellerOffer.shippingCharges) || 0)),
     };
   }
 
@@ -190,6 +191,7 @@ export class CartService {
                 minimumOrderQuantity: true,
                 maximumOrderQuantity: true,
                 shippingCharges: true,
+                finalShippingPrice: true,
 
                 isActive: true,
                 deletedAt: true,
@@ -236,7 +238,7 @@ export class CartService {
         sellerOffer: await this.formatCartItemOffer(item.sellerOffer),
         quantity: item.quantity,
         unitPrice: item.unitPrice,
-        totalPrice: (item.quantity * item.unitPrice) + (item.quantity * (item.sellerOffer.shippingCharges || 0)),
+        totalPrice: (item.quantity * item.unitPrice) + (item.quantity * ((item.sellerOffer.finalShippingPrice ?? item.sellerOffer.shippingCharges) || 0)),
         createdAt: item.createdAt,
         updatedAt: item.updatedAt,
       })),
@@ -330,6 +332,7 @@ export class CartService {
             minimumOrderQuantity: true,
             maximumOrderQuantity: true,
                 shippingCharges: true,
+                finalShippingPrice: true,
 
             variant: {
               select: {
@@ -352,7 +355,7 @@ export class CartService {
     return {
       ...updated,
       sellerOffer: await this.formatCartItemOffer(updated.sellerOffer),
-      totalPrice: (updated.quantity * updated.unitPrice) + (updated.quantity * (updated.sellerOffer.shippingCharges || 0)),
+      totalPrice: (updated.quantity * updated.unitPrice) + (updated.quantity * ((updated.sellerOffer.finalShippingPrice ?? updated.sellerOffer.shippingCharges) || 0)),
     };
   }
 

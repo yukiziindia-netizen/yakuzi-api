@@ -11,6 +11,7 @@ import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
 import { UpdateShippingDetailsDto } from './dto/update-shipping-details.dto';
 import { OrderStatus, Role, PaymentStatus } from '@prisma/client';
 import { ShiprocketService } from './shiprocket.service';
+import { calculateSellerPayout } from '../settlements/payout-calculator';
 
 @Injectable()
 export class OrdersService {
@@ -84,7 +85,7 @@ export class OrdersService {
 
     // 3. Calculate total amount
     const totalAmount = cart.items.reduce(
-      (sum, item) => sum + (item.quantity * item.unitPrice) + (item.quantity * (item.sellerOffer.shippingCharges || 0)),
+      (sum, item) => sum + (item.quantity * item.unitPrice) + (item.quantity * ((item.sellerOffer.finalShippingPrice ?? item.sellerOffer.shippingCharges) || 0)),
       0,
     );
 
@@ -325,6 +326,7 @@ export class OrdersService {
                 mrp: true,
                 gstPercent: true,
                 shippingCharges: true,
+                finalShippingPrice: true,
                 variant: {
                   select: {
                     name: true,
@@ -679,6 +681,8 @@ export class OrdersService {
                 id: true, 
                 name: true, 
                 category: true,
+                finalShippingPrice: true,
+                shippingCharges: true,
                 variant: {
                   include: {
                     catalogProduct: true,
@@ -697,36 +701,48 @@ export class OrdersService {
       updated.orderStatus === OrderStatus.DELIVERED &&
       updated.paymentStatus === PaymentStatus.SUCCESS
     ) {
+      await this.prisma.$transaction(async (tx) => {
         for (const item of updated.items) {
-          const existing = await this.prisma.sellerSettlement.findUnique({
+          const existing = await tx.sellerSettlement.findUnique({
             where: { orderItemId: item.id },
           });
-            if (!existing) {
-              const catalogProduct = (item.sellerOffer as any)?.variant?.catalogProduct;
-              
-              const commissionPercent = catalogProduct?.commissionPercent ?? 0;
-              const fixedFee = catalogProduct?.fixedFee ?? 0;
-              const commissionGstPercent = catalogProduct?.commissionGstPercent ?? 18;
-              const fixedFeeGstPercent = catalogProduct?.fixedFeeGstPercent ?? 18;
+          if (!existing) {
+            const sellerOffer = item.sellerOffer;
+            const catalogProduct = sellerOffer?.variant?.catalogProduct;
+            
+            const baseSellingPrice = item.unitPrice;
+            const quantity = item.quantity;
+            const finalShippingPrice = sellerOffer?.finalShippingPrice ?? sellerOffer?.shippingCharges ?? 0;
+            
+            const commissionPercent = catalogProduct?.commissionPercent ?? 0;
+            const commissionGstPercent = catalogProduct?.commissionGstPercent ?? 18;
 
-            const commissionAmount = +(item.totalPrice * (commissionPercent / 100)).toFixed(2);
-            const commissionGst = +(commissionAmount * (commissionGstPercent / 100)).toFixed(2);
-            const fixedFeeGst = +(fixedFee * (fixedFeeGstPercent / 100)).toFixed(2);
+            const breakdown = calculateSellerPayout({
+              baseSellingPrice,
+              quantity,
+              finalShippingPrice,
+              commissionPercent,
+              commissionGstPercent,
+            });
 
-            const totalPlatformFees = commissionAmount + commissionGst + fixedFee + fixedFeeGst;
-            const sellerPayout = +(item.totalPrice - totalPlatformFees).toFixed(2);
-
-            await this.prisma.sellerSettlement.create({
+            await tx.sellerSettlement.create({
               data: {
                 sellerId: item.sellerId,
                 orderItemId: item.id,
-                amount: sellerPayout,
-                commission: commissionAmount,
-                payoutStatus: 'PENDING',
+                amount: breakdown.netPayout.toDecimalPlaces(2).toString(),
+                grossAmount: breakdown.grossAmount.toString(),
+                commission: breakdown.commission.toString(),
+                commissionGst: breakdown.commissionGst.toString(),
+                fixedFee: '0',
+                fixedFeeGst: '0',
+                withholdingTax: '0',
+                netPayout: breakdown.netPayout.toString(),
+                payoutStatus: breakdown.status,
               },
             });
           }
         }
+      });
     }
 
     this.logger.log(
@@ -790,7 +806,12 @@ export class OrdersService {
   // ──────────────────────────────────────────────
   async updateAdminShippingDocs(
     orderId: string,
-    dto: { adminShippingLabelUrl?: string; adminInvoiceUrl?: string },
+    dto: { 
+      adminShippingLabelUrl?: string; 
+      adminInvoiceUrl?: string;
+      manifestUrl?: string;
+      invoiceUrl?: string;
+    },
   ) {
     const order = await this.prisma.order.findUnique({
       where: { id: orderId },

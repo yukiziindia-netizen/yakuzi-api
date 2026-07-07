@@ -90,6 +90,11 @@ export class UpdateSuggestionDto {
   @IsOptional()
   shippingCharges?: number | null;
 
+  @ApiPropertyOptional({ example: 50.0 })
+  @IsNumber()
+  @IsOptional()
+  finalShippingPrice?: number | null;
+
   @ApiPropertyOptional({ example: 5.0 })
   @IsNumber()
   @IsOptional()
