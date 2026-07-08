@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { MarkPaidDto } from './dto/mark-paid.dto';
-import { calculateSellerPayout, PayoutInput } from './payout-calculator';
+import { calculateSellerPayout, PayoutInput, buildPayoutInputFromOrderItem } from './payout-calculator';
 
 @Injectable()
 export class SettlementsService {
@@ -57,7 +57,60 @@ export class SettlementsService {
       },
     });
 
-    return settlements;
+    const pendingWhere: import('@prisma/client').Prisma.OrderItemWhereInput = {
+      sellerId: seller.id,
+      order: { orderStatus: { not: 'CANCELLED' } },
+      settlement: null,
+    };
+    if (dateFrom || dateTo) {
+      pendingWhere.createdAt = {};
+      if (dateFrom) pendingWhere.createdAt.gte = new Date(dateFrom);
+      if (dateTo) pendingWhere.createdAt.lte = new Date(dateTo);
+    }
+
+    const pendingItems = await this.prisma.orderItem.findMany({
+      where: pendingWhere,
+      include: {
+        sellerOffer: { include: { catalogProduct: true } },
+      },
+    });
+
+    const projectedSettlements = pendingItems.map(item => {
+      const input = buildPayoutInputFromOrderItem(item);
+      const breakdown = calculateSellerPayout(input);
+
+      return {
+        id: `projected-${item.id}`,
+        sellerId: seller.id,
+        orderItemId: item.id,
+        amount: breakdown.netPayout.toString(),
+        grossAmount: breakdown.grossAmount.toString(),
+        commission: breakdown.commission.toString(),
+        commissionGst: breakdown.commissionGst.toString(),
+        fixedFee: '0',
+        fixedFeeGst: '0',
+        withholdingTax: '0',
+        netPayout: breakdown.netPayout.toString(),
+        payoutStatus: 'PROJECTED',
+        createdAt: item.createdAt,
+        updatedAt: item.createdAt,
+        payoutReference: null,
+        payoutDate: null,
+        orderItem: {
+          id: item.id,
+          orderId: item.orderId,
+          quantity: item.quantity,
+          totalPrice: item.totalPrice,
+          sellerOffer: {
+            id: item.sellerOffer?.id,
+            name: item.sellerOffer?.name,
+          },
+        },
+      };
+    });
+
+    const combined = [...projectedSettlements, ...settlements] as any[];
+    return combined.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
   }
 
   /**
@@ -89,6 +142,27 @@ export class SettlementsService {
       } else {
         pendingPayouts += Number(s.amount);
       }
+    }
+
+    // PROJECTED SETTLEMENTS: Fetch pending active order items that don't have a settlement
+    const pendingItems = await this.prisma.orderItem.findMany({
+      where: {
+        sellerId: seller.id,
+        order: { orderStatus: { not: 'CANCELLED' } },
+        settlement: null,
+      },
+      include: {
+        sellerOffer: {
+          include: { catalogProduct: true },
+        },
+      },
+    });
+
+    for (const item of pendingItems) {
+      const input = buildPayoutInputFromOrderItem(item);
+      const breakdown = calculateSellerPayout(input);
+      // Add to pendingPayouts, but not totalEarnings (which is for generated settlements)
+      pendingPayouts += breakdown.netPayout.toNumber();
     }
 
     return {
@@ -205,11 +279,11 @@ export class SettlementsService {
    */
   async getAllSettlements(status?: string) {
     const where: any = {};
-    if (status) {
+    if (status && status !== 'PROJECTED') {
       where.payoutStatus = status;
     }
 
-    return this.prisma.sellerSettlement.findMany({
+    const settlements = await this.prisma.sellerSettlement.findMany({
       where,
       orderBy: { createdAt: 'desc' },
       include: {
@@ -225,6 +299,58 @@ export class SettlementsService {
         },
       },
     });
+
+    if (status && status !== 'PROJECTED' && status !== 'PENDING') {
+      return settlements;
+    }
+
+    const pendingItems = await this.prisma.orderItem.findMany({
+      where: {
+        order: { orderStatus: { not: 'CANCELLED' } },
+        settlement: null,
+      },
+      include: {
+        seller: { select: { id: true, companyName: true, userId: true } },
+        sellerOffer: { include: { catalogProduct: true } },
+      },
+    });
+
+    const projectedSettlements = pendingItems.map(item => {
+      const input = buildPayoutInputFromOrderItem(item);
+      const breakdown = calculateSellerPayout(input);
+
+      return {
+        id: `projected-${item.id}`,
+        sellerId: item.sellerId,
+        seller: item.seller,
+        orderItemId: item.id,
+        amount: breakdown.netPayout.toString(),
+        grossAmount: breakdown.grossAmount.toString(),
+        commission: breakdown.commission.toString(),
+        commissionGst: breakdown.commissionGst.toString(),
+        fixedFee: '0',
+        fixedFeeGst: '0',
+        withholdingTax: '0',
+        netPayout: breakdown.netPayout.toString(),
+        payoutStatus: 'PROJECTED',
+        createdAt: item.createdAt,
+        updatedAt: item.createdAt,
+        payoutReference: null,
+        payoutDate: null,
+        orderItem: {
+          orderId: item.orderId,
+          totalPrice: item.totalPrice,
+          sellerOffer: { id: item.sellerOffer?.id, name: item.sellerOffer?.name },
+        },
+      };
+    });
+
+    if (status === 'PROJECTED') {
+      return projectedSettlements.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+    }
+
+    const combined = [...projectedSettlements, ...settlements] as any[];
+    return combined.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
   }
 
   /**

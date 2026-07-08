@@ -76,3 +76,28 @@ export function calculateSellerPayout(input: PayoutInput): PayoutBreakdown {
   };
 }
 
+/**
+ * Helper to build PayoutInput from an OrderItem and its nested relations.
+ * Requires orderItem.sellerOffer and orderItem.catalogProduct to be populated.
+ */
+export function buildPayoutInputFromOrderItem(orderItem: any): PayoutInput {
+  const offer = orderItem.sellerOffer || {};
+  const product = orderItem.catalogProduct || offer.catalogProduct || {};
+
+  // For base selling price, orderItem.price might be the exact selling price at the time of order.
+  // If not present, fallback to mrp - discount
+  const baseSellingPrice =
+    orderItem.price ?? (offer.mrp ? offer.mrp - (offer.discount || 0) : 0);
+
+  const finalShippingPrice =
+    offer.finalShippingPrice ?? offer.shippingCharges ?? 0;
+
+  return {
+    baseSellingPrice: Number(baseSellingPrice),
+    quantity: Number(orderItem.quantity || 1),
+    finalShippingPrice: Number(finalShippingPrice),
+    commissionPercent: Number(product.commissionPercent || 0),
+    commissionGstPercent: Number(product.commissionGstPercent || 18),
+  };
+}
+

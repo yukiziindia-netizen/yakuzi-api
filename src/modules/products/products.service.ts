@@ -1094,62 +1094,47 @@ export class ProductsService {
     return this.formatMasterDetail(master);
   }
 
-  private calculateSellingPrice(
+  private calculateFinalCustomerPayable(
     mrp: number,
-    gstPercent: number,
+    finalShipping: number,
     discountType: string | null,
     discountMeta: any,
   ): number {
-    const gst = gstPercent || 0;
+    const grossTotal = mrp + finalShipping;
+    let discountPercent = 0;
 
-    // If no discountType — use simple formula: MRP - discount% + GST
-    if (!discountType) {
-      const simpleDiscount = discountMeta?.discountPercent ?? 0;
-      const discountedPrice = Math.round((mrp - (mrp * simpleDiscount) / 100) * 100) / 100;
-      const gstValue = Math.round(((discountedPrice * gst) / 100) * 100) / 100;
-      return Math.round((discountedPrice + gstValue) * 100) / 100;
-    }
-
-    // PTR-based pricing (complex discount engine for discountType cases)
-    const margins: Record<number, number> = {
-      0: 18.12,
-      5: 23.81,
-      12: 28.67,
-      18: 32.2,
-    };
-    const retailMargin = margins[gst] || 0;
-    const ptr = Math.round((mrp - (mrp * retailMargin) / 100) * 100) / 100;
-
-    let finalPtr = ptr;
+    const type = discountType || (discountMeta?.discountPercent ? 'PTR_DISCOUNT' : 'none');
 
     if (
-      discountType === 'PTR_DISCOUNT' ||
-      discountType === 'PTR_PLUS_SAME_PRODUCT_BONUS' ||
-      discountType === 'PTR_PLUS_DIFFERENT_PRODUCT_BONUS'
+      type === 'PTR_DISCOUNT' ||
+      type === 'PTR_PLUS_SAME_PRODUCT_BONUS' ||
+      type === 'PTR_PLUS_DIFFERENT_PRODUCT_BONUS'
     ) {
-      const discountPercent = discountMeta?.discountPercent ?? 0;
-      finalPtr = Math.round((ptr - (ptr * discountPercent) / 100) * 100) / 100;
-    } else if (discountType === 'SPECIAL_PRICE') {
-      finalPtr = discountMeta?.specialPrice ?? ptr;
+      discountPercent = discountMeta?.discountPercent ?? 0;
+    } else if (type === 'SPECIAL_PRICE') {
+      const specialPrice = discountMeta?.specialPrice ?? mrp;
+      return specialPrice + finalShipping;
     }
 
-    const gstValue = Math.round(((finalPtr * gst) / 100) * 100) / 100;
-    return Math.round((finalPtr + gstValue) * 100) / 100;
+    const discountAmount = Math.round((grossTotal * discountPercent) / 100);
+    return grossTotal - discountAmount;
   }
 
   private getBestOffer(m: any) {
-    const listings = (m.productVariants || []).flatMap(
+    const directListings = m.sellerOffers || [];
+    const variantListings = (m.productVariants || []).flatMap(
       (v: any) => v.sellerOffers || [],
     );
+    const listings = [...directListings, ...variantListings];
     if (listings.length === 0) return null;
 
     let bestOffer: any = null;
     let minSellingPrice = Infinity;
 
     for (const l of listings) {
-      const sellingPrice = this.calculateSellingPrice(
+      const sellingPrice = this.calculateFinalCustomerPayable(
         l.mrp,
-        l.gstPercent,
+        l.finalShippingPrice || 0,
         l.discountType,
         l.discountMeta,
       );
@@ -1166,9 +1151,11 @@ export class ProductsService {
   }
 
   private mapMasterToGrid(m: any) {
-    const listings = (m.productVariants || []).flatMap(
+    const directListings = m.sellerOffers || [];
+    const variantListings = (m.productVariants || []).flatMap(
       (v: any) => v.sellerOffers || [],
     );
+    const listings = [...directListings, ...variantListings];
     const bestOffer = this.getBestOffer(m);
     const minPrice =
       listings.length > 0
@@ -1194,9 +1181,11 @@ export class ProductsService {
 
       mrp: bestOffer ? bestOffer.mrp : m.mrp,
       price: bestOffer ? bestOffer.sellingPrice : null,
+      shippingCharges: bestOffer ? (bestOffer.shippingCharges || 0) : (m.shippingCharges || 0),
+      finalShippingPrice: bestOffer ? (bestOffer.finalShippingPrice || 0) : (m.finalShippingPrice || 0),
       discountType: bestOffer ? bestOffer.discountType : null,
       discountMeta: bestOffer ? bestOffer.discountMeta : null,
-      gstPercent: bestOffer ? bestOffer.gstPercent : null,
+      gstPercent: bestOffer ? bestOffer.gstPercent : m.gstPercent,
 
       moq: minMoq,
       bestListingId,
@@ -1236,14 +1225,14 @@ export class ProductsService {
       specifications: sellerListing?.specifications || m.specifications || '',
       description: m.description,
       mrp: sellerListing?.mrp || m.mrp,
-      price: bestListing ? bestListing.mrp : m.mrp,
+      price: bestListing ? this.calculateFinalCustomerPayable(bestListing.mrp, bestListing.finalShippingPrice || 0, bestListing.discountType, bestListing.discountMeta) : m.mrp,
       discountType: sellerListing?.discountType || bestListing?.discountType || null,
       discountMeta: sellerListing?.discountMeta || bestListing?.discountMeta || null,
       deliveryText: sellerListing?.deliveryText || bestListing?.deliveryText || null,
       gstPercent: sellerListing?.gstPercent ?? m.gstPercent,
       isTaxIncluded: sellerListing?.isTaxIncluded ?? false,
-      shippingCharges: sellerListing?.shippingCharges ?? m.shippingCharges ?? 0,
-      finalShippingPrice: sellerListing?.finalShippingPrice ?? m.finalShippingPrice ?? null,
+      shippingCharges: sellerListing?.shippingCharges ?? bestListing?.shippingCharges ?? m.shippingCharges ?? 0,
+      finalShippingPrice: sellerListing?.finalShippingPrice ?? bestListing?.finalShippingPrice ?? m.finalShippingPrice ?? null,
       shippingGstPercent: m.shippingGstPercent,
       images: m.images,
       category: m.category,
@@ -1268,18 +1257,12 @@ export class ProductsService {
             (sum: number, b: any) => sum + b.stock,
             0,
           );
-          const sellingPrice = this.calculateSellingPrice(
-            p.mrp,
-            p.gstPercent,
-            p.discountType,
-            p.discountMeta,
-          );
           const shipping = p.shippingCharges || 0;
           const finalShipping = p.finalShippingPrice || 0;
           return {
             id: p.id,
-            price: Math.round((sellingPrice + finalShipping) * 100) / 100,
-            basePrice: sellingPrice,
+            price: this.calculateFinalCustomerPayable(p.mrp, finalShipping, p.discountType, p.discountMeta),
+            basePrice: this.calculateFinalCustomerPayable(p.mrp, finalShipping, p.discountType, p.discountMeta),
             shippingCharges: shipping,
             finalShippingPrice: finalShipping,
             mrp: p.mrp,
@@ -1554,9 +1537,9 @@ export class ProductsService {
     let mrp = product.mrp;
 
     if (product.discountType !== undefined && !product.productVariants) {
-      price = this.calculateSellingPrice(
+      price = this.calculateFinalCustomerPayable(
         product.mrp,
-        product.gstPercent || 0,
+        product.finalShippingPrice || 0,
         product.discountType,
         product.discountMeta,
       );
