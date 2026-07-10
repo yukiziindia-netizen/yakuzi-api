@@ -56,7 +56,7 @@ export class PaymentsService {
 
     // 3. Compute remaining balance dynamically
     const confirmedTotal = await this.getConfirmedTotal(orderId);
-    const remaining = order.totalAmount - confirmedTotal;
+    const remaining = order.totalAmount.toNumber() - confirmedTotal;
 
     if (remaining <= 0) {
       throw new BadRequestException('Order is already fully paid');
@@ -195,16 +195,16 @@ export class PaymentsService {
     });
 
     const confirmedTotal = await this.getConfirmedTotal(orderId);
-    const remaining = Math.max(0, order.totalAmount - confirmedTotal);
+    const remaining = Math.max(0, order.totalAmount.toNumber() - confirmedTotal);
 
     return {
       orderId,
-      totalAmount: order.totalAmount,
+      totalAmount: order.totalAmount.toNumber(),
       totalPaid: confirmedTotal,
       remaining,
       paymentStatus: this.computePaymentStatus(
         confirmedTotal,
-        order.totalAmount,
+        order.totalAmount.toNumber(),
       ),
       payments,
     };
@@ -271,10 +271,10 @@ export class PaymentsService {
         },
       });
 
-      const totalPaid = confirmedPayments.reduce((sum, p) => sum + p.amount, 0);
+      const totalPaid = confirmedPayments.reduce((sum, p) => sum + p.amount.toNumber(), 0);
       const newStatus = this.computePaymentStatus(
         totalPaid,
-        payment.order.totalAmount,
+        payment.order.totalAmount.toNumber(),
       );
 
       const isInitialStatus =
@@ -309,7 +309,7 @@ export class PaymentsService {
       payment: result.confirmed,
       orderPaymentStatus: result.newStatus,
       totalPaid: result.totalPaid,
-      totalAmount: payment.order.totalAmount,
+      totalAmount: payment.order.totalAmount.toNumber(),
     };
   }
 
@@ -355,7 +355,7 @@ export class PaymentsService {
       },
       _sum: { amount: true },
     });
-    return result._sum.amount ?? 0;
+    return result._sum.amount?.toNumber() ?? 0;
   }
 
   // ──────────────────────────────────────────────

@@ -84,38 +84,38 @@ model BuyerProfile {
 }
 
 model SellerProfile {
-  id                 String             @id @default(uuid())
-  userId             String             @unique
-  companyName        String
-  gstNumber          String?
-  panNumber          String?
-  aadhaarNumber      String?
-  drugLicenseNumber  String
-  drugLicenseUrl     String
-  address            String
-  city               String
-  state              String
-  pincode            String
-  isVacation         Boolean            @default(false)
-  rating             Float              @default(0)
-  verificationStatus VerificationStatus @default(UNVERIFIED)
-  createdAt          DateTime           @default(now())
-  updatedAt          DateTime           @updatedAt
-  creditTier         CreditTier?
-  gstPanResponse     Json?
-  email              String?
-  fssaiNumber        String?
-  bankAccount        Json?
-  cancelCheck        String?
+  id                  String             @id @default(uuid())
+  userId              String             @unique
+  companyName         String
+  gstNumber           String?
+  panNumber           String?
+  aadhaarNumber       String?
+  drugLicenseNumber   String
+  drugLicenseUrl      String
+  address             String
+  city                String
+  state               String
+  pincode             String
+  isVacation          Boolean            @default(false)
+  rating              Float              @default(0)
+  verificationStatus  VerificationStatus @default(UNVERIFIED)
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+  creditTier          CreditTier?
+  gstPanResponse      Json?
+  email               String?
+  fssaiNumber         String?
+  bankAccount         Json?
+  cancelCheck         String?
   additionalDocuments String[]
-  drugLicenseNumber2 String?
-  drugLicenseUrl2    String?
-  drugLicenseExpiry  DateTime?
-  drugLicenseExpiry2 DateTime?
-  orderItems         OrderItem[]
-  sellerOffers       SellerOffer[]
-  user               User               @relation(fields: [userId], references: [id], onDelete: Cascade)
-  settlements        SellerSettlement[]
+  drugLicenseNumber2  String?
+  drugLicenseUrl2     String?
+  drugLicenseExpiry   DateTime?
+  drugLicenseExpiry2  DateTime?
+  orderItems          OrderItem[]
+  sellerOffers        SellerOffer[]
+  user                User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  settlements         SellerSettlement[]
 
   @@index([city])
   @@index([state])
@@ -165,34 +165,34 @@ model Banner {
 }
 
 model Category {
-  id             String           @id @default(uuid())
-  name           String           @unique
-  slug           String           @unique
-  image          String?
-  createdAt      DateTime         @default(now())
-  masterProducts CatalogProduct[]
-  sellerOffers   SellerOffer[]
+  id                   String           @id @default(uuid())
+  name                 String           @unique
+  slug                 String           @unique
+  image                String?
+  createdAt            DateTime         @default(now())
+  masterProducts       CatalogProduct[]
+  sellerOffers         SellerOffer[]
   subCategories        SubCategory[]
-  commissionPercent    Float?
-  fixedFee             Float?
-  commissionGstPercent Float?
+  commissionPercent    Decimal?         @db.Decimal(10, 2)
+  fixedFee             Decimal?         @db.Decimal(10, 2)
+  commissionGstPercent Decimal?         @db.Decimal(10, 2)
 
   @@map("categories")
 }
 
 model SubCategory {
-  id              String           @id @default(uuid())
-  name            String
-  slug            String
-  categoryId      String
-  createdAt       DateTime         @default(now())
-  masterProducts  CatalogProduct[]
+  id                   String           @id @default(uuid())
+  name                 String
+  slug                 String
+  categoryId           String
+  createdAt            DateTime         @default(now())
+  masterProducts       CatalogProduct[]
   sellerOffers         SellerOffer[]
-  commissionPercent    Float?
-  fixedFee             Float?
-  commissionGstPercent Float?
-  category        Category         @relation(fields: [categoryId], references: [id], onDelete: Cascade)
-  thirdCategories ThirdCategory[]
+  commissionPercent    Decimal?         @db.Decimal(10, 2)
+  fixedFee             Decimal?         @db.Decimal(10, 2)
+  commissionGstPercent Decimal?         @db.Decimal(10, 2)
+  category             Category         @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  thirdCategories      ThirdCategory[]
 
   @@unique([slug, categoryId])
   @@index([categoryId])
@@ -200,22 +200,23 @@ model SubCategory {
 }
 
 model SellerOffer {
-  id                   String                @id @default(uuid())
-  sellerId             String
-  categoryId           String
-  subCategoryId        String
-  name                 String
-  manufacturer         String
-  sku                  String?
-  serialNo             String?
-  specifications       String?
+  id             String  @id @default(uuid())
+  sellerId       String
+  categoryId     String
+  subCategoryId  String
+  name           String
+  manufacturer   String
+  sku            String?
+  serialNo       String?
+  specifications String?
 
   description          String?
-  mrp                  Float
-  gstPercent           Float
+  mrp                  Decimal               @db.Decimal(10, 2)
+  gstPercent           Decimal               @db.Decimal(10, 2)
   isTaxIncluded        Boolean               @default(false)
-  shippingCharges      Float                 @default(0)
-  finalShippingPrice   Float?
+  shippingCharges      Decimal               @default(0) @db.Decimal(10, 2)
+  finalShippingPrice   Decimal?              @db.Decimal(10, 2)
+  finalCustomerPayable Decimal?              @db.Decimal(10, 2)
   minimumOrderQuantity Int                   @default(1)
   maximumOrderQuantity Int?
   isActive             Boolean               @default(false)
@@ -278,7 +279,7 @@ model CartItem {
   cartId        String
   sellerOfferId String
   quantity      Int
-  unitPrice     Float
+  unitPrice     Decimal     @db.Decimal(10, 2)
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
   cart          Cart        @relation(fields: [cartId], references: [id], onDelete: Cascade)
@@ -291,14 +292,14 @@ model CartItem {
 }
 
 model Order {
-  id             String        @id @default(uuid())
-  buyerId        String
-  totalAmount    Float
-  orderStatus    OrderStatus   @default(PLACED)
-  paymentStatus  PaymentStatus @default(PENDING)
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
-  legacyId       String?       @unique
+  id                String        @id @default(uuid())
+  buyerId           String
+  totalAmount       Decimal       @db.Decimal(10, 2)
+  orderStatus       OrderStatus   @default(PLACED)
+  paymentStatus     PaymentStatus @default(PENDING)
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+  legacyId          String?       @unique
   referralCodeId    String?
   shiprocketOrderId String?
   shipmentId        String?
@@ -311,16 +312,16 @@ model Order {
   payments          Payment[]
 
   // Shipping dimensions
-  packageLength     Float?
-  packageBreadth    Float?
-  packageHeight     Float?
-  packageWeight     Float?
+  packageLength  Float?
+  packageBreadth Float?
+  packageHeight  Float?
+  packageWeight  Float?
 
   // Dimension images
-  lengthImage       String?
-  breadthImage      String?
-  heightImage       String?
-  weightImage       String?
+  lengthImage  String?
+  breadthImage String?
+  heightImage  String?
+  weightImage  String?
 
   // Shipping documents
   invoiceUrl            String?
@@ -341,8 +342,8 @@ model OrderItem {
   sellerOfferId String
   sellerId      String
   quantity      Int
-  unitPrice     Float
-  totalPrice    Float
+  unitPrice     Decimal           @db.Decimal(10, 2)
+  totalPrice    Decimal           @db.Decimal(10, 2)
   createdAt     DateTime          @default(now())
   legacyId      String?           @unique
   order         Order             @relation(fields: [orderId], references: [id], onDelete: Cascade)
@@ -359,7 +360,7 @@ model OrderItem {
 model Payment {
   id                 String                    @id @default(uuid())
   orderId            String
-  amount             Float
+  amount             Decimal                   @db.Decimal(10, 2)
   createdAt          DateTime                  @default(now())
   updatedAt          DateTime                  @updatedAt
   legacyId           String?                   @unique
@@ -481,18 +482,18 @@ model ProductBatch {
 }
 
 model ProductSearchIndex {
-  id                  String         @id @default(uuid())
-  catalogProductId    String         @unique
-  name                String
-  manufacturer        String
+  id               String @id @default(uuid())
+  catalogProductId String @unique
+  name             String
+  manufacturer     String
 
-  categoryName        String
-  subCategoryName     String
-  searchVector        String
-  createdAt           DateTime       @default(now())
-  updatedAt           DateTime       @updatedAt
-  catalogProduct      CatalogProduct @relation(fields: [catalogProductId], references: [id], onDelete: Cascade)
-  sellerOffers        SellerOffer[]
+  categoryName    String
+  subCategoryName String
+  searchVector    String
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  catalogProduct  CatalogProduct @relation(fields: [catalogProductId], references: [id], onDelete: Cascade)
+  sellerOffers    SellerOffer[]
 
   @@index([name])
   @@index([manufacturer])
@@ -676,26 +677,26 @@ model MigrationIdMap {
 }
 
 model CatalogProduct {
-  id                   String                @id @default(uuid())
-  name                 String
-  slug                 String?               @unique
-  externalId           String?               @unique
-  sku                  String?
-  serialNo             String?
-  specifications       String?
-  manufacturer         String
-  description          String?
-  mrp                  Float?
-  gstPercent           Float?
-  isTaxIncluded        Boolean               @default(false)
-  shippingCharges      Float                 @default(0)
-  finalShippingPrice   Float?
-  
-  commissionPercent    Float?
-  fixedFee             Float?
-  commissionGstPercent Float?
-  fixedFeeGstPercent   Float?
-  shippingGstPercent   Float?
+  id                 String   @id @default(uuid())
+  name               String
+  slug               String?  @unique
+  externalId         String?  @unique
+  sku                String?
+  serialNo           String?
+  specifications     String?
+  manufacturer       String
+  description        String?
+  mrp                Decimal? @db.Decimal(10, 2)
+  gstPercent         Decimal? @db.Decimal(10, 2)
+  isTaxIncluded      Boolean  @default(false)
+  shippingCharges    Decimal  @default(0) @db.Decimal(10, 2)
+  finalShippingPrice Decimal? @db.Decimal(10, 2)
+
+  commissionPercent    Decimal? @db.Decimal(10, 2)
+  fixedFee             Decimal? @db.Decimal(10, 2)
+  commissionGstPercent Decimal? @db.Decimal(10, 2)
+  fixedFeeGstPercent   Decimal? @db.Decimal(10, 2)
+  shippingGstPercent   Decimal? @db.Decimal(10, 2)
 
   categoryId           String
   subCategoryId        String
@@ -1003,11 +1004,11 @@ enum ProductRequestStatus {
 }
 
 model ProductWaitlist {
-  id               String         @id @default(uuid())
+  id               String   @id @default(uuid())
   userId           String
   catalogProductId String
-  createdAt        DateTime       @default(now())
-  isNotified       Boolean        @default(false)
+  createdAt        DateTime @default(now())
+  isNotified       Boolean  @default(false)
 
   user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
   catalogProduct CatalogProduct @relation(fields: [catalogProductId], references: [id], onDelete: Cascade)

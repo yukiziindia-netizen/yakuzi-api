@@ -47,7 +47,7 @@ export class CartService {
                     orderBy: { expiryDate: 'asc' },
                   },
                 },
-                orderBy: { mrp: 'asc' },
+                orderBy: { finalCustomerPayable: 'asc' },
               },
             },
           },
@@ -59,7 +59,7 @@ export class CartService {
         );
         if (offers.length > 0) {
           sellerOffer = offers.reduce((prev: any, curr: any) =>
-            prev.mrp < curr.mrp ? prev : curr,
+            (prev.finalCustomerPayable ?? prev.mrp) < (curr.finalCustomerPayable ?? curr.mrp) ? prev : curr,
           );
           sellerOfferId = sellerOffer!.id;
         }
@@ -120,8 +120,8 @@ export class CartService {
       );
     }
 
-    // 8. Snapshot the unit price (MRP)
-    const unitPrice = sellerOffer.mrp;
+    // 8. Snapshot the unit price (MRP or finalCustomerPayable)
+    const unitPrice = sellerOffer.finalCustomerPayable ?? sellerOffer.mrp;
 
     // 9. Create cart item
     const cartItem = await this.prisma.cartItem.create({
@@ -138,6 +138,7 @@ export class CartService {
             name: true,
             manufacturer: true,
             mrp: true,
+                finalCustomerPayable: true,
             minimumOrderQuantity: true,
             maximumOrderQuantity: true,
                 shippingCharges: true,
@@ -166,7 +167,7 @@ export class CartService {
     return {
       ...cartItem,
       sellerOffer: await this.formatCartItemOffer(cartItem.sellerOffer),
-      totalPrice: (cartItem.quantity * cartItem.unitPrice) + (cartItem.quantity * ((cartItem.sellerOffer.finalShippingPrice ?? cartItem.sellerOffer.shippingCharges) || 0)),
+      totalPrice: (cartItem.quantity * Number(cartItem.unitPrice)) + (cartItem.quantity * (Number(cartItem.sellerOffer.finalShippingPrice ?? cartItem.sellerOffer.shippingCharges) || 0)),
     };
   }
 
@@ -187,6 +188,7 @@ export class CartService {
                 manufacturer: true,
 
                 mrp: true,
+                finalCustomerPayable: true,
                 gstPercent: true,
                 minimumOrderQuantity: true,
                 maximumOrderQuantity: true,
@@ -238,7 +240,7 @@ export class CartService {
         sellerOffer: await this.formatCartItemOffer(item.sellerOffer),
         quantity: item.quantity,
         unitPrice: item.unitPrice,
-        totalPrice: (item.quantity * item.unitPrice) + (item.quantity * ((item.sellerOffer.finalShippingPrice ?? item.sellerOffer.shippingCharges) || 0)),
+        totalPrice: (item.quantity * Number(item.unitPrice)) + (item.quantity * (Number(item.sellerOffer.finalShippingPrice ?? item.sellerOffer.shippingCharges) || 0)),
         createdAt: item.createdAt,
         updatedAt: item.updatedAt,
       })),
@@ -329,7 +331,8 @@ export class CartService {
             name: true,
             manufacturer: true,
             mrp: true,
-            minimumOrderQuantity: true,
+                finalCustomerPayable: true,
+minimumOrderQuantity: true,
             maximumOrderQuantity: true,
                 shippingCharges: true,
                 finalShippingPrice: true,
@@ -355,7 +358,7 @@ export class CartService {
     return {
       ...updated,
       sellerOffer: await this.formatCartItemOffer(updated.sellerOffer),
-      totalPrice: (updated.quantity * updated.unitPrice) + (updated.quantity * ((updated.sellerOffer.finalShippingPrice ?? updated.sellerOffer.shippingCharges) || 0)),
+      totalPrice: (updated.quantity * Number(updated.unitPrice)) + (updated.quantity * (Number(updated.sellerOffer.finalShippingPrice ?? updated.sellerOffer.shippingCharges) || 0)),
     };
   }
 

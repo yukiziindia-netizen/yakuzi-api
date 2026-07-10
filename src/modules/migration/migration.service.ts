@@ -804,10 +804,10 @@ export class MigrationService {
         _sum: { amount: true },
       });
 
-      const totalPaid = confirmedPayments._sum.amount ?? 0;
+      const totalPaid = confirmedPayments._sum.amount?.toNumber() ?? 0;
       let newStatus: PaymentStatus;
 
-      if (totalPaid >= order.totalAmount) {
+      if (totalPaid >= order.totalAmount.toNumber()) {
         newStatus = PaymentStatus.SUCCESS;
       } else if (totalPaid > 0) {
         newStatus = PaymentStatus.PARTIAL;
@@ -1008,13 +1008,13 @@ export class MigrationService {
         select: { totalAmount: true },
       });
       if (migratedOrder) {
-        migratedTotalOrderValue += migratedOrder.totalAmount;
-        if (Math.abs(migratedOrder.totalAmount - o.totalAmount) > 0.01) {
+        migratedTotalOrderValue += migratedOrder.totalAmount.toNumber();
+        if (Math.abs(migratedOrder.totalAmount.toNumber() - o.totalAmount) > 0.01) {
           discrepancies.push({
             legacyOrderId: o.legacyId,
             field: 'totalAmount',
             expected: o.totalAmount,
-            actual: migratedOrder.totalAmount,
+            actual: migratedOrder.totalAmount.toNumber(),
           });
         }
       }
@@ -1037,13 +1037,13 @@ export class MigrationService {
         select: { amount: true },
       });
       if (migratedPayment) {
-        migratedTotalPayments += migratedPayment.amount;
-        if (Math.abs(migratedPayment.amount - p.amount) > 0.01) {
+        migratedTotalPayments += migratedPayment.amount.toNumber();
+        if (Math.abs(migratedPayment.amount.toNumber() - p.amount) > 0.01) {
           discrepancies.push({
             legacyOrderId: p.legacyOrderId,
             field: `payment.amount (${p.legacyId})`,
             expected: p.amount,
-            actual: migratedPayment.amount,
+            actual: migratedPayment.amount.toNumber(),
           });
         }
       }

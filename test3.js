@@ -1,1 +1,8 @@
-const { NestFactory } = require('@nestjs/core'); const { AppModule } = require('./dist/app.module'); async function bootstrap() { const app = await NestFactory.createApplicationContext(AppModule); const productsService = app.get('ProductsService'); const p = await productsService.findOne('be0e3ce4-bac5-4326-bf10-0851610b05c7'); console.log(JSON.stringify(p, null, 2)); await app.close(); } bootstrap();
+const fs = require('fs');
+const txt = fs.readFileSync('d:/Projects/yukizi/yakuzi-api/src/modules/admin/admin.service.ts', 'utf8');
+const index = txt.indexOf("async getAllProducts");
+if (index !== -1) {
+  console.log(txt.substring(index, index + 1500));
+} else {
+  console.log('Not found');
+}

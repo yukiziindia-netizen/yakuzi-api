@@ -7,6 +7,7 @@ import {
 import csv from 'csv-parser';
 import { Readable } from 'stream';
 import slugify from 'slugify';
+import { buildPayoutInputFromOrderItem, calculateSellerPayout } from '../settlements/payout-calculator';
 import { AdminQuerySuggestionsDto } from './dto/query-suggestions.dto';
 import {
   UserStatus,
@@ -490,6 +491,7 @@ export class AdminService {
           name: true,
           manufacturer: true,
           mrp: true,
+          finalCustomerPayable: true,
           gstPercent: true,
           isActive: true,
           approvalStatus: true,
@@ -875,6 +877,7 @@ export class AdminService {
                 name: true,
                 manufacturer: true,
                 mrp: true,
+          finalCustomerPayable: true,
                 variant: {
                   select: {
                     catalogProduct: {
@@ -950,19 +953,19 @@ export class AdminService {
           where: { orderItemId: item.id },
         });
         if (!existing) {
-          const commission = +(item.totalPrice * 0.05).toFixed(2);
+          const commission = +(item.totalPrice.toNumber() * 0.05).toFixed(2);
           await this.prisma.sellerSettlement.create({
             data: {
               sellerId: item.sellerId,
               orderItemId: item.id,
-              amount: +(item.totalPrice - commission).toFixed(2),
+              amount: +(item.totalPrice.toNumber() - commission).toFixed(2),
               commission,
               grossAmount: item.totalPrice,
               commissionGst: 0,
               fixedFee: 0,
               fixedFeeGst: 0,
               withholdingTax: 0,
-              netPayout: +(item.totalPrice - commission).toFixed(2),
+              netPayout: +(item.totalPrice.toNumber() - commission).toFixed(2),
               payoutStatus: 'PENDING',
             },
           });
@@ -1054,9 +1057,9 @@ export class AdminService {
         },
       });
 
-      const totalPaid = confirmedPayments.reduce((sum, p) => sum + p.amount, 0);
+      const totalPaid = confirmedPayments.reduce((sum, p) => sum + p.amount.toNumber(), 0);
       const newStatus =
-        totalPaid >= payment.order.totalAmount
+        totalPaid >= payment.order.totalAmount.toNumber()
           ? PaymentStatus.SUCCESS
           : totalPaid > 0
             ? PaymentStatus.PARTIAL
@@ -1085,19 +1088,19 @@ export class AdminService {
             where: { orderItemId: item.id },
           });
           if (!existing) {
-            const commission = +(item.totalPrice * 0.05).toFixed(2);
+            const commission = +(item.totalPrice.toNumber() * 0.05).toFixed(2);
             await tx.sellerSettlement.create({
               data: {
                 sellerId: item.sellerId,
                 orderItemId: item.id,
-                amount: +(item.totalPrice - commission).toFixed(2),
+                amount: +(item.totalPrice.toNumber() - commission).toFixed(2),
                 commission,
                 grossAmount: item.totalPrice,
                 commissionGst: 0,
                 fixedFee: 0,
                 fixedFeeGst: 0,
                 withholdingTax: 0,
-                netPayout: +(item.totalPrice - commission).toFixed(2),
+                netPayout: +(item.totalPrice.toNumber() - commission).toFixed(2),
                 payoutStatus: 'PENDING',
               },
             });
@@ -1195,7 +1198,7 @@ export class AdminService {
     const skip = (page - 1) * limit;
 
     const where: Prisma.SellerSettlementWhereInput = {};
-    if (status) where.payoutStatus = status;
+    if (status && status !== 'PROJECTED') where.payoutStatus = status;
     if (sellerId) where.sellerId = sellerId;
     if (orderItemId) where.orderItemId = orderItemId;
 
@@ -1205,8 +1208,101 @@ export class AdminService {
       if (dateTo) (where.createdAt as any).lte = new Date(dateTo);
     }
 
-    const [data, total] = await Promise.all([
-      this.prisma.sellerSettlement.findMany({
+    const pendingWhere: import('@prisma/client').Prisma.OrderItemWhereInput = {
+      order: { orderStatus: { not: 'CANCELLED' } },
+      settlement: null,
+    };
+    if (sellerId) pendingWhere.sellerId = sellerId;
+    if (orderItemId) pendingWhere.id = orderItemId;
+    if (dateFrom || dateTo) {
+      pendingWhere.createdAt = {};
+      if (dateFrom) (pendingWhere.createdAt as any).gte = new Date(dateFrom);
+      if (dateTo) (pendingWhere.createdAt as any).lte = new Date(dateTo);
+    }
+
+    let projectedSettlements: any[] = [];
+    let pendingCount = 0;
+    
+    // Only fetch pending items if status is not explicitly demanding a settled status
+    if (!status || status === 'PROJECTED') {
+      pendingCount = await this.prisma.orderItem.count({ where: pendingWhere });
+    }
+
+    const settledCount = (!status || status !== 'PROJECTED') ? await this.prisma.sellerSettlement.count({ where }) : 0;
+    const total = pendingCount + settledCount;
+
+    let takePending = 0;
+    let skipPending = 0;
+    let takeSettled = 0;
+    let skipSettled = 0;
+
+    if (!status || status === 'PROJECTED') {
+      if (skip < pendingCount) {
+        skipPending = skip;
+        takePending = Math.min(limit, pendingCount - skip);
+        if (takePending < limit && (!status || status !== 'PROJECTED')) {
+          takeSettled = limit - takePending;
+          skipSettled = 0;
+        }
+      } else if (!status || status !== 'PROJECTED') {
+        skipSettled = skip - pendingCount;
+        takeSettled = limit;
+      }
+    } else {
+      skipSettled = skip;
+      takeSettled = limit;
+    }
+
+    if (takePending > 0) {
+      const pendingItems = await this.prisma.orderItem.findMany({
+        where: pendingWhere,
+        orderBy: { createdAt: 'desc' },
+        include: {
+          sellerOffer: { include: { catalogProduct: true } },
+          seller: { select: { id: true, companyName: true, userId: true } },
+        },
+        skip: skipPending,
+        take: takePending,
+      });
+
+      projectedSettlements = pendingItems.map(item => {
+        const input = buildPayoutInputFromOrderItem(item);
+        const breakdown = calculateSellerPayout(input);
+
+        return {
+          id: `projected-${item.id}`,
+          sellerId: item.sellerId,
+          orderItemId: item.id,
+          amount: breakdown.netPayout.toString(),
+          grossAmount: breakdown.grossAmount.toString(),
+          commission: breakdown.commission.toString(),
+          commissionGst: breakdown.commissionGst.toString(),
+          fixedFee: '0',
+          fixedFeeGst: '0',
+          withholdingTax: '0',
+          netPayout: breakdown.netPayout.toString(),
+          payoutStatus: 'PROJECTED',
+          createdAt: item.createdAt,
+          updatedAt: item.createdAt,
+          payoutReference: null,
+          payoutDate: null,
+          seller: item.seller,
+          orderItem: {
+            id: item.id,
+            orderId: item.orderId,
+            totalPrice: item.totalPrice,
+            sellerOffer: {
+              id: item.sellerOffer?.id,
+              name: item.sellerOffer?.name,
+            },
+          },
+        };
+      });
+    }
+
+    let settledData: any[] = [];
+    if (takeSettled > 0) {
+      settledData = await this.prisma.sellerSettlement.findMany({
         where,
         orderBy: { createdAt: 'desc' },
         include: {
@@ -1220,12 +1316,12 @@ export class AdminService {
             },
           },
         },
-        skip,
-        take: limit,
-      }),
-      this.prisma.sellerSettlement.count({ where }),
-    ]);
+        skip: skipSettled,
+        take: takeSettled,
+      });
+    }
 
+    const data = [...projectedSettlements, ...settledData];
     return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
   }
 
@@ -1752,7 +1848,7 @@ export class AdminService {
     return this.prisma.sellerOffer.findMany({
       take: Number(limit) || 10,
       orderBy: { createdAt: 'desc' },
-      select: { id: true, name: true, mrp: true },
+      select: { id: true, name: true, mrp: true, finalCustomerPayable: true },
     });
   }
 
@@ -1947,6 +2043,7 @@ export class AdminService {
                 id: true,
                 seller: { select: { companyName: true } },
                 mrp: true,
+          finalCustomerPayable: true,
               },
               take: 10,
             },

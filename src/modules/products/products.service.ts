@@ -231,6 +231,7 @@ export class ProductsService {
             v.available > 0 ? v.available : normalized.stock,
             normalized.expiryDate,
           );
+          await this.recalculateFinalCustomerPayable(product.id);
         } else {
           const productData: Prisma.SellerOfferCreateInput = {
             seller: { connect: { id: seller.id } },
@@ -277,6 +278,7 @@ export class ProductsService {
             v.available > 0 ? v.available : normalized.stock,
             normalized.expiryDate,
           );
+          await this.recalculateFinalCustomerPayable(product.id);
         }
 
         this.searchIndexService.upsert(product.id, {
@@ -360,6 +362,7 @@ export class ProductsService {
         normalized.stock,
         normalized.expiryDate,
       );
+      await this.recalculateFinalCustomerPayable(product.id);
     } else {
       const productData: Prisma.SellerOfferCreateInput = {
         seller: { connect: { id: seller.id } },
@@ -404,6 +407,7 @@ export class ProductsService {
         normalized.stock,
         normalized.expiryDate,
       );
+      await this.recalculateFinalCustomerPayable(product.id);
     }
 
     // Create images if provided
@@ -722,6 +726,8 @@ export class ProductsService {
       },
     });
 
+    await this.recalculateFinalCustomerPayable(updated.id);
+
     // Replace images if provided
     if (images !== undefined) {
       // await this.prisma.catalogProductImage.deleteMany
@@ -937,6 +943,10 @@ export class ProductsService {
                   discountMeta: true,
                   deliveryText: true,
                   minimumOrderQuantity: true,
+                  shippingCharges: true,
+                  finalShippingPrice: true,
+                  finalCustomerPayable: true,
+                  isTaxIncluded: true,
                 },
                 orderBy: { mrp: 'asc' },
                 take: 1,
@@ -1099,25 +1109,37 @@ export class ProductsService {
     finalShipping: number,
     discountType: string | null,
     discountMeta: any,
+    gstPercent: number = 0,
+    isTaxIncluded: boolean = true
   ): number {
-    const grossTotal = mrp + finalShipping;
-    let discountPercent = 0;
+    const { calculatePricing } = require('../../common/utils/pricing.util');
+    const resolvedDiscountType = discountType || (discountMeta?.discountPercent ? 'PTR_DISCOUNT' : 'none');
+    const result = calculatePricing(Number(mrp || 0), Number(gstPercent || 0), {
+      type: resolvedDiscountType === 'PTR_DISCOUNT' ? 'ptr_discount' : String(resolvedDiscountType).toLowerCase(),
+      discountPercent: discountMeta?.discountPercent,
+      specialPrice: discountMeta?.specialPrice,
+      shippingCharges: Number(finalShipping || 0),
+      shippingGstPercent: 0,
+      isTaxIncluded: Boolean(isTaxIncluded),
+    });
+    return result.finalCustomerPayable;
+  }
 
-    const type = discountType || (discountMeta?.discountPercent ? 'PTR_DISCOUNT' : 'none');
-
-    if (
-      type === 'PTR_DISCOUNT' ||
-      type === 'PTR_PLUS_SAME_PRODUCT_BONUS' ||
-      type === 'PTR_PLUS_DIFFERENT_PRODUCT_BONUS'
-    ) {
-      discountPercent = discountMeta?.discountPercent ?? 0;
-    } else if (type === 'SPECIAL_PRICE') {
-      const specialPrice = discountMeta?.specialPrice ?? mrp;
-      return specialPrice + finalShipping;
-    }
-
-    const discountAmount = Math.round((grossTotal * discountPercent) / 100);
-    return grossTotal - discountAmount;
+  public async recalculateFinalCustomerPayable(sellerOfferId: string) {
+    const offer = await this.prisma.sellerOffer.findUnique({ where: { id: sellerOfferId } });
+    if (!offer) return;
+    const finalCustomerPayable = this.calculateFinalCustomerPayable(
+      Number(offer.mrp),
+      Number(offer.finalShippingPrice ?? offer.shippingCharges ?? 0),
+      offer.discountType,
+      offer.discountMeta,
+      Number(offer.gstPercent || 0),
+      Boolean(offer.isTaxIncluded)
+    );
+    await this.prisma.sellerOffer.update({
+      where: { id: sellerOfferId },
+      data: { finalCustomerPayable }
+    });
   }
 
   private getBestOffer(m: any) {
@@ -1137,6 +1159,8 @@ export class ProductsService {
         l.finalShippingPrice || 0,
         l.discountType,
         l.discountMeta,
+        Number(l.gstPercent || 0),
+        Boolean(l.isTaxIncluded)
       );
       if (sellingPrice < minSellingPrice) {
         minSellingPrice = sellingPrice;
@@ -1225,7 +1249,7 @@ export class ProductsService {
       specifications: sellerListing?.specifications || m.specifications || '',
       description: m.description,
       mrp: sellerListing?.mrp || m.mrp,
-      price: bestListing ? this.calculateFinalCustomerPayable(bestListing.mrp, bestListing.finalShippingPrice || 0, bestListing.discountType, bestListing.discountMeta) : m.mrp,
+      price: bestListing ? this.calculateFinalCustomerPayable(bestListing.mrp, bestListing.finalShippingPrice || 0, bestListing.discountType, bestListing.discountMeta, Number(bestListing.gstPercent || 0), Boolean(bestListing.isTaxIncluded)) : m.mrp,
       discountType: sellerListing?.discountType || bestListing?.discountType || null,
       discountMeta: sellerListing?.discountMeta || bestListing?.discountMeta || null,
       deliveryText: sellerListing?.deliveryText || bestListing?.deliveryText || null,
@@ -1261,8 +1285,8 @@ export class ProductsService {
           const finalShipping = p.finalShippingPrice || 0;
           return {
             id: p.id,
-            price: this.calculateFinalCustomerPayable(p.mrp, finalShipping, p.discountType, p.discountMeta),
-            basePrice: this.calculateFinalCustomerPayable(p.mrp, finalShipping, p.discountType, p.discountMeta),
+            price: this.calculateFinalCustomerPayable(p.mrp, finalShipping, p.discountType, p.discountMeta, Number(p.gstPercent || 0), Boolean(p.isTaxIncluded)),
+            basePrice: this.calculateFinalCustomerPayable(p.mrp, finalShipping, p.discountType, p.discountMeta, Number(p.gstPercent || 0), Boolean(p.isTaxIncluded)),
             shippingCharges: shipping,
             finalShippingPrice: finalShipping,
             mrp: p.mrp,
@@ -1453,6 +1477,22 @@ export class ProductsService {
           include: {
             category: true,
             subCategory: true,
+            sellerOffers: {
+              include: {
+                batches: {
+                  where: { stock: { gt: 0 } },
+                  orderBy: { expiryDate: 'asc' },
+                },
+                seller: {
+                  select: {
+                    companyName: true,
+                    city: true,
+                    state: true,
+                    rating: true,
+                  },
+                },
+              },
+            },
             productVariants: {
               include: {
                 sellerOffers: {
@@ -1542,6 +1582,8 @@ export class ProductsService {
         product.finalShippingPrice || 0,
         product.discountType,
         product.discountMeta,
+        Number(product.gstPercent || 0),
+        Boolean(product.isTaxIncluded)
       );
       mrp = product.mrp;
     }

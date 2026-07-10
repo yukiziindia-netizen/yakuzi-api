@@ -1,1 +1,8 @@
-const { PrismaClient } = require('@prisma/client'); const prisma = new PrismaClient(); async function main() { const products = await prisma.catalogProduct.findMany({ where: { NOT: { options: null } } }); console.log(JSON.stringify(products.slice(0, 2), null, 2)); } main().finally(() => prisma.$disconnect());
+const fs = require('fs');
+const txt = fs.readFileSync('d:/Projects/yukizi/yakuzi-api/src/modules/admin/admin.controller.ts', 'utf8');
+const index = txt.indexOf("@Get('products')");
+if (index !== -1) {
+  console.log(txt.substring(index, index + 500));
+} else {
+  console.log('Not found');
+}

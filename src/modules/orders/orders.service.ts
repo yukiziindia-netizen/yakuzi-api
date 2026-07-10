@@ -85,7 +85,7 @@ export class OrdersService {
 
     // 3. Calculate total amount
     const totalAmount = cart.items.reduce(
-      (sum, item) => sum + (item.quantity * item.unitPrice) + (item.quantity * ((item.sellerOffer.finalShippingPrice ?? item.sellerOffer.shippingCharges) || 0)),
+      (sum, item) => sum + (item.quantity * Number(item.unitPrice)),
       0,
     );
 
@@ -108,7 +108,7 @@ export class OrdersService {
         sellerId: item.sellerOffer.seller.id,
         quantity: item.quantity,
         unitPrice: item.unitPrice,
-        totalPrice: item.quantity * item.unitPrice,
+        totalPrice: item.quantity * Number(item.unitPrice),
       }));
 
       await tx.orderItem.createMany({ data: orderItemsData });
@@ -327,12 +327,17 @@ export class OrdersService {
                 gstPercent: true,
                 shippingCharges: true,
                 finalShippingPrice: true,
+                discountType: true,
+                discountMeta: true,
+                isTaxIncluded: true,
                 variant: {
                   select: {
                     name: true,
                     sku: true,
                     catalogProduct: {
                       select: {
+                        commissionPercent: true,
+                        commissionGstPercent: true,
                         images: {
                           select: { url: true },
                         },
@@ -522,7 +527,7 @@ export class OrdersService {
         unitPrice: item.unitPrice,
         totalPrice: item.totalPrice,
       });
-      entry.sellerTotal += item.totalPrice;
+      entry.sellerTotal += Number(item.totalPrice);
     }
 
     return Array.from(ordersMap.values());
@@ -710,12 +715,12 @@ export class OrdersService {
             const sellerOffer = item.sellerOffer;
             const catalogProduct = sellerOffer?.variant?.catalogProduct;
             
-            const baseSellingPrice = item.unitPrice;
+            const baseSellingPrice = Number(item.unitPrice);
             const quantity = item.quantity;
-            const finalShippingPrice = sellerOffer?.finalShippingPrice ?? sellerOffer?.shippingCharges ?? 0;
+            const finalShippingPrice = item.sellerOffer?.finalShippingPrice ? Number(item.sellerOffer.finalShippingPrice) : (item.sellerOffer?.shippingCharges ? Number(item.sellerOffer.shippingCharges) : 0);
             
-            const commissionPercent = catalogProduct?.commissionPercent ?? 0;
-            const commissionGstPercent = catalogProduct?.commissionGstPercent ?? 18;
+            const commissionPercent = catalogProduct?.commissionPercent ? Number(catalogProduct.commissionPercent) : 0;
+            const commissionGstPercent = catalogProduct?.commissionGstPercent ? Number(catalogProduct.commissionGstPercent) : 18;
 
             const breakdown = calculateSellerPayout({
               baseSellingPrice,

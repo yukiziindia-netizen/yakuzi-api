@@ -1,0 +1,176 @@
+
+> yukizi-api@0.0.1 build
+> nest build
+
+[96msrc/modules/admin/admin.service.ts[0m:[93m953[0m:[93m32[0m - [91merror[0m[90m TS2362: [0mThe left-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+
+[7m953[0m           const commission = +(item.totalPrice * 0.05).toFixed(2);
+[7m   [0m [91m                               ~~~~~~~~~~~~~~~[0m
+[96msrc/modules/admin/admin.service.ts[0m:[93m958[0m:[93m25[0m - [91merror[0m[90m TS2362: [0mThe left-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+
+[7m958[0m               amount: +(item.totalPrice - commission).toFixed(2),
+[7m   [0m [91m                        ~~~~~~~~~~~~~~~[0m
+[96msrc/modules/admin/admin.service.ts[0m:[93m965[0m:[93m28[0m - [91merror[0m[90m TS2362: [0mThe left-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+
+[7m965[0m               netPayout: +(item.totalPrice - commission).toFixed(2),
+[7m   [0m [91m                           ~~~~~~~~~~~~~~~[0m
+[96msrc/modules/admin/admin.service.ts[0m:[93m1057[0m:[93m62[0m - [91merror[0m[90m TS2365: [0mOperator '+' cannot be applied to types 'number' and 'Decimal'.
+
+[7m1057[0m       const totalPaid = confirmedPayments.reduce((sum, p) => sum + p.amount, 0);
+[7m    [0m [91m                                                             ~~~~~~~~~~~~~~[0m
+[96msrc/modules/admin/admin.service.ts[0m:[93m1088[0m:[93m34[0m - [91merror[0m[90m TS2362: [0mThe left-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+
+[7m1088[0m             const commission = +(item.totalPrice * 0.05).toFixed(2);
+[7m    [0m [91m                                 ~~~~~~~~~~~~~~~[0m
+[96msrc/modules/admin/admin.service.ts[0m:[93m1093[0m:[93m27[0m - [91merror[0m[90m TS2362: [0mThe left-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+
+[7m1093[0m                 amount: +(item.totalPrice - commission).toFixed(2),
+[7m    [0m [91m                          ~~~~~~~~~~~~~~~[0m
+[96msrc/modules/admin/admin.service.ts[0m:[93m1100[0m:[93m30[0m - [91merror[0m[90m TS2362: [0mThe left-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+
+[7m1100[0m                 netPayout: +(item.totalPrice - commission).toFixed(2),
+[7m    [0m [91m                             ~~~~~~~~~~~~~~~[0m
+[96msrc/modules/cart/cart.service.ts[0m:[93m169[0m:[93m40[0m - [91merror[0m[90m TS2363: [0mThe right-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+
+[7m169[0m       totalPrice: (cartItem.quantity * cartItem.unitPrice) + (cartItem.quantity * ((cartItem.sellerOffer.finalShippingPrice ?? cartItem.sellerOffer.shippingCharges) || 0)),
+[7m   [0m [91m                                       ~~~~~~~~~~~~~~~~~~[0m
+[96msrc/modules/cart/cart.service.ts[0m:[93m169[0m:[93m83[0m - [91merror[0m[90m TS2363: [0mThe right-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+
+[7m169[0m       totalPrice: (cartItem.quantity * cartItem.unitPrice) + (cartItem.quantity * ((cartItem.sellerOffer.finalShippingPrice ?? cartItem.sellerOffer.shippingCharges) || 0)),
+[7m   [0m [91m                                                                                  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+[96msrc/modules/cart/cart.service.ts[0m:[93m241[0m:[93m38[0m - [91merror[0m[90m TS2363: [0mThe right-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+
+[7m241[0m         totalPrice: (item.quantity * item.unitPrice) + (item.quantity * ((item.sellerOffer.finalShippingPrice ?? item.sellerOffer.shippingCharges) || 0)),
+[7m   [0m [91m                                     ~~~~~~~~~~~~~~[0m
+[96msrc/modules/cart/cart.service.ts[0m:[93m241[0m:[93m73[0m - [91merror[0m[90m TS2363: [0mThe right-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+
+[7m241[0m         totalPrice: (item.quantity * item.unitPrice) + (item.quantity * ((item.sellerOffer.finalShippingPrice ?? item.sellerOffer.shippingCharges) || 0)),
+[7m   [0m [91m                                                                        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+[96msrc/modules/cart/cart.service.ts[0m:[93m358[0m:[93m39[0m - [91merror[0m[90m TS2363: [0mThe right-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+
+[7m358[0m       totalPrice: (updated.quantity * updated.unitPrice) + (updated.quantity * ((updated.sellerOffer.finalShippingPrice ?? updated.sellerOffer.shippingCharges) || 0)),
+[7m   [0m [91m                                      ~~~~~~~~~~~~~~~~~[0m
+[96msrc/modules/cart/cart.service.ts[0m:[93m358[0m:[93m80[0m - [91merror[0m[90m TS2363: [0mThe right-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+
+[7m358[0m       totalPrice: (updated.quantity * updated.unitPrice) + (updated.quantity * ((updated.sellerOffer.finalShippingPrice ?? updated.sellerOffer.shippingCharges) || 0)),
+[7m   [0m [91m                                                                               ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+[96msrc/modules/migration/migration.service.ts[0m:[93m812[0m:[93m18[0m - [91merror[0m[90m TS2365: [0mOperator '>' cannot be applied to types 'number | Decimal' and 'number'.
+
+[7m812[0m       } else if (totalPaid > 0) {
+[7m   [0m [91m                 ~~~~~~~~~~~~~[0m
+[96msrc/modules/migration/migration.service.ts[0m:[93m1011[0m:[93m9[0m - [91merror[0m[90m TS2365: [0mOperator '+=' cannot be applied to types 'number' and 'Decimal'.
+
+[7m1011[0m         migratedTotalOrderValue += migratedOrder.totalAmount;
+[7m    [0m [91m        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+[96msrc/modules/migration/migration.service.ts[0m:[93m1012[0m:[93m22[0m - [91merror[0m[90m TS2362: [0mThe left-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+
+[7m1012[0m         if (Math.abs(migratedOrder.totalAmount - o.totalAmount) > 0.01) {
+[7m    [0m [91m                     ~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+[96msrc/modules/migration/migration.service.ts[0m:[93m1017[0m:[93m13[0m - [91merror[0m[90m TS2322: [0mType 'Decimal' is not assignable to type 'number'.
+
+[7m1017[0m             actual: migratedOrder.totalAmount,
+[7m    [0m [91m            ~~~~~~[0m
+
+  [96msrc/modules/migration/migration.service.ts[0m:[93m994[0m:[93m7[0m
+    [7m994[0m       actual: number;
+    [7m   [0m [96m      ~~~~~~[0m
+    The expected type comes from property 'actual' which is declared here on type '{ legacyOrderId: string; field: string; expected: number; actual: number; }'
+[96msrc/modules/migration/migration.service.ts[0m:[93m1040[0m:[93m9[0m - [91merror[0m[90m TS2365: [0mOperator '+=' cannot be applied to types 'number' and 'Decimal'.
+
+[7m1040[0m         migratedTotalPayments += migratedPayment.amount;
+[7m    [0m [91m        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+[96msrc/modules/migration/migration.service.ts[0m:[93m1041[0m:[93m22[0m - [91merror[0m[90m TS2362: [0mThe left-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+
+[7m1041[0m         if (Math.abs(migratedPayment.amount - p.amount) > 0.01) {
+[7m    [0m [91m                     ~~~~~~~~~~~~~~~~~~~~~~[0m
+[96msrc/modules/migration/migration.service.ts[0m:[93m1046[0m:[93m13[0m - [91merror[0m[90m TS2322: [0mType 'Decimal' is not assignable to type 'number'.
+
+[7m1046[0m             actual: migratedPayment.amount,
+[7m    [0m [91m            ~~~~~~[0m
+
+  [96msrc/modules/migration/migration.service.ts[0m:[93m994[0m:[93m7[0m
+    [7m994[0m       actual: number;
+    [7m   [0m [96m      ~~~~~~[0m
+    The expected type comes from property 'actual' which is declared here on type '{ legacyOrderId: string; field: string; expected: number; actual: number; }'
+[96msrc/modules/orders/orders.service.ts[0m:[93m88[0m:[93m45[0m - [91merror[0m[90m TS2363: [0mThe right-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+
+[7m88[0m       (sum, item) => sum + (item.quantity * item.unitPrice) + (item.quantity * ((item.sellerOffer.finalShippingPrice ?? item.sellerOffer.shippingCharges) || 0)),
+[7m  [0m [91m                                            ~~~~~~~~~~~~~~[0m
+[96msrc/modules/orders/orders.service.ts[0m:[93m88[0m:[93m80[0m - [91merror[0m[90m TS2363: [0mThe right-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+
+[7m88[0m       (sum, item) => sum + (item.quantity * item.unitPrice) + (item.quantity * ((item.sellerOffer.finalShippingPrice ?? item.sellerOffer.shippingCharges) || 0)),
+[7m  [0m [91m                                                                               ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+[96msrc/modules/orders/orders.service.ts[0m:[93m111[0m:[93m37[0m - [91merror[0m[90m TS2363: [0mThe right-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+
+[7m111[0m         totalPrice: item.quantity * item.unitPrice,
+[7m   [0m [91m                                    ~~~~~~~~~~~~~~[0m
+[96msrc/modules/orders/orders.service.ts[0m:[93m525[0m:[93m7[0m - [91merror[0m[90m TS2365: [0mOperator '+=' cannot be applied to types 'number' and 'Decimal'.
+
+[7m525[0m       entry.sellerTotal += item.totalPrice;
+[7m   [0m [91m      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+[96msrc/modules/orders/orders.service.ts[0m:[93m721[0m:[93m15[0m - [91merror[0m[90m TS2322: [0mType 'Decimal' is not assignable to type 'number'.
+
+[7m721[0m               baseSellingPrice,
+[7m   [0m [91m              ~~~~~~~~~~~~~~~~[0m
+
+  [96msrc/modules/settlements/payout-calculator.ts[0m:[93m9[0m:[93m3[0m
+    [7m9[0m   baseSellingPrice: number;
+    [7m [0m [96m  ~~~~~~~~~~~~~~~~[0m
+    The expected type comes from property 'baseSellingPrice' which is declared here on type 'PayoutInput'
+[96msrc/modules/orders/orders.service.ts[0m:[93m723[0m:[93m15[0m - [91merror[0m[90m TS2322: [0mType 'Decimal' is not assignable to type 'number'.
+
+[7m723[0m               finalShippingPrice,
+[7m   [0m [91m              ~~~~~~~~~~~~~~~~~~[0m
+
+  [96msrc/modules/settlements/payout-calculator.ts[0m:[93m13[0m:[93m3[0m
+    [7m13[0m   finalShippingPrice: number;
+    [7m  [0m [96m  ~~~~~~~~~~~~~~~~~~[0m
+    The expected type comes from property 'finalShippingPrice' which is declared here on type 'PayoutInput'
+[96msrc/modules/orders/orders.service.ts[0m:[93m724[0m:[93m15[0m - [91merror[0m[90m TS2322: [0mType 'number | Decimal' is not assignable to type 'number'.
+  Type 'Decimal' is not assignable to type 'number'.
+
+[7m724[0m               commissionPercent,
+[7m   [0m [91m              ~~~~~~~~~~~~~~~~~[0m
+
+  [96msrc/modules/settlements/payout-calculator.ts[0m:[93m15[0m:[93m3[0m
+    [7m15[0m   commissionPercent: number;
+    [7m  [0m [96m  ~~~~~~~~~~~~~~~~~[0m
+    The expected type comes from property 'commissionPercent' which is declared here on type 'PayoutInput'
+[96msrc/modules/orders/orders.service.ts[0m:[93m725[0m:[93m15[0m - [91merror[0m[90m TS2322: [0mType 'number | Decimal' is not assignable to type 'number'.
+  Type 'Decimal' is not assignable to type 'number'.
+
+[7m725[0m               commissionGstPercent,
+[7m   [0m [91m              ~~~~~~~~~~~~~~~~~~~~[0m
+
+  [96msrc/modules/settlements/payout-calculator.ts[0m:[93m17[0m:[93m3[0m
+    [7m17[0m   commissionGstPercent: number;
+    [7m  [0m [96m  ~~~~~~~~~~~~~~~~~~~~[0m
+    The expected type comes from property 'commissionGstPercent' which is declared here on type 'PayoutInput'
+[96msrc/modules/payments/payments.service.ts[0m:[93m59[0m:[93m23[0m - [91merror[0m[90m TS2362: [0mThe left-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+
+[7m59[0m     const remaining = order.totalAmount - confirmedTotal;
+[7m  [0m [91m                      ~~~~~~~~~~~~~~~~~[0m
+[96msrc/modules/payments/payments.service.ts[0m:[93m198[0m:[93m35[0m - [91merror[0m[90m TS2362: [0mThe left-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+
+[7m198[0m     const remaining = Math.max(0, order.totalAmount - confirmedTotal);
+[7m   [0m [91m                                  ~~~~~~~~~~~~~~~~~[0m
+[96msrc/modules/payments/payments.service.ts[0m:[93m207[0m:[93m9[0m - [91merror[0m[90m TS2345: [0mArgument of type 'Decimal' is not assignable to parameter of type 'number'.
+
+[7m207[0m         order.totalAmount,
+[7m   [0m [91m        ~~~~~~~~~~~~~~~~~[0m
+[96msrc/modules/payments/payments.service.ts[0m:[93m274[0m:[93m62[0m - [91merror[0m[90m TS2365: [0mOperator '+' cannot be applied to types 'number' and 'Decimal'.
+
+[7m274[0m       const totalPaid = confirmedPayments.reduce((sum, p) => sum + p.amount, 0);
+[7m   [0m [91m                                                             ~~~~~~~~~~~~~~[0m
+[96msrc/modules/payments/payments.service.ts[0m:[93m277[0m:[93m9[0m - [91merror[0m[90m TS2345: [0mArgument of type 'Decimal' is not assignable to parameter of type 'number'.
+
+[7m277[0m         payment.order.totalAmount,
+[7m   [0m [91m        ~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+[96msrc/modules/payments/payments.service.ts[0m:[93m358[0m:[93m5[0m - [91merror[0m[90m TS2322: [0mType '0 | Decimal' is not assignable to type 'number'.
+  Type 'Decimal' is not assignable to type 'number'.
+
+[7m358[0m     return result._sum.amount ?? 0;
+[7m   [0m [91m    ~~~~~~[0m
+
+Found 34 error(s).
+
