@@ -281,14 +281,7 @@ export class ProductsService {
           await this.recalculateFinalCustomerPayable(product.id);
         }
 
-        this.searchIndexService.upsert(product.id, {
-          name: product.name,
-          manufacturer: product.manufacturer,
-          categoryName: category.name,
-          subCategoryName: subCategory.name,
-        });
 
-        this.analyticsService.initialise(product.id);
         this.logger.log(
           `Product variant created: ${product.id} by seller ${seller.id}`,
         );
@@ -415,15 +408,7 @@ export class ProductsService {
       // await this.prisma.catalogProductImage.createMany
     }
 
-    this.searchIndexService.upsert(product.id, {
-      name: product.name,
-      manufacturer: product.manufacturer,
 
-      categoryName: category.name,
-      subCategoryName: subCategory.name,
-    });
-
-    this.analyticsService.initialise(product.id);
 
     this.logger.log(`Product created: ${product.id} by seller ${seller.id}`);
 
@@ -512,13 +497,7 @@ export class ProductsService {
       dto.expiryDate,
     );
 
-    this.searchIndexService.upsert(productId, {
-      name: updated.name,
-      manufacturer: updated.manufacturer,
 
-      categoryName: category.name,
-      subCategoryName: subCategory.name,
-    });
 
     const batch = await this.prisma.productBatch.findFirst({
       where: { sellerOfferId: productId, batchNumber: 'DEFAULT' },
@@ -761,13 +740,7 @@ export class ProductsService {
     }
 
     if (dto.name || dto.manufacturer || dto.categoryId || dto.subCategoryId) {
-      this.searchIndexService.upsert(updated.id, {
-        name: updated.name,
-        manufacturer: updated.manufacturer,
 
-        categoryName: updated.category.name,
-        subCategoryName: updated.subCategory.name,
-      });
     }
 
     this.logger.log(`Product updated: ${updated.id}`);
@@ -1293,6 +1266,9 @@ export class ProductsService {
             discountType: p.discountType,
             discountMeta: p.discountMeta,
             deliveryText: p.deliveryText,
+            gstPercent: p.gstPercent,
+            isTaxIncluded: p.isTaxIncluded,
+            shippingGstPercent: p.shippingGstPercent,
             variantName: p.variantName,
             stock,
             expiryDate: batches.length > 0 ? batches[0].expiryDate : null,
