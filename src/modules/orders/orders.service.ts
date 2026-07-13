@@ -793,6 +793,10 @@ export class OrdersService {
       throw new NotFoundException('Order not found');
     }
 
+    if (order.isShippingLocked) {
+      throw new ForbiddenException('Shipping details are locked by admin');
+    }
+
     // 4. Update the order with shipping details
     const updated = await this.prisma.order.update({
       where: { id: orderId },
@@ -816,6 +820,7 @@ export class OrdersService {
       adminInvoiceUrl?: string;
       manifestUrl?: string;
       invoiceUrl?: string;
+      isShippingLocked?: boolean;
     },
   ) {
     const order = await this.prisma.order.findUnique({
@@ -826,7 +831,7 @@ export class OrdersService {
       throw new NotFoundException('Order not found');
     }
 
-    if (!order.packageLength) {
+    if (!order.packageLength && Object.keys(dto).some(k => k !== 'isShippingLocked')) {
       throw new BadRequestException('Seller has not provided package details yet');
     }
 

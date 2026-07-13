@@ -51,4 +51,9 @@ export class UpdateShippingDetailsDto {
   @IsString()
   @IsOptional()
   manifestUrl?: string;
+
+  @ApiPropertyOptional()
+  @IsString()
+  @IsOptional()
+  packedPictureUrl?: string;
 }

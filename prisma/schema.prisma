@@ -328,6 +328,10 @@ model Order {
   manifestUrl           String?
   adminShippingLabelUrl String?
   adminInvoiceUrl       String?
+  packedPictureUrl      String?
+
+  // Shipping Lock
+  isShippingLocked      Boolean @default(false)
 
   @@index([buyerId])
   @@index([orderStatus])
