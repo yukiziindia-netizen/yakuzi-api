@@ -169,8 +169,8 @@ export function calculatePricing(
   const totalPlatformFees = round2(commissionAmount + commissionGstAmount + fixedFee + fixedFeeGstAmount);
 
   // 9. Seller Payout
-  // Seller receives Final Customer Payable minus Shipping (deduction), Product GST (to remit), and Platform Fees.
-  const sellerPayout = round2(finalCustomerPayable - shippingTotal - productGstAmount - totalPlatformFees);
+  // Seller receives Final Customer Payable minus Shipping (deduction) and Platform Fees.
+  const sellerPayout = round2(finalCustomerPayable - shippingTotal - totalPlatformFees);
 
   const itemsToPayFor = buy;
   const finalUserBuy = round2(finalCustomerPayable * itemsToPayFor);
