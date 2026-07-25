@@ -43,6 +43,12 @@ export class HttpExceptionFilter implements ExceptionFilter {
       path: request.url,
     };
 
+    const origin = request.headers.origin;
+    if (origin) {
+      response.setHeader('Access-Control-Allow-Origin', origin);
+      response.setHeader('Access-Control-Allow-Credentials', 'true');
+    }
+
     this.logger.error(
       `${request.method} ${request.url} ${status} — ${typeof message === 'string' ? message : JSON.stringify(message)}`,
       exception instanceof Error ? exception.stack : undefined,
@@ -51,3 +57,4 @@ export class HttpExceptionFilter implements ExceptionFilter {
     response.status(status).json(errorResponse);
   }
 }
+

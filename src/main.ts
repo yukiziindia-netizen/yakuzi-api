@@ -14,6 +14,45 @@ async function bootstrap() {
     bufferLogs: true,
   });
 
+  const configService = app.get(ConfigService);
+  const corsOriginsRaw = configService.get<string>('CORS_ORIGINS', '');
+  const allowedOriginsList = corsOriginsRaw
+    .split(',')
+    .map((o) => o.trim())
+    .filter(Boolean);
+
+  // Top-level Express middleware to guarantee CORS headers & intercept OPTIONS preflight requests before any guards/pipes/filters
+  app.use((req: any, res: any, next: any) => {
+    const origin = req.headers.origin;
+
+    const isAllowed =
+      !origin ||
+      allowedOriginsList.includes(origin) ||
+      /^https?:\/\/(?:[a-zA-Z0-9-]+\.)*yukizi\.(?:com|in)$/i.test(origin) ||
+      /^https?:\/\/(?:[a-zA-Z0-9-]+\.)*dev\.yukizi\.com$/i.test(origin) ||
+      /^https?:\/\/[a-zA-Z0-9-]+\.vercel\.app$/i.test(origin) ||
+      /^http:\/\/(?:localhost|127\.0\.0\.1)(?::\d+)?$/i.test(origin);
+
+    if (origin && isAllowed) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+      res.setHeader('Access-Control-Allow-Credentials', 'true');
+      res.setHeader(
+        'Access-Control-Allow-Methods',
+        'GET, HEAD, PUT, PATCH, POST, DELETE, OPTIONS',
+      );
+      res.setHeader(
+        'Access-Control-Allow-Headers',
+        'Content-Type, Accept, Authorization, X-Requested-With, Origin, Access-Control-Allow-Origin, Access-Control-Allow-Headers, Access-Control-Allow-Methods',
+      );
+    }
+
+    if (req.method === 'OPTIONS') {
+      return res.status(204).end();
+    }
+
+    next();
+  });
+
   // Increase payload size limit for base64 image/file attachments
   app.use(json({ limit: '50mb' }));
   app.use(urlencoded({ extended: true, limit: '50mb' }));
@@ -36,35 +75,16 @@ async function bootstrap() {
   // Global exception filter
   app.useGlobalFilters(new HttpExceptionFilter());
 
-  // CORS — environment-based origins + dynamic subdomain validation
-  const configService = app.get(ConfigService);
-  const corsOriginsRaw = configService.get<string>('CORS_ORIGINS', '');
-  const allowedOriginsList = corsOriginsRaw
-    .split(',')
-    .map((o) => o.trim())
-    .filter(Boolean);
-
   app.enableCors({
     origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
-      // Allow requests with no origin (mobile apps, server-to-server, curl, Postman)
-      if (!origin) {
-        return callback(null, true);
-      }
-
-      // Authorize explicit origins + subdomains (*.dev.yukizi.com, *.yukizi.com, *.yukizi.in, *.vercel.app, localhost)
+      if (!origin) return callback(null, true);
       const isAllowed =
         allowedOriginsList.includes(origin) ||
         /^https?:\/\/(?:[a-zA-Z0-9-]+\.)*yukizi\.(?:com|in)$/i.test(origin) ||
         /^https?:\/\/(?:[a-zA-Z0-9-]+\.)*dev\.yukizi\.com$/i.test(origin) ||
         /^https?:\/\/[a-zA-Z0-9-]+\.vercel\.app$/i.test(origin) ||
         /^http:\/\/(?:localhost|127\.0\.0\.1)(?::\d+)?$/i.test(origin);
-
-      if (isAllowed) {
-        callback(null, true);
-      } else {
-        logger.warn(`CORS request blocked for origin: ${origin}`);
-        callback(null, false);
-      }
+      callback(null, isAllowed);
     },
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
     allowedHeaders: [
@@ -81,6 +101,7 @@ async function bootstrap() {
     preflightContinue: false,
     optionsSuccessStatus: 204,
   });
+
 
 
   // Global API prefix
