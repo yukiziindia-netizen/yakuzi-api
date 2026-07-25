@@ -1,54 +1,51 @@
-name: Production API Deployment
+name: Deploy API
 
 on:
   push:
     branches:
       - main
-  workflow_dispatch:
-
-env:
-  AWS_REGION: ap-south-1
-  ECR_REGISTRY: 370586503907.dkr.ecr.ap-south-1.amazonaws.com
-  ECR_BASE: yukizi-production
-  K8S_NAMESPACE: yukizi
 
 jobs:
-  deploy-api:
+  deploy:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout code
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+      - name: Sync Project to EC2
+        uses: burnett01/rsync-deployments@7.0.2
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.AWS_REGION }}
+          switches: -avz --exclude=".git" --exclude="node_modules"
+          path: ./
+          remote_path: /home/ubuntu/project-2-pharmabag-api/
+          remote_host: ${{ secrets.SERVER_HOST }}
+          remote_user: ${{ secrets.SERVER_USER }}
+          remote_key: ${{ secrets.SERVER_SSH_KEY }}
 
-      - name: Login to Amazon ECR
-        id: login-ecr
-        uses: aws-actions/amazon-ecr-login@v2
+      - name: Deploy
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          script: |
+            set -e
 
-      - name: Set up kubectl
-        uses: azure/setup-kubectl@v3
+            cd /home/yukizi_india/yakuzi-api
 
-      - name: Configure Kubeconfig
-        run: |
-          mkdir -p ~/.kube
-          echo "${{ secrets.KUBE_CONFIG_DATA }}" | base64 -d > ~/.kube/config
-          chmod 600 ~/.kube/config
+            echo "Installing dependencies..."
+            npm ci
 
-      - name: Build, tag, and push API
-        env:
-          TAG: v${{ github.run_number }}-${{ github.sha }}
-        run: |
-          docker build -t $ECR_REGISTRY/$ECR_BASE/backend:$TAG .
-          docker push $ECR_REGISTRY/$ECR_BASE/backend:$TAG
+            echo "Generating Prisma Client..."
+            npx prisma generate
 
-      - name: Update Kubernetes Deployment
-        env:
-          TAG: v${{ github.run_number }}-${{ github.sha }}
-        run: |
-          kubectl set image deployment/yakuzi-api "*=$ECR_REGISTRY/$ECR_BASE/backend:$TAG" -n ${{ env.K8S_NAMESPACE }}
-          kubectl rollout status deployment/yakuzi-api -n ${{ env.K8S_NAMESPACE }}
+            echo "Building application..."
+            npm run build
+
+            echo "Restarting PM2..."
+            pm2 restart yakuzi-api
+
+            pm2 save
+
+            echo "Deployment completed successfully."
