@@ -12,7 +12,7 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Sync Project to EC2
+      - name: Sync Project to GCP
         uses: burnett01/rsync-deployments@7.0.2
         with:
           switches: -avz --exclude=".git" --exclude="node_modules"
