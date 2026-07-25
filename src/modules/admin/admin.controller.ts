@@ -694,4 +694,39 @@ export class AdminController {
     const data = await this.adminService.removeMarketingProduct(id);
     return { message: 'Product removed from marketing successfully', data };
   }
+
+  // ════════════════════════════════════════════════════════
+  // PLATFORM SETTINGS
+  // ════════════════════════════════════════════════════════
+
+  @Get('settings')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Get platform settings' })
+  async getSettings() {
+    const data = await this.adminService.getPlatformSettings();
+    return { message: 'Platform settings retrieved successfully', data };
+  }
+
+  @Patch('settings')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Update platform settings' })
+  async updateSettings(@Body() payload: Record<string, any>) {
+    const data = await this.adminService.updatePlatformSettings(payload);
+    return { message: 'Platform settings updated successfully', data };
+  }
 }
+
+@ApiTags('Config')
+@Controller('config/platform')
+export class PublicConfigController {
+  constructor(private readonly adminService: AdminService) {}
+
+  @Get()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Get public platform settings/config' })
+  async getPublicConfig() {
+    const data = await this.adminService.getPublicSettings();
+    return { message: 'Platform config retrieved successfully', data };
+  }
+}
+

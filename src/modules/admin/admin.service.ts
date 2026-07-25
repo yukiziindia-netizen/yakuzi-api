@@ -2930,4 +2930,69 @@ export class AdminService {
       throw error;
     }
   }
+
+  // ═══════════════════════════════════════════════════
+  // PLATFORM SETTINGS
+  // ═══════════════════════════════════════════════════
+
+  async getPlatformSettings() {
+    const DEFAULT_SETTINGS: Record<string, any> = {
+      platformName: 'Yukizi',
+      supportEmail: 'support@yukizi.in',
+      supportPhone: '+91 1800-XXX-XXXX',
+      sessionTimeout: 60,
+      maxLoginAttempts: 5,
+      otpExpiry: 120,
+      fraudAlertEmail: '',
+      adminAlertEmail: '',
+      allowSellerRegistration: true,
+      expressLogin: true,
+      creditLineOrders: true,
+      maintenanceMode: false,
+      comingSoonMode: true,
+    };
+
+    const dbSettings = await this.prisma.systemSetting.findMany();
+    const result = { ...DEFAULT_SETTINGS };
+
+    for (const item of dbSettings) {
+      if (item.value === 'true') {
+        result[item.key] = true;
+      } else if (item.value === 'false') {
+        result[item.key] = false;
+      } else if (!isNaN(Number(item.value)) && item.value.trim() !== '') {
+        result[item.key] = Number(item.value);
+      } else {
+        result[item.key] = item.value;
+      }
+    }
+
+    return result;
+  }
+
+  async updatePlatformSettings(payload: Record<string, any>) {
+    const updates = Object.entries(payload).map(([key, value]) => {
+      const strVal = typeof value === 'object' ? JSON.stringify(value) : String(value);
+      return this.prisma.systemSetting.upsert({
+        where: { key },
+        update: { value: strVal },
+        create: { key, value: strVal },
+      });
+    });
+
+    await Promise.all(updates);
+    return this.getPlatformSettings();
+  }
+
+  async getPublicSettings() {
+    const settings = await this.getPlatformSettings();
+    return {
+      comingSoonMode: Boolean(settings.comingSoonMode),
+      maintenanceMode: Boolean(settings.maintenanceMode),
+      platformName: settings.platformName,
+      supportEmail: settings.supportEmail,
+      supportPhone: settings.supportPhone,
+    };
+  }
 }
+

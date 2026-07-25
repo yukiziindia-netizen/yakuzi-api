@@ -36,25 +36,52 @@ async function bootstrap() {
   // Global exception filter
   app.useGlobalFilters(new HttpExceptionFilter());
 
-  // CORS — environment-based origins
+  // CORS — environment-based origins + dynamic subdomain validation
   const configService = app.get(ConfigService);
-  const allowedOrigins = configService
-    .get<string>(
-      'CORS_ORIGINS',
-      'http://localhost:3000,http://localhost:3001,http://localhost:3002,http://localhost:3003,http://localhost:5173,http://localhost:5174,http://localhost:5175,' +
-        'http://127.0.0.1:3000,http://127.0.0.1:3001,http://127.0.0.1:3002,http://127.0.0.1:3003,http://127.0.0.1:5173,http://127.0.0.1:5174,http://127.0.0.1:5175,' +
-        'https://yukizi-web-admin.vercel.app,https://yukizi-web-seller.vercel.app,https://yukizi-web-buyer.vercel.app,' +
-        'https://buyer.yukizi.com,https://seller.yukizi.com,https://admin.yukizi.com,' +
-        'https://www.yukizi.in,https://admin.yukizi.in,https://seller.yukizi.in,https://api.yukizi.in,',
-    )
+  const corsOriginsRaw = configService.get<string>('CORS_ORIGINS', '');
+  const allowedOriginsList = corsOriginsRaw
     .split(',')
-    .map((o) => o.trim());
+    .map((o) => o.trim())
+    .filter(Boolean);
 
   app.enableCors({
-    origin: allowedOrigins,
+    origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
+      // Allow requests with no origin (mobile apps, server-to-server, curl, Postman)
+      if (!origin) {
+        return callback(null, true);
+      }
+
+      // Authorize explicit origins + subdomains (*.dev.yukizi.com, *.yukizi.com, *.yukizi.in, *.vercel.app, localhost)
+      const isAllowed =
+        allowedOriginsList.includes(origin) ||
+        /^https?:\/\/(?:[a-zA-Z0-9-]+\.)*yukizi\.(?:com|in)$/i.test(origin) ||
+        /^https?:\/\/(?:[a-zA-Z0-9-]+\.)*dev\.yukizi\.com$/i.test(origin) ||
+        /^https?:\/\/[a-zA-Z0-9-]+\.vercel\.app$/i.test(origin) ||
+        /^http:\/\/(?:localhost|127\.0\.0\.1)(?::\d+)?$/i.test(origin);
+
+      if (isAllowed) {
+        callback(null, true);
+      } else {
+        logger.warn(`CORS request blocked for origin: ${origin}`);
+        callback(null, false);
+      }
+    },
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
+    allowedHeaders: [
+      'Content-Type',
+      'Accept',
+      'Authorization',
+      'X-Requested-With',
+      'Origin',
+      'Access-Control-Allow-Origin',
+      'Access-Control-Allow-Headers',
+      'Access-Control-Allow-Methods',
+    ],
     credentials: true,
+    preflightContinue: false,
+    optionsSuccessStatus: 204,
   });
+
 
   // Global API prefix
   app.setGlobalPrefix('api');
