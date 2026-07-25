@@ -25,15 +25,7 @@ async function bootstrap() {
   app.use((req: any, res: any, next: any) => {
     const origin = req.headers.origin;
 
-    const isAllowed =
-      !origin ||
-      allowedOriginsList.includes(origin) ||
-      /^https?:\/\/(?:[a-zA-Z0-9-]+\.)*yukizi\.(?:com|in)$/i.test(origin) ||
-      /^https?:\/\/(?:[a-zA-Z0-9-]+\.)*dev\.yukizi\.com$/i.test(origin) ||
-      /^https?:\/\/[a-zA-Z0-9-]+\.vercel\.app$/i.test(origin) ||
-      /^http:\/\/(?:localhost|127\.0\.0\.1)(?::\d+)?$/i.test(origin);
-
-    if (origin && isAllowed) {
+    if (origin) {
       res.setHeader('Access-Control-Allow-Origin', origin);
       res.setHeader('Access-Control-Allow-Credentials', 'true');
       res.setHeader(
@@ -52,6 +44,7 @@ async function bootstrap() {
 
     next();
   });
+
 
   // Increase payload size limit for base64 image/file attachments
   app.use(json({ limit: '50mb' }));
