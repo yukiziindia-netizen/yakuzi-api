@@ -1,7 +1,7 @@
 # OTP SMS Integration Guide - Nimbus IT
 
 ## Overview
-The Yukizi API now integrates with **Nimbus IT SMS API** for sending OTP (One-Time Password) messages to users during authentication.
+The Yukizi API integrates with **Nimbus IT SMS API** (`http://nimbusit.net/api/pushsms`) for sending OTP (One-Time Password) messages to users during Admin, Seller, and Buyer authentication.
 
 ## Environment Variables
 
@@ -9,49 +9,35 @@ Add the following environment variables to your `.env` file or deployment config
 
 ```bash
 # Nimbus IT SMS API Configuration
-NIMBUS_API_URL=http://nimbusit.info/api/pushsmsjson.php
-NIMBUS_USER=t5jaipharma
-NIMBUS_KEY=010Qftn20u6Y7M31aWNY
-NIMBUS_SENDER=PHABAG
-NIMBUS_REFERENCE_ID=1564879
-NIMBUS_ENTITY_ID=1701163558888608648
-NIMBUS_TEMPLATE_ID=1707163835062147514
-NIMBUS_OTP_MESSAGE=Welcome to Yukizi. Use OTP {otp} to login to your Yukizi account
+NIMBUS_API_URL=http://nimbusit.net/api/pushsms
+NIMBUS_USER=Yukizinet
+NIMBUS_AUTHKEY=92pFS19Z3lkM
+NIMBUS_SENDER=YUKIZI
+NIMBUS_ENTITY_ID=1701178401562319656
+NIMBUS_TEMPLATE_ID=1707178403027257823
+NIMBUS_RPT=1
+NIMBUS_OTP_MESSAGE="Dear User, use OTP {#var#} to securely access your YUKIZI account. Do not share it with anyone. - YUKIZI MARKET SERVICES"
 ```
 
 ## Configuration Details
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `NIMBUS_API_URL` | Yes | `http://nimbusit.info/api/pushsmsjson.php` | Nimbus IT API endpoint |
-| `NIMBUS_USER` | Yes | `t5jaipharma` | Nimbus IT account username |
-| `NIMBUS_KEY` | Yes | `010Qftn20u6Y7M31aWNY` | Nimbus IT API key |
-| `NIMBUS_SENDER` | No | `PHABAG` | SMS sender ID (brand name) |
-| `NIMBUS_REFERENCE_ID` | No | `1564879` | Reference ID for API calls |
-| `NIMBUS_ENTITY_ID` | No | `1701163558888608648` | Entity ID for compliance |
-| `NIMBUS_TEMPLATE_ID` | No | `1707163835062147514` | SMS template ID |
-| `NIMBUS_OTP_MESSAGE` | No | `Welcome to Yukizi...` | OTP message template (use `{otp}` placeholder) |
+| `NIMBUS_API_URL` | Yes | `http://nimbusit.net/api/pushsms` | Nimbus IT Push SMS API endpoint |
+| `NIMBUS_USER` | Yes | `Yukizinet` | Nimbus IT account username |
+| `NIMBUS_AUTHKEY` | Yes | `92pFS19Z3lkM` | Nimbus IT authentication key |
+| `NIMBUS_SENDER` | Yes | `YUKIZI` | DLT approved SMS sender ID |
+| `NIMBUS_ENTITY_ID` | Yes | `1701178401562319656` | DLT Entity ID |
+| `NIMBUS_TEMPLATE_ID` | Yes | `1707178403027257823` | DLT Template ID |
+| `NIMBUS_RPT` | No | `1` | Delivery report flag |
+| `NIMBUS_OTP_MESSAGE` | No | `Dear User, use OTP {#var#}...` | OTP message template (uses `{#var#}` or `{otp}` placeholder) |
 
 ## API Request Format
 
-The service automatically formats requests according to Nimbus IT specifications:
+The service automatically formats GET requests to Nimbus IT:
 
-```json
-{
-  "Authorization": {
-    "User": "t5jaipharma",
-    "Key": "010Qftn20u6Y7M31aWNY"
-  },
-  "Data": {
-    "Sender": "PHABAG",
-    "Message": "Welcome to Yukizi. Use OTP 123456 to login to your Yukizi account",
-    "Flash": "0",
-    "ReferenceId": "1564879",
-    "EntityId": "1701163558888608648",
-    "TemplateId": "1707163835062147514",
-    "Mobile": ["9831864222"]
-  }
-}
+```
+http://nimbusit.net/api/pushsms?user=Yukizinet&authkey=92pFS19Z3lkM&sender=YUKIZI&mobile=9831864222&text=Dear User, use OTP 123456 to securely access your YUKIZI account. Do not share it with anyone. - YUKIZI MARKET SERVICES&entityid=1701178401562319656&templateid=1707178403027257823&rpt=1
 ```
 
 ## Development vs Production

@@ -8,37 +8,48 @@ export class OtpSmsService {
 
   private readonly apiUrl: string;
   private readonly user: string;
-  private readonly password: string;
+  private readonly authkey: string;
   private readonly sender: string;
   private readonly entityId: string;
   private readonly templateId: string;
+  private readonly rpt: string;
   private readonly messageTemplate: string;
 
   constructor(private readonly configService: ConfigService) {
     this.apiUrl =
       this.configService.get<string>('NIMBUS_API_URL') ||
-      'http://nimbusit.biz/api/SmsApi/SendSingleApi';
+      'http://nimbusit.net/api/pushsms';
 
-    this.user = this.configService.get<string>('NIMBUS_USER') || '';
+    this.user =
+      this.configService.get<string>('NIMBUS_USER') || 'Yukizinet';
 
-    // Support both NIMBUS_PASSWORD and NIMBUS_KEY (as mentioned in docs)
-    this.password =
-      this.configService.get<string>('NIMBUS_PASSWORD') ||
+    this.authkey =
+      this.configService.get<string>('NIMBUS_AUTHKEY') ||
       this.configService.get<string>('NIMBUS_KEY') ||
-      '';
+      this.configService.get<string>('NIMBUS_PASSWORD') ||
+      '92pFS19Z3lkM';
 
-    this.sender = this.configService.get<string>('NIMBUS_SENDER') || 'PHABAG';
-    this.entityId = this.configService.get<string>('NIMBUS_ENTITY_ID') || '';
+    this.sender =
+      this.configService.get<string>('NIMBUS_SENDER') || 'YUKIZI';
+
+    this.entityId =
+      this.configService.get<string>('NIMBUS_ENTITY_ID') ||
+      '1701178401562319656';
+
     this.templateId =
-      this.configService.get<string>('NIMBUS_TEMPLATE_ID') || '';
+      this.configService.get<string>('NIMBUS_TEMPLATE_ID') ||
+      '1707178403027257823';
+
+    this.rpt =
+      this.configService.get<string>('NIMBUS_RPT') || '1';
 
     this.messageTemplate =
       this.configService.get<string>('NIMBUS_OTP_MESSAGE') ||
-      'Welcome to Yukizi. Use OTP {otp} to login to your Yukizi account';
+      'Dear User, use OTP {#var#} to securely access your YUKIZI account. Do not share it with anyone. - YUKIZI MARKET SERVICES';
 
-    if (!this.user || !this.password) {
+    if (!this.user || !this.authkey) {
       this.logger.warn(
-        'Nimbus SMS credentials (NIMBUS_USER/NIMBUS_KEY) missing!',
+        'Nimbus SMS credentials (NIMBUS_USER/NIMBUS_AUTHKEY) missing!',
       );
     }
   }
@@ -53,10 +64,9 @@ export class OtpSmsService {
 
     const formattedPhone = this.formatPhone(phone);
 
-    // Robust replacement: handles {otp}, [otp], <otp>, {#var#}, or {%otp%} case-insensitively
-    // We intentionally do not use \botp\b to avoid matching the literal word "OTP" in the template.
+    // Replace {#var#}, {otp}, [otp], <otp>, or {%otp%} with generated OTP
     const message = this.messageTemplate.replace(
-      /\{otp\}|\[otp\]|<otp>|\{#var#\}|\{%otp%\}/gi,
+      /\{#var#\}|\{otp\}|\[otp\]|<otp>|\{%otp%\}/gi,
       otp,
     );
 
@@ -64,13 +74,14 @@ export class OtpSmsService {
     this.logger.log(`Sending OTP to ${formattedPhone}`);
 
     const params = {
-      UserID: this.user,
-      Password: this.password,
-      SenderID: this.sender,
-      Phno: formattedPhone,
-      Msg: message,
-      EntityID: this.entityId,
-      TemplateID: this.templateId,
+      user: this.user,
+      authkey: this.authkey,
+      sender: this.sender,
+      mobile: formattedPhone,
+      text: message,
+      entityid: this.entityId,
+      templateid: this.templateId,
+      rpt: this.rpt,
     };
 
     try {
@@ -85,11 +96,19 @@ export class OtpSmsService {
 
       const isSuccess =
         typeof data === 'string'
-          ? data.toLowerCase().includes('success')
-          : data?.status === 'success';
+          ? data.toLowerCase().includes('success') ||
+            data.toLowerCase().includes('ok') ||
+            data.toLowerCase().includes('submitted') ||
+            /^\d+$/.test(data.trim())
+          : data?.status === 'success' ||
+            data?.status === 'OK' ||
+            data?.status === 200 ||
+            data?.responseCode === '200' ||
+            !!data?.jobid ||
+            !!data?.msgid;
 
       if (!isSuccess) {
-        this.logger.warn(`SMS may have failed: ${JSON.stringify(data)}`);
+        this.logger.warn(`SMS response received: ${JSON.stringify(data)}`);
       }
 
       this.logger.log(`SMS Response: ${JSON.stringify(data)}`);
@@ -114,19 +133,16 @@ export class OtpSmsService {
   private formatPhone(phone: string): string {
     let clean = phone.replace(/\D/g, '');
 
-    // If it's a standard 10-digit Indian number, prepend 91
-    if (clean.length === 10) {
-      clean = '91' + clean;
+    // Standard 10-digit Indian phone format for Nimbus IT pushsms
+    if (clean.length === 12 && clean.startsWith('91')) {
+      clean = clean.substring(2);
+    } else if (clean.length === 11 && clean.startsWith('0')) {
+      clean = clean.substring(1);
     }
 
-    // India format: 0XXXXXXXXXX → 91XXXXXXXXXX
-    if (clean.startsWith('0') && clean.length === 11) {
-      clean = '91' + clean.substring(1);
-    }
-
-    if (clean.length < 12) {
+    if (clean.length !== 10) {
       this.logger.warn(
-        `Phone number ${phone} may be too short for international format`,
+        `Phone number ${phone} sanitized length is ${clean.length}`,
       );
     }
 
@@ -168,7 +184,7 @@ export class OtpSmsService {
   // CHECK CONFIG
   // ==============================
   isConfigured(): boolean {
-    return !!(this.user && this.password);
+    return !!(this.user && this.authkey);
   }
 
   getTemplate(): string {
