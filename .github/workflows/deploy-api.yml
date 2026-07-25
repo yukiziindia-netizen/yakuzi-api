@@ -1,5 +1,4 @@
-name: Deploy API
-
+name: Deploy API on GCP
 on:
   push:
     branches:
