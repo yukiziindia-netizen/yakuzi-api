@@ -31,6 +31,8 @@ jobs:
           script: |
             set -e
 
+            git pull
+
             cd /home/yukizi_india/yakuzi-api
 
             echo "Installing dependencies..."
