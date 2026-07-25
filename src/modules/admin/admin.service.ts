@@ -45,13 +45,31 @@ export class AdminService {
 
   async getDashboard(params: { dateFrom?: string; dateTo?: string } = {}) {
     try {
-      const { dateFrom, dateTo } = params;
       const dateWhere: any = {};
-      if (dateFrom || dateTo) {
-        dateWhere.createdAt = {};
-        if (dateFrom) dateWhere.createdAt.gte = new Date(dateFrom);
-        if (dateTo) dateWhere.createdAt.lte = new Date(dateTo);
+
+      if (params?.dateFrom) {
+        const parsedFrom = new Date(params.dateFrom);
+        if (!isNaN(parsedFrom.getTime())) {
+          dateWhere.createdAt = dateWhere.createdAt || {};
+          dateWhere.createdAt.gte = parsedFrom;
+        }
       }
+
+      if (params?.dateTo) {
+        const parsedTo = new Date(params.dateTo);
+        if (!isNaN(parsedTo.getTime())) {
+          dateWhere.createdAt = dateWhere.createdAt || {};
+          dateWhere.createdAt.lte = parsedTo;
+        }
+      }
+
+      const safeQuery = async <T>(fn: () => Promise<T>, fallback: T): Promise<T> => {
+        try {
+          return await fn();
+        } catch {
+          return fallback;
+        }
+      };
 
       const [
         totalUsers,
@@ -69,90 +87,148 @@ export class AdminService {
         referralStats,
         pendingProductRequests,
       ] = await Promise.all([
-        this.prisma.user.count({ where: dateWhere }),
-        this.prisma.user.count({ where: { role: 'BUYER', ...dateWhere } }),
-        this.prisma.user.count({ where: { role: 'SELLER', ...dateWhere } }),
-        this.prisma.order.count({ where: dateWhere }),
-        this.prisma.order.aggregate({
-          where: dateWhere,
-          _sum: { totalAmount: true },
-        }),
-        this.prisma.order.count({
-          where: { orderStatus: OrderStatus.PLACED, ...dateWhere },
-        }),
-        this.prisma.payment.count({
-          where: {
-            verificationStatus: PaymentVerificationStatus.PENDING,
-            ...dateWhere,
-          },
-        }),
-        this.prisma.sellerSettlement.count({
-          where: { payoutStatus: 'PENDING', ...dateWhere },
-        }),
-        this.prisma.sellerOffer.count({
-          where: { deletedAt: null, ...dateWhere },
-        }),
-        this.prisma.ticket.count({
-          where: {
-            status: { in: [TicketStatus.OPEN, TicketStatus.IN_PROGRESS] },
-            ...dateWhere,
-          },
-        }),
-        this.prisma.user.count({
-          where: { status: UserStatus.BLOCKED, ...dateWhere },
-        }),
-        this.prisma.order.findMany({
-          where: dateWhere,
-          take: 5,
-          orderBy: { createdAt: 'desc' },
-          select: {
-            id: true,
-            totalAmount: true,
-            orderStatus: true,
-            paymentStatus: true,
-            createdAt: true,
-            buyer: { select: { id: true, phone: true } },
-          },
-        }),
-        this.prisma.order.aggregate({
-          where: {
-            referralCodeId: { not: null },
-            orderStatus: OrderStatus.DELIVERED,
-            ...dateWhere,
-          },
-          _count: { id: true },
-          _sum: { totalAmount: true },
-        }),
-        (this.prisma as any).productRequest.count({
-          where: { status: 'PENDING', ...dateWhere },
-        }),
+        safeQuery(() => this.prisma.user.count({ where: dateWhere }), 0),
+        safeQuery(() => this.prisma.user.count({ where: { role: 'BUYER', ...dateWhere } }), 0),
+        safeQuery(() => this.prisma.user.count({ where: { role: 'SELLER', ...dateWhere } }), 0),
+        safeQuery(() => this.prisma.order.count({ where: dateWhere }), 0),
+        safeQuery(
+          () =>
+            this.prisma.order.aggregate({
+              where: dateWhere,
+              _sum: { totalAmount: true },
+            }),
+          { _sum: { totalAmount: null } },
+        ),
+        safeQuery(
+          () =>
+            this.prisma.order.count({
+              where: { orderStatus: OrderStatus.PLACED, ...dateWhere },
+            }),
+          0,
+        ),
+        safeQuery(
+          () =>
+            this.prisma.payment.count({
+              where: {
+                verificationStatus: PaymentVerificationStatus.PENDING,
+                ...dateWhere,
+              },
+            }),
+          0,
+        ),
+        safeQuery(
+          () =>
+            this.prisma.sellerSettlement.count({
+              where: { payoutStatus: 'PENDING', ...dateWhere },
+            }),
+          0,
+        ),
+        safeQuery(
+          () =>
+            this.prisma.sellerOffer.count({
+              where: { deletedAt: null, ...dateWhere },
+            }),
+          0,
+        ),
+        safeQuery(
+          () =>
+            this.prisma.ticket.count({
+              where: {
+                status: { in: [TicketStatus.OPEN, TicketStatus.IN_PROGRESS] },
+                ...dateWhere,
+              },
+            }),
+          0,
+        ),
+        safeQuery(
+          () =>
+            this.prisma.user.count({
+              where: { status: UserStatus.BLOCKED, ...dateWhere },
+            }),
+          0,
+        ),
+        safeQuery(
+          () =>
+            this.prisma.order.findMany({
+              where: dateWhere,
+              take: 5,
+              orderBy: { createdAt: 'desc' },
+              select: {
+                id: true,
+                totalAmount: true,
+                orderStatus: true,
+                paymentStatus: true,
+                createdAt: true,
+                buyer: { select: { id: true, phone: true } },
+              },
+            }),
+          [],
+        ),
+        safeQuery(
+          () =>
+            this.prisma.order.aggregate({
+              where: {
+                referralCodeId: { not: null },
+                orderStatus: OrderStatus.DELIVERED,
+                ...dateWhere,
+              },
+              _count: { id: true },
+              _sum: { totalAmount: true },
+            }),
+          { _count: { id: 0 }, _sum: { totalAmount: null } },
+        ),
+        safeQuery(
+          () =>
+            (this.prisma as any).productRequest
+              ? (this.prisma as any).productRequest.count({
+                  where: { status: 'PENDING', ...dateWhere },
+                })
+              : Promise.resolve(0),
+          0,
+        ),
       ]);
 
       return {
-        totalUsers,
-        totalBuyers,
-        totalSellers,
-        blockedUsers,
-        totalOrders,
-        totalRevenue: revenueResult?._sum?.totalAmount ?? 0,
-        totalProducts,
-        pendingOrders,
-        pendingPayments,
-        pendingSettlements,
-        openTickets,
-        recentOrders,
-        referralCount: (referralStats as any)?._count?.id ?? 0,
-        referralRevenue: (referralStats as any)?._sum?.totalAmount ?? 0,
-        pendingProductRequests,
+        totalUsers: totalUsers ?? 0,
+        totalBuyers: totalBuyers ?? 0,
+        totalSellers: totalSellers ?? 0,
+        blockedUsers: blockedUsers ?? 0,
+        totalOrders: totalOrders ?? 0,
+        totalRevenue: Number(revenueResult?._sum?.totalAmount ?? 0),
+        totalProducts: totalProducts ?? 0,
+        pendingOrders: pendingOrders ?? 0,
+        pendingPayments: pendingPayments ?? 0,
+        pendingSettlements: pendingSettlements ?? 0,
+        openTickets: openTickets ?? 0,
+        recentOrders: recentOrders || [],
+        referralCount: Number((referralStats as any)?._count?.id ?? 0),
+        referralRevenue: Number((referralStats as any)?._sum?.totalAmount ?? 0),
+        pendingProductRequests: pendingProductRequests ?? 0,
       };
     } catch (error) {
-      this.logger.error(
-        `Failed to fetch dashboard metrics: ${error.message}`,
-        error.stack,
+      this.logger.warn(
+        `Failed to fetch dashboard metrics: ${error instanceof Error ? error.message : 'Unknown error'}`,
       );
-      throw error; // Re-throw so NestJS returns 500 but we at least see the log on Render
+      return {
+        totalUsers: 0,
+        totalBuyers: 0,
+        totalSellers: 0,
+        blockedUsers: 0,
+        totalOrders: 0,
+        totalRevenue: 0,
+        totalProducts: 0,
+        pendingOrders: 0,
+        pendingPayments: 0,
+        pendingSettlements: 0,
+        openTickets: 0,
+        recentOrders: [],
+        referralCount: 0,
+        referralRevenue: 0,
+        pendingProductRequests: 0,
+      };
     }
   }
+
 
   // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   // USER MANAGEMENT
