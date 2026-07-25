@@ -13,25 +13,18 @@ export class VerifyOtpDto {
     example: '9831864222',
     description: '10-digit Indian mobile number',
   })
-  @ValidateIf((o) => !o.contact)
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
-  @Matches(/^[6-9]\d{9}$/, {
-    message: 'Phone must be a valid 10-digit Indian mobile number',
-  })
   phone?: string;
 
   @ApiPropertyOptional({
     example: '9831864222',
-    description: 'Alias for phone number',
+    description: 'Alias for phone number or email',
   })
-  @ValidateIf((o) => !o.phone)
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
-  @Matches(/^[6-9]\d{9}$/, {
-    message: 'Contact must be a valid 10-digit Indian mobile number',
-  })
   contact?: string;
+
 
   @ApiProperty({ example: '123456', description: '6-digit OTP' })
   @IsString()

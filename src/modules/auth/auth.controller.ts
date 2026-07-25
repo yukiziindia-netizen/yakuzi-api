@@ -6,7 +6,9 @@ import {
   UseGuards,
   HttpCode,
   HttpStatus,
+  BadRequestException,
 } from '@nestjs/common';
+
 import {
   ApiTags,
   ApiOperation,
@@ -28,6 +30,31 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
+  private sanitizeContact(phone?: string, contact?: string): string {
+
+    let raw = (phone || contact || '').trim();
+
+    if (!raw) {
+      throw new BadRequestException('Phone number or contact is required');
+    }
+
+    if (raw.includes('or')) {
+      const parts = raw.split('or').map((p) => p.trim());
+      const phoneMatch = parts.find((p) => /^[6-9]\d{9}$/.test(p));
+      const emailMatch = parts.find((p) => p.includes('@'));
+      raw = phoneMatch || emailMatch || parts[parts.length - 1];
+    }
+
+    if (!raw.includes('@')) {
+      const digitsOnly = raw.replace(/\D/g, '');
+      if (digitsOnly.length >= 10) {
+        raw = digitsOnly.slice(-10);
+      }
+    }
+
+    return raw;
+  }
+
   @Post('send-otp')
   @Throttle({ default: { limit: 5, ttl: 60000 } })
   @HttpCode(HttpStatus.OK)
@@ -35,7 +62,7 @@ export class AuthController {
   @ApiResponse({ status: 200, description: 'OTP sent successfully' })
   @ApiResponse({ status: 429, description: 'Too many requests' })
   async sendOtp(@Body() dto: SendOtpDto) {
-    const contactMethod = (dto.phone || dto.contact) as string;
+    const contactMethod = this.sanitizeContact(dto.phone, dto.contact);
     return this.authService.sendOtp(contactMethod);
   }
 
@@ -46,9 +73,10 @@ export class AuthController {
   @ApiResponse({ status: 200, description: 'OTP verified, tokens returned' })
   @ApiResponse({ status: 401, description: 'Invalid or expired OTP' })
   async verifyOtp(@Body() dto: VerifyOtpDto) {
-    const phoneNumber = (dto.phone || dto.contact) as string;
+    const phoneNumber = this.sanitizeContact(dto.phone, dto.contact);
     return this.authService.verifyOtp(phoneNumber, dto.otp, dto.role);
   }
+
 
   @Post('buyer/register')
   @Throttle({ default: { limit: 5, ttl: 60000 } })
