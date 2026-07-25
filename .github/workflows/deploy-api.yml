@@ -15,7 +15,7 @@ jobs:
       - name: Sync Project to GCP
         uses: burnett01/rsync-deployments@7.0.2
         with:
-          switches: -avz --exclude=".git" --exclude="node_modules"
+          switches: -avz 
           path: ./
           remote_path: /home/yukizi_india/yakuzi-api
           remote_host: ${{ secrets.SERVER_HOST }}
