@@ -886,9 +886,16 @@ export class AdminService {
 
     if (dateFrom || dateTo) {
       where.createdAt = {};
-      if (dateFrom) (where.createdAt as any).gte = new Date(dateFrom);
-      if (dateTo) (where.createdAt as any).lte = new Date(dateTo);
+      if (dateFrom) {
+        const parsedFrom = new Date(dateFrom);
+        if (!isNaN(parsedFrom.getTime())) (where.createdAt as any).gte = parsedFrom;
+      }
+      if (dateTo) {
+        const parsedTo = new Date(dateTo);
+        if (!isNaN(parsedTo.getTime())) (where.createdAt as any).lte = parsedTo;
+      }
     }
+
 
     const [data, total] = await Promise.all([
       this.prisma.order.findMany({
