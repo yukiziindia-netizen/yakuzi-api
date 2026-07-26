@@ -194,10 +194,9 @@ export class StorageService {
     }
 
     if (isGcs) {
-      const directGcsUploadUrl = `https://storage.googleapis.com/upload/storage/v1/b/${this.gcsProductImagesBucket}/o?uploadType=media&name=${encodeURIComponent(key)}`;
       const cdnUrl = `https://storage.googleapis.com/${this.gcsProductImagesBucket}/${key}`;
       return {
-        presigned_url: directGcsUploadUrl,
+        presigned_url: cdnUrl,
         key,
         cdn_url: cdnUrl,
       };
