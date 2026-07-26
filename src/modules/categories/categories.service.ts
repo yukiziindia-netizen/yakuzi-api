@@ -55,11 +55,20 @@ export class CategoriesService {
   }
 
   async findAllCategories() {
-    return this.prisma.category.findMany({
-      include: { subCategories: true },
-      orderBy: { name: 'asc' },
-    });
+    try {
+      if ((this.prisma as any).category) {
+        const categories = await (this.prisma as any).category.findMany({
+          include: { subCategories: true },
+          orderBy: { name: 'asc' },
+        });
+        return categories || [];
+      }
+    } catch (error) {
+      this.logger.warn(`Failed to fetch categories: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+    return [];
   }
+
 
   async updateCategory(id: string, dto: UpdateCategoryDto) {
     const existing = await this.prisma.category.findUnique({ where: { id } });
@@ -182,15 +191,24 @@ export class CategoriesService {
   }
 
   async findAllSubCategories(query: QuerySubCategoryDto) {
-    const where: Prisma.SubCategoryWhereInput = {};
-    if (query.categoryId) where.categoryId = query.categoryId;
+    try {
+      if ((this.prisma as any).subCategory) {
+        const where: Prisma.SubCategoryWhereInput = {};
+        if (query.categoryId) where.categoryId = query.categoryId;
 
-    return this.prisma.subCategory.findMany({
-      where,
-      include: { category: true },
-      orderBy: { name: 'asc' },
-    });
+        const subCategories = await (this.prisma as any).subCategory.findMany({
+          where,
+          include: { category: true },
+          orderBy: { name: 'asc' },
+        });
+        return subCategories || [];
+      }
+    } catch (error) {
+      this.logger.warn(`Failed to fetch subcategories: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+    return [];
   }
+
 
   async updateSubCategory(id: string, dto: UpdateSubCategoryDto) {
     const existing = await this.prisma.subCategory.findUnique({

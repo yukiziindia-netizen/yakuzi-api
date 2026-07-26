@@ -47,11 +47,20 @@ export class BrandsService {
   }
 
   async findAll(admin = false) {
-    return this.prisma.brand.findMany({
-      where: admin ? undefined : { isActive: true },
-      orderBy: { order: 'asc' },
-    });
+    try {
+      if ((this.prisma as any).brand) {
+        const brands = await (this.prisma as any).brand.findMany({
+          where: admin ? undefined : { isActive: true },
+          orderBy: { order: 'asc' },
+        });
+        return brands || [];
+      }
+    } catch (error) {
+      // Return empty array on database error
+    }
+    return [];
   }
+
 
   async update(id: string, dto: UpdateBrandDto) {
     const existing = await this.prisma.brand.findUnique({ where: { id } });

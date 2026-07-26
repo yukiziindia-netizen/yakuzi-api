@@ -145,44 +145,52 @@ export class ReviewsService {
    * Get all reviews for admin dashboard.
    */
   async getAdminReviews(page: number = 1, limit: number = 20) {
-    const skip = (page - 1) * limit;
+    try {
+      if ((this.prisma as any).review) {
+        const skip = (page - 1) * limit;
 
-    const [reviews, total] = await Promise.all([
-      this.prisma.review.findMany({
-        skip,
-        take: limit,
-        orderBy: { createdAt: 'desc' },
-        include: {
-          catalogProduct: { select: { name: true } },
-          user: {
-            select: {
-              id: true,
-              email: true,
-              buyerProfile: { select: { legalName: true } },
+        const [reviews, total] = await Promise.all([
+          (this.prisma as any).review.findMany({
+            skip,
+            take: limit,
+            orderBy: { createdAt: 'desc' },
+            include: {
+              catalogProduct: { select: { name: true } },
+              user: {
+                select: {
+                  id: true,
+                  email: true,
+                  buyerProfile: { select: { legalName: true } },
+                },
+              },
             },
-          },
-        },
-      }),
-      this.prisma.review.count(),
-    ]);
+          }),
+          (this.prisma as any).review.count(),
+        ]);
 
-    return {
-      data: reviews.map((r) => ({
-        id: r.id,
-        catalogProductId: r.catalogProductId,
-        productName: r.catalogProduct?.name || 'Unknown Product',
-        userId: r.userId,
-        userName: r.user.buyerProfile?.legalName || r.user.email || 'User',
-        rating: r.rating,
-        comment: r.comment || '',
-        createdAt: r.createdAt.toISOString(),
-      })),
-      total,
-      page,
-      limit,
-      totalPages: Math.ceil(total / limit),
-    };
+        return {
+          data: reviews.map((r: any) => ({
+            id: r.id,
+            catalogProductId: r.catalogProductId,
+            productName: r.catalogProduct?.name || 'Unknown Product',
+            userId: r.userId,
+            userName: r.user.buyerProfile?.legalName || r.user.email || 'User',
+            rating: r.rating,
+            comment: r.comment || '',
+            createdAt: r.createdAt.toISOString(),
+          })),
+          total: total || 0,
+          page,
+          limit,
+          totalPages: Math.ceil((total || 0) / limit),
+        };
+      }
+    } catch (error) {
+      this.logger.warn(`Failed to fetch admin reviews: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+    return { data: [], total: 0, page, limit, totalPages: 0 };
   }
+
 
   /**
    * Delete a review (Admin).

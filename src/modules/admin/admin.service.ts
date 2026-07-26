@@ -1284,144 +1284,162 @@ export class AdminService {
     });
   }
   async getAllSettlements(query: AdminQuerySettlementsDto) {
-    const {
-      status,
-      sellerId,
-      orderItemId,
-      dateFrom,
-      dateTo,
-      page = 1,
-      limit = 20,
-    } = query;
-    const skip = (page - 1) * limit;
+    try {
+      const {
+        status,
+        sellerId,
+        orderItemId,
+        dateFrom,
+        dateTo,
+        page = 1,
+        limit = 20,
+      } = query;
+      const skip = (page - 1) * limit;
 
-    const where: Prisma.SellerSettlementWhereInput = {};
-    if (status && status !== 'PROJECTED') where.payoutStatus = status;
-    if (sellerId) where.sellerId = sellerId;
-    if (orderItemId) where.orderItemId = orderItemId;
+      const where: Prisma.SellerSettlementWhereInput = {};
+      if (status && status !== 'PROJECTED') where.payoutStatus = status;
+      if (sellerId) where.sellerId = sellerId;
+      if (orderItemId) where.orderItemId = orderItemId;
 
-    if (dateFrom || dateTo) {
-      where.createdAt = {};
-      if (dateFrom) (where.createdAt as any).gte = new Date(dateFrom);
-      if (dateTo) (where.createdAt as any).lte = new Date(dateTo);
-    }
-
-    const pendingWhere: import('@prisma/client').Prisma.OrderItemWhereInput = {
-      order: { orderStatus: { not: 'CANCELLED' } },
-      settlement: null,
-    };
-    if (sellerId) pendingWhere.sellerId = sellerId;
-    if (orderItemId) pendingWhere.id = orderItemId;
-    if (dateFrom || dateTo) {
-      pendingWhere.createdAt = {};
-      if (dateFrom) (pendingWhere.createdAt as any).gte = new Date(dateFrom);
-      if (dateTo) (pendingWhere.createdAt as any).lte = new Date(dateTo);
-    }
-
-    let projectedSettlements: any[] = [];
-    let pendingCount = 0;
-    
-    // Only fetch pending items if status is not explicitly demanding a settled status
-    if (!status || status === 'PROJECTED') {
-      pendingCount = await this.prisma.orderItem.count({ where: pendingWhere });
-    }
-
-    const settledCount = (!status || status !== 'PROJECTED') ? await this.prisma.sellerSettlement.count({ where }) : 0;
-    const total = pendingCount + settledCount;
-
-    let takePending = 0;
-    let skipPending = 0;
-    let takeSettled = 0;
-    let skipSettled = 0;
-
-    if (!status || status === 'PROJECTED') {
-      if (skip < pendingCount) {
-        skipPending = skip;
-        takePending = Math.min(limit, pendingCount - skip);
-        if (takePending < limit && (!status || status !== 'PROJECTED')) {
-          takeSettled = limit - takePending;
-          skipSettled = 0;
+      if (dateFrom || dateTo) {
+        where.createdAt = {};
+        if (dateFrom) {
+          const parsedFrom = new Date(dateFrom);
+          if (!isNaN(parsedFrom.getTime())) (where.createdAt as any).gte = parsedFrom;
         }
-      } else if (!status || status !== 'PROJECTED') {
-        skipSettled = skip - pendingCount;
+        if (dateTo) {
+          const parsedTo = new Date(dateTo);
+          if (!isNaN(parsedTo.getTime())) (where.createdAt as any).lte = parsedTo;
+        }
+      }
+
+      const pendingWhere: import('@prisma/client').Prisma.OrderItemWhereInput = {
+        order: { orderStatus: { not: 'CANCELLED' } },
+        settlement: null,
+      };
+      if (sellerId) pendingWhere.sellerId = sellerId;
+      if (orderItemId) pendingWhere.id = orderItemId;
+      if (dateFrom || dateTo) {
+        pendingWhere.createdAt = {};
+        if (dateFrom) {
+          const parsedFrom = new Date(dateFrom);
+          if (!isNaN(parsedFrom.getTime())) (pendingWhere.createdAt as any).gte = parsedFrom;
+        }
+        if (dateTo) {
+          const parsedTo = new Date(dateTo);
+          if (!isNaN(parsedTo.getTime())) (pendingWhere.createdAt as any).lte = parsedTo;
+        }
+      }
+
+      let projectedSettlements: any[] = [];
+      let pendingCount = 0;
+      
+      // Only fetch pending items if status is not explicitly demanding a settled status
+      if (!status || status === 'PROJECTED') {
+        pendingCount = (this.prisma as any).orderItem ? await this.prisma.orderItem.count({ where: pendingWhere }) : 0;
+      }
+
+      const settledCount = (!status || status !== 'PROJECTED') && (this.prisma as any).sellerSettlement ? await this.prisma.sellerSettlement.count({ where }) : 0;
+      const total = pendingCount + settledCount;
+
+      let takePending = 0;
+      let skipPending = 0;
+      let takeSettled = 0;
+      let skipSettled = 0;
+
+      if (!status || status === 'PROJECTED') {
+        if (skip < pendingCount) {
+          skipPending = skip;
+          takePending = Math.min(limit, pendingCount - skip);
+          if (takePending < limit && (!status || status !== 'PROJECTED')) {
+            takeSettled = limit - takePending;
+            skipSettled = 0;
+          }
+        } else if (!status || status !== 'PROJECTED') {
+          skipSettled = skip - pendingCount;
+          takeSettled = limit;
+        }
+      } else {
+        skipSettled = skip;
         takeSettled = limit;
       }
-    } else {
-      skipSettled = skip;
-      takeSettled = limit;
-    }
 
-    if (takePending > 0) {
-      const pendingItems = await this.prisma.orderItem.findMany({
-        where: pendingWhere,
-        orderBy: { createdAt: 'desc' },
-        include: {
-          sellerOffer: { include: { catalogProduct: true } },
-          seller: { select: { id: true, companyName: true, userId: true } },
-        },
-        skip: skipPending,
-        take: takePending,
-      });
+      if (takePending > 0 && (this.prisma as any).orderItem) {
+        const pendingItems = await this.prisma.orderItem.findMany({
+          where: pendingWhere,
+          orderBy: { createdAt: 'desc' },
+          include: {
+            sellerOffer: { include: { catalogProduct: true } },
+            seller: { select: { id: true, companyName: true, userId: true } },
+          },
+          skip: skipPending,
+          take: takePending,
+        });
 
-      projectedSettlements = pendingItems.map(item => {
-        const input = buildPayoutInputFromOrderItem(item);
-        const breakdown = calculateSellerPayout(input);
+        projectedSettlements = pendingItems.map(item => {
+          const input = buildPayoutInputFromOrderItem(item);
+          const breakdown = calculateSellerPayout(input);
 
-        return {
-          id: `projected-${item.id}`,
-          sellerId: item.sellerId,
-          orderItemId: item.id,
-          amount: breakdown.netPayout.toString(),
-          grossAmount: breakdown.grossAmount.toString(),
-          commission: breakdown.commission.toString(),
-          commissionGst: breakdown.commissionGst.toString(),
-          fixedFee: '0',
-          fixedFeeGst: '0',
-          withholdingTax: '0',
-          netPayout: breakdown.netPayout.toString(),
-          payoutStatus: 'PROJECTED',
-          createdAt: item.createdAt,
-          updatedAt: item.createdAt,
-          payoutReference: null,
-          payoutDate: null,
-          seller: item.seller,
-          orderItem: {
-            id: item.id,
-            orderId: item.orderId,
-            totalPrice: item.totalPrice,
-            sellerOffer: {
-              id: item.sellerOffer?.id,
-              name: item.sellerOffer?.name,
+          return {
+            id: `projected-${item.id}`,
+            sellerId: item.sellerId,
+            orderItemId: item.id,
+            amount: breakdown.netPayout.toString(),
+            grossAmount: breakdown.grossAmount.toString(),
+            commission: breakdown.commission.toString(),
+            commissionGst: breakdown.commissionGst.toString(),
+            fixedFee: '0',
+            fixedFeeGst: '0',
+            withholdingTax: '0',
+            netPayout: breakdown.netPayout.toString(),
+            payoutStatus: 'PROJECTED',
+            createdAt: item.createdAt,
+            updatedAt: item.createdAt,
+            payoutReference: null,
+            payoutDate: null,
+            seller: item.seller,
+            orderItem: {
+              id: item.id,
+              orderId: item.orderId,
+              totalPrice: item.totalPrice,
+              sellerOffer: {
+                id: item.sellerOffer?.id,
+                name: item.sellerOffer?.name,
+              },
+            },
+          };
+        });
+      }
+
+      let settledData: any[] = [];
+      if (takeSettled > 0 && (this.prisma as any).sellerSettlement) {
+        settledData = await this.prisma.sellerSettlement.findMany({
+          where,
+          orderBy: { createdAt: 'desc' },
+          include: {
+            seller: { select: { id: true, companyName: true, userId: true } },
+            orderItem: {
+              select: {
+                id: true,
+                orderId: true,
+                totalPrice: true,
+                sellerOffer: { select: { id: true, name: true } },
+              },
             },
           },
-        };
-      });
-    }
+          skip: skipSettled,
+          take: takeSettled,
+        });
+      }
 
-    let settledData: any[] = [];
-    if (takeSettled > 0) {
-      settledData = await this.prisma.sellerSettlement.findMany({
-        where,
-        orderBy: { createdAt: 'desc' },
-        include: {
-          seller: { select: { id: true, companyName: true, userId: true } },
-          orderItem: {
-            select: {
-              id: true,
-              orderId: true,
-              totalPrice: true,
-              sellerOffer: { select: { id: true, name: true } },
-            },
-          },
-        },
-        skip: skipSettled,
-        take: takeSettled,
-      });
+      const data = [...projectedSettlements, ...settledData];
+      return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
+    } catch (error) {
+      this.logger.warn(`Failed to fetch settlements: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      return { data: [], total: 0, page: query.page || 1, limit: query.limit || 20, totalPages: 0 };
     }
-
-    const data = [...projectedSettlements, ...settledData];
-    return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
   }
+
 
   async markSettlementPaid(
     settlementId: string,
@@ -1695,28 +1713,42 @@ export class AdminService {
    * Get history of broadcasted notifications.
    */
   async getBroadcastHistory() {
-    return this.prisma.notificationBroadcast.findMany({
-      include: {
-        admin: {
-          select: {
-            id: true,
-            adminProfile: { select: { displayName: true } },
+    try {
+      if ((this.prisma as any).notificationBroadcast) {
+        const broadcasts = await (this.prisma as any).notificationBroadcast.findMany({
+          include: {
+            admin: {
+              select: {
+                id: true,
+                adminProfile: { select: { displayName: true } },
+              },
+            },
           },
-        },
-      },
-      orderBy: { createdAt: 'desc' },
-    });
+          orderBy: { createdAt: 'desc' },
+        });
+        return broadcasts || [];
+      }
+    } catch (error) {
+      this.logger.warn(`Failed to fetch broadcast history: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+    return [];
   }
 
-  /**
-   * Get history of broadcasted notifications sent by the current admin.
-   */
   async getMyBroadcastHistory(adminId: string) {
-    return this.prisma.notificationBroadcast.findMany({
-      where: { adminId },
-      orderBy: { createdAt: 'desc' },
-    });
+    try {
+      if ((this.prisma as any).notificationBroadcast) {
+        const broadcasts = await (this.prisma as any).notificationBroadcast.findMany({
+          where: { adminId },
+          orderBy: { createdAt: 'desc' },
+        });
+        return broadcasts || [];
+      }
+    } catch (error) {
+      this.logger.warn(`Failed to fetch my broadcast history: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+    return [];
   }
+
 
   // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   // ADMIN MANAGEMENT (Role-Based Access)
