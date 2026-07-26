@@ -5,6 +5,7 @@ import {
   Matches,
   IsEmail,
 } from 'class-validator';
+import { Transform } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreateSellerProfileDto {
@@ -14,13 +15,15 @@ export class CreateSellerProfileDto {
   companyName: string;
 
   @ApiPropertyOptional({ example: 'business@example.com' })
-  @IsEmail()
   @IsOptional()
+  @Transform(({ value }) => (typeof value === 'string' && value.trim() ? value.trim().toLowerCase() : undefined))
+  @IsEmail()
   email?: string;
 
   @ApiPropertyOptional({ example: '12345678901234' })
-  @IsString()
   @IsOptional()
+  @Transform(({ value }) => (typeof value === 'string' && value.trim() ? value.trim() : undefined))
+  @IsString()
   fssaiNumber?: string;
 
   @ApiPropertyOptional({
@@ -35,22 +38,25 @@ export class CreateSellerProfileDto {
   bankAccount?: any;
 
   @ApiPropertyOptional({ example: 'https://s3.amazonaws.com/cancel-check.jpg' })
-  @IsString()
   @IsOptional()
+  @Transform(({ value }) => (typeof value === 'string' && value.trim() ? value.trim() : undefined))
+  @IsString()
   cancelCheck?: string;
 
   @ApiPropertyOptional({ example: '27AABCU9603R1ZM', description: '15-char GSTIN' })
-  @IsString()
   @IsOptional()
-  @Matches(/^\d{2}[A-Z]{5}\d{4}[A-Z]{1}[A-Z\d]{1}[Z]{1}[A-Z\d]{1}$/, {
+  @Transform(({ value }) => (typeof value === 'string' && value.trim() ? value.trim().toUpperCase() : undefined))
+  @IsString()
+  @Matches(/^(\d{2}[A-Z]{5}\d{4}[A-Z]{1}[A-Z\d]{1}[Z]{1}[A-Z\d]{1})?$/, {
     message: 'gstNumber must be a valid 15-character GSTIN',
   })
   gstNumber?: string;
 
   @ApiPropertyOptional({ example: 'ABCDE1234F', description: '10-char PAN' })
-  @IsString()
   @IsOptional()
-  @Matches(/^[A-Z]{5}\d{4}[A-Z]{1}$/, {
+  @Transform(({ value }) => (typeof value === 'string' && value.trim() ? value.trim().toUpperCase() : undefined))
+  @IsString()
+  @Matches(/^([A-Z]{5}\d{4}[A-Z]{1})?$/, {
     message: 'panNumber must be a valid 10-character PAN',
   })
   panNumber?: string;
@@ -60,39 +66,46 @@ export class CreateSellerProfileDto {
     description: '12-digit Aadhaar Card number',
   })
   @IsOptional()
+  @Transform(({ value }) => (typeof value === 'string' && value.replace(/\D/g, '') ? value.replace(/\D/g, '') : undefined))
   @IsString()
-  @Matches(/^\d{12}$/, {
+  @Matches(/^(\d{12})?$/, {
     message: 'aadhaarNumber must be a valid 12-digit number',
   })
   aadhaarNumber?: string;
 
-  @ApiProperty({ example: 'DL-MH-654321' })
+  @ApiPropertyOptional({ example: 'DL-MH-654321' })
+  @IsOptional()
+  @Transform(({ value }) => (typeof value === 'string' && value.trim() ? value.trim() : undefined))
   @IsString()
-  @IsNotEmpty()
-  drugLicenseNumber: string;
+  drugLicenseNumber?: string;
 
-  @ApiProperty({ example: 'https://s3.amazonaws.com/drug-license.pdf' })
+  @ApiPropertyOptional({ example: 'https://s3.amazonaws.com/drug-license.pdf' })
+  @IsOptional()
+  @Transform(({ value }) => (typeof value === 'string' && value.trim() ? value.trim() : undefined))
   @IsString()
-  @IsNotEmpty()
-  drugLicenseUrl: string;
+  drugLicenseUrl?: string;
 
   @ApiPropertyOptional({ example: '2026-12-31' })
   @IsOptional()
+  @Transform(({ value }) => (typeof value === 'string' && value.trim() ? value.trim() : undefined))
   @IsString()
   drugLicenseExpiry?: string;
 
-  @ApiProperty({ example: 'DL-MH-654321' })
+  @ApiPropertyOptional({ example: 'DL-MH-654321' })
+  @IsOptional()
+  @Transform(({ value }) => (typeof value === 'string' && value.trim() ? value.trim() : undefined))
   @IsString()
-  @IsNotEmpty()
-  drugLicenseNumber2: string;
+  drugLicenseNumber2?: string;
 
-  @ApiProperty({ example: 'https://s3.amazonaws.com/drug-license2.pdf' })
+  @ApiPropertyOptional({ example: 'https://s3.amazonaws.com/drug-license2.pdf' })
+  @IsOptional()
+  @Transform(({ value }) => (typeof value === 'string' && value.trim() ? value.trim() : undefined))
   @IsString()
-  @IsNotEmpty()
-  drugLicenseUrl2: string;
+  drugLicenseUrl2?: string;
 
   @ApiPropertyOptional({ example: '2026-12-31' })
   @IsOptional()
+  @Transform(({ value }) => (typeof value === 'string' && value.trim() ? value.trim() : undefined))
   @IsString()
   drugLicenseExpiry2?: string;
 

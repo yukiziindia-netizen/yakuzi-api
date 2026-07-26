@@ -52,8 +52,8 @@ export class SellersService {
         gstNumber: dto.gstNumber,
         panNumber: dto.panNumber ?? null,
         aadhaarNumber: dto.aadhaarNumber ?? null,
-        drugLicenseNumber: dto.drugLicenseNumber,
-        drugLicenseUrl: dto.drugLicenseUrl,
+        drugLicenseNumber: dto.drugLicenseNumber || '',
+        drugLicenseUrl: dto.drugLicenseUrl || '',
         drugLicenseExpiry: dto.drugLicenseExpiry
           ? new Date(dto.drugLicenseExpiry)
           : null,
