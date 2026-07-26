@@ -169,49 +169,115 @@ export class SellersService {
    * Partially update the seller profile.
    */
   async updateProfile(userId: string, dto: UpdateSellerProfileDto) {
-    const existing = await this.prisma.sellerProfile.findUnique({
-      where: { userId },
-    });
-
-    if (!existing) {
-      // Auto create before updating
-      await this.getProfile(userId);
-    }
-
-    const isFirstUpdate = existing ? existing.verificationStatus === 'UNVERIFIED' : true;
-
-    if (isFirstUpdate) {
-      await this.prisma.user.update({
-        where: { id: userId },
-        data: { status: 'PENDING' },
+    try {
+      let existing = await this.prisma.sellerProfile.findUnique({
+        where: { userId },
       });
+
+      if (!existing) {
+        // Auto create before updating
+        await this.getProfile(userId);
+        existing = await this.prisma.sellerProfile.findUnique({
+          where: { userId },
+        });
+      }
+
+      const isFirstUpdate = existing ? existing.verificationStatus === 'UNVERIFIED' : true;
+
+      if (isFirstUpdate) {
+        try {
+          await this.prisma.user.update({
+            where: { id: userId },
+            data: { status: 'PENDING' },
+          });
+        } catch (userErr) {
+          // Ignore status update warning
+        }
+      }
+
+      const {
+        companyName,
+        gstNumber,
+        panNumber,
+        aadhaarNumber,
+        drugLicenseNumber,
+        drugLicenseUrl,
+        drugLicenseNumber2,
+        drugLicenseUrl2,
+        drugLicenseExpiry,
+        drugLicenseExpiry2,
+        address,
+        city,
+        state,
+        pincode,
+        email,
+        fssaiNumber,
+        bankAccount,
+        cancelCheck,
+        additionalDocuments,
+        gstPanResponse,
+        isVacation,
+      } = dto as any;
+
+      if (email) {
+        try {
+          await this.prisma.user.update({
+            where: { id: userId },
+            data: { email },
+          });
+        } catch (userErr) {
+          // Ignore email collision
+        }
+      }
+
+      const dataToUpdate: any = {};
+      if (companyName !== undefined) dataToUpdate.companyName = companyName;
+      if (gstNumber !== undefined) dataToUpdate.gstNumber = gstNumber;
+      if (panNumber !== undefined) dataToUpdate.panNumber = panNumber;
+      if (aadhaarNumber !== undefined) dataToUpdate.aadhaarNumber = aadhaarNumber;
+      if (drugLicenseNumber !== undefined) dataToUpdate.drugLicenseNumber = drugLicenseNumber;
+      if (drugLicenseUrl !== undefined) dataToUpdate.drugLicenseUrl = drugLicenseUrl;
+      if (drugLicenseNumber2 !== undefined) dataToUpdate.drugLicenseNumber2 = drugLicenseNumber2;
+      if (drugLicenseUrl2 !== undefined) dataToUpdate.drugLicenseUrl2 = drugLicenseUrl2;
+      if (address !== undefined) dataToUpdate.address = address;
+      if (city !== undefined) dataToUpdate.city = city;
+      if (state !== undefined) dataToUpdate.state = state;
+      if (pincode !== undefined) dataToUpdate.pincode = pincode;
+      if (email !== undefined) dataToUpdate.email = email;
+      if (fssaiNumber !== undefined) dataToUpdate.fssaiNumber = fssaiNumber;
+      if (bankAccount !== undefined) dataToUpdate.bankAccount = bankAccount;
+      if (cancelCheck !== undefined) dataToUpdate.cancelCheck = cancelCheck;
+      if (additionalDocuments !== undefined) dataToUpdate.additionalDocuments = additionalDocuments;
+      if (gstPanResponse !== undefined) dataToUpdate.gstPanResponse = gstPanResponse;
+      if (isVacation !== undefined) dataToUpdate.isVacation = isVacation;
+
+      if (drugLicenseExpiry) {
+        const parsed = new Date(drugLicenseExpiry);
+        if (!isNaN(parsed.getTime())) dataToUpdate.drugLicenseExpiry = parsed;
+      }
+
+      if (drugLicenseExpiry2) {
+        const parsed = new Date(drugLicenseExpiry2);
+        if (!isNaN(parsed.getTime())) dataToUpdate.drugLicenseExpiry2 = parsed;
+      }
+
+      if (isFirstUpdate) {
+        dataToUpdate.verificationStatus = 'PENDING';
+      }
+
+      const profile = await this.prisma.sellerProfile.update({
+        where: { userId },
+        data: dataToUpdate,
+      });
+
+      this.logger.log(`Seller profile updated for user ${userId}`);
+      return profile;
+    } catch (error) {
+      this.logger.error(`Error updating seller profile for ${userId}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      throw new BadRequestException(error instanceof Error ? error.message : 'Failed to update seller profile');
     }
-
-    const profile = await this.prisma.sellerProfile.update({
-      where: { userId },
-      data: {
-        ...dto,
-        drugLicenseExpiry: dto.drugLicenseExpiry
-          ? new Date(dto.drugLicenseExpiry)
-          : undefined,
-        drugLicenseExpiry2: dto.drugLicenseExpiry2
-          ? new Date(dto.drugLicenseExpiry2)
-          : undefined,
-        // @ts-ignore
-        email: dto.email,
-        // @ts-ignore
-        fssaiNumber: dto.fssaiNumber,
-        // @ts-ignore
-        bankAccount: dto.bankAccount,
-        // @ts-ignore
-        cancelCheck: dto.cancelCheck,
-        ...(isFirstUpdate && { verificationStatus: 'PENDING' }),
-      },
-    });
-
-    this.logger.log(`Seller profile updated for user ${userId}`);
-    return profile;
   }
+
 
   /**
    * Get seller dashboard metrics.
