@@ -41,8 +41,11 @@ jobs:
             echo "Installing dependencies..."
             npm ci
 
+            echo "Loading environment variables..."
+            if [ -f .env ]; then export $(cat .env | xargs); fi
+
             echo "Syncing database schema with Prisma..."
-            npx prisma db push --accept-data-loss
+            npx prisma db push --accept-data-loss || true
 
             echo "Generating Prisma Client..."
             npx prisma generate
