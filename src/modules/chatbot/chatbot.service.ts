@@ -22,14 +22,34 @@ export class ChatbotService implements OnModuleInit, OnModuleDestroy {
   }
 
   async onModuleInit() {
-    this.logger.log(
-      'Python Chatbot Sidecar is managed externally via concurrently script.',
-    );
+    try {
+      const apiUrl = process.env.CHATBOT_API_URL || `http://127.0.0.1:${this.port}`;
+      await axios.get(`${apiUrl}/docs`, { timeout: 1500 });
+      this.logger.log('Python Chatbot Sidecar is already active and healthy.');
+    } catch (err) {
+      this.logger.log('Python Chatbot Sidecar not detected on port 5005. Attempting auto-launch...');
+      const hasPython = await this.checkPythonInstallation();
+      if (!hasPython) {
+        this.logger.warn('Python is not installed on server host. Chatbot sidecar will remain disabled.');
+        return;
+      }
+      try {
+        await this.setupVirtualEnv();
+        this.startPythonApp();
+      } catch (setupErr) {
+        this.logger.error(`Failed to launch Python chatbot sidecar: ${setupErr instanceof Error ? setupErr.message : 'Unknown error'}`);
+      }
+    }
   }
 
   onModuleDestroy() {
-    // Managed externally
+    if (this.pythonProcess) {
+      this.logger.log('Stopping Python chatbot sidecar process...');
+      this.pythonProcess.kill();
+      this.pythonProcess = null;
+    }
   }
+
 
   private checkPythonInstallation(): Promise<boolean> {
     return new Promise((resolve) => {
