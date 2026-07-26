@@ -87,7 +87,24 @@ export class AdminController {
     return { message: 'Pending users retrieved successfully', data };
   }
 
+  @Get('users/sellers')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Get all sellers' })
+  async getSellers(@Query() query: QueryUsersDto) {
+    const data = await this.adminService.getAllUsers({ ...query, role: Role.SELLER });
+    return { message: 'Sellers retrieved successfully', data };
+  }
+
+  @Get('users/buyers')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Get all buyers' })
+  async getBuyers(@Query() query: QueryUsersDto) {
+    const data = await this.adminService.getAllUsers({ ...query, role: Role.BUYER });
+    return { message: 'Buyers retrieved successfully', data };
+  }
+
   @Get('users/:id')
+
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Get a single user by ID with full profile and counts',

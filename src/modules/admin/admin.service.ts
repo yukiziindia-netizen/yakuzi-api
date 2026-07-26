@@ -235,67 +235,81 @@ export class AdminService {
   // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
   async getAllUsers(query: QueryUsersDto) {
-    const {
-      role,
-      status,
-      search,
-      dateFrom,
-      dateTo,
-      page = 1,
-      limit = 20,
-    } = query;
-    const skip = (page - 1) * limit;
+    try {
+      const {
+        role,
+        status,
+        search,
+        dateFrom,
+        dateTo,
+        page = 1,
+        limit = 20,
+      } = query;
+      const skip = (page - 1) * limit;
 
-    const where: Prisma.UserWhereInput = {};
-    if (role) where.role = role;
-    if (status) where.status = status;
+      const where: Prisma.UserWhereInput = {};
+      if (role) where.role = role;
+      if (status) where.status = status;
 
-    if (dateFrom || dateTo) {
-      where.createdAt = {};
-      if (dateFrom) (where.createdAt as any).gte = new Date(dateFrom);
-      if (dateTo) (where.createdAt as any).lte = new Date(dateTo);
-    }
+      if (dateFrom || dateTo) {
+        where.createdAt = {};
+        if (dateFrom) {
+          const parsedFrom = new Date(dateFrom);
+          if (!isNaN(parsedFrom.getTime())) (where.createdAt as any).gte = parsedFrom;
+        }
+        if (dateTo) {
+          const parsedTo = new Date(dateTo);
+          if (!isNaN(parsedTo.getTime())) (where.createdAt as any).lte = parsedTo;
+        }
+      }
 
-    if (search) {
-      where.OR = [
-        { phone: { contains: search, mode: 'insensitive' } },
-        { email: { contains: search, mode: 'insensitive' } },
-        {
-          buyerProfile: {
-            legalName: { contains: search, mode: 'insensitive' },
+      if (search) {
+        where.OR = [
+          { phone: { contains: search, mode: 'insensitive' } },
+          { email: { contains: search, mode: 'insensitive' } },
+          {
+            buyerProfile: {
+              legalName: { contains: search, mode: 'insensitive' },
+            },
           },
-        },
-        {
-          sellerProfile: {
-            companyName: { contains: search, mode: 'insensitive' },
+          {
+            sellerProfile: {
+              companyName: { contains: search, mode: 'insensitive' },
+            },
           },
-        },
-      ];
+        ];
+      }
+
+      const [data, total] = await Promise.all([
+        this.prisma.user.findMany({
+          where,
+          select: {
+            id: true,
+            phone: true,
+            email: true,
+            role: true,
+            status: true,
+            createdAt: true,
+            updatedAt: true,
+            buyerProfile: true,
+            sellerProfile: true,
+          },
+          orderBy: { createdAt: 'desc' },
+          skip,
+          take: limit,
+        }),
+        this.prisma.user.count({ where }),
+      ]);
+
+      return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
+    } catch (error) {
+      this.logger.warn(
+        `Failed to fetch users: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      );
+      return { data: [], total: 0, page: query.page || 1, limit: query.limit || 20, totalPages: 0 };
     }
-
-    const [data, total] = await Promise.all([
-      this.prisma.user.findMany({
-        where,
-        select: {
-          id: true,
-          phone: true,
-          email: true,
-          role: true,
-          status: true,
-          createdAt: true,
-          updatedAt: true,
-          buyerProfile: true,
-          sellerProfile: true,
-        },
-        orderBy: { createdAt: 'desc' },
-        skip,
-        take: limit,
-      }),
-      this.prisma.user.count({ where }),
-    ]);
-
-    return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
   }
+
 
   async getUserById(userId: string) {
     const user = await this.prisma.user.findUnique({
@@ -526,97 +540,105 @@ export class AdminService {
   // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
   async getAllProducts(query: AdminQueryProductsDto) {
-    const {
-      sellerId,
-      categoryId,
-      subCategoryId,
-      search,
-      isActive,
-      approvalStatus,
-      page = 1,
-      limit = 20,
-    } = query;
-    const skip = (page - 1) * limit;
+    try {
+      const {
+        sellerId,
+        categoryId,
+        subCategoryId,
+        search,
+        isActive,
+        approvalStatus,
+        page = 1,
+        limit = 20,
+      } = query;
+      const skip = (page - 1) * limit;
 
-    const where: Prisma.SellerOfferWhereInput = { deletedAt: null };
-    if (sellerId) where.sellerId = sellerId;
-    if (categoryId) where.categoryId = categoryId;
-    if (subCategoryId) where.subCategoryId = subCategoryId;
-    if (isActive === 'true') where.isActive = true;
-    if (isActive === 'false') where.isActive = false;
-    if (
-      approvalStatus &&
-      ['PENDING', 'APPROVED', 'REJECTED'].includes(approvalStatus.toUpperCase())
-    ) {
-      where.approvalStatus =
-        approvalStatus.toUpperCase() as ProductApprovalStatus;
-    }
+      const where: Prisma.SellerOfferWhereInput = { deletedAt: null };
+      if (sellerId) where.sellerId = sellerId;
+      if (categoryId) where.categoryId = categoryId;
+      if (subCategoryId) where.subCategoryId = subCategoryId;
+      if (isActive === 'true') where.isActive = true;
+      if (isActive === 'false') where.isActive = false;
+      if (
+        approvalStatus &&
+        ['PENDING', 'APPROVED', 'REJECTED'].includes(approvalStatus.toUpperCase())
+      ) {
+        where.approvalStatus =
+          approvalStatus.toUpperCase() as ProductApprovalStatus;
+      }
 
-    if (search) {
-      where.OR = [
-        { name: { contains: search, mode: 'insensitive' } },
-        { manufacturer: { contains: search, mode: 'insensitive' } },
-      ];
-    }
+      if (search) {
+        where.OR = [
+          { name: { contains: search, mode: 'insensitive' } },
+          { manufacturer: { contains: search, mode: 'insensitive' } },
+        ];
+      }
 
-    const [data, total] = await Promise.all([
-      this.prisma.sellerOffer.findMany({
-        where,
-        select: {
-          id: true,
-          name: true,
-          manufacturer: true,
-          mrp: true,
-          finalCustomerPayable: true,
-          gstPercent: true,
-          isActive: true,
-          approvalStatus: true,
-          rejectionReason: true,
-          createdAt: true,
-          updatedAt: true,
-          variant: {
-            select: {
-              catalogProduct: {
-                select: {
-                  id: true,
-                  _count: { select: { productVariants: true } },
+      const [data, total] = await Promise.all([
+        this.prisma.sellerOffer.findMany({
+          where,
+          select: {
+            id: true,
+            name: true,
+            manufacturer: true,
+            mrp: true,
+            finalCustomerPayable: true,
+            gstPercent: true,
+            isActive: true,
+            approvalStatus: true,
+            rejectionReason: true,
+            createdAt: true,
+            updatedAt: true,
+            variant: {
+              select: {
+                catalogProduct: {
+                  select: {
+                    id: true,
+                    _count: { select: { productVariants: true } },
+                  },
                 },
               },
             },
-          },
-          seller: { select: { id: true, companyName: true, userId: true } },
-          category: { select: { id: true, name: true } },
-          subCategory: { select: { id: true, name: true } },
-          batches: {
-            select: {
-              id: true,
-              batchNumber: true,
-              stock: true,
-              expiryDate: true,
+            seller: { select: { id: true, companyName: true, userId: true } },
+            category: { select: { id: true, name: true } },
+            subCategory: { select: { id: true, name: true } },
+            batches: {
+              select: {
+                id: true,
+                batchNumber: true,
+                stock: true,
+                expiryDate: true,
+              },
+              orderBy: { expiryDate: 'asc' },
             },
-            orderBy: { expiryDate: 'asc' },
-          },
-          inventoryAlerts: {
-            select: {
-              id: true,
-              alertType: true,
-              message: true,
-              createdAt: true,
+            inventoryAlerts: {
+              select: {
+                id: true,
+                alertType: true,
+                message: true,
+                createdAt: true,
+              },
+              take: 5,
+              orderBy: { createdAt: 'desc' },
             },
-            take: 5,
-            orderBy: { createdAt: 'desc' },
+            _count: { select: { reviews: true, orderItems: true } },
           },
-          _count: { select: { reviews: true, orderItems: true } },
-        },
-        orderBy: { createdAt: 'desc' },
-        skip,
-        take: limit,
-      }),
-      this.prisma.sellerOffer.count({ where }),
-    ]);
+          orderBy: { createdAt: 'desc' },
+          skip,
+          take: limit,
+        }),
+        this.prisma.sellerOffer.count({ where }),
+      ]);
 
-    return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
+      return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
+    } catch (error) {
+      this.logger.warn(
+        `Failed to fetch products: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      );
+      return { data: [], total: 0, page: query.page || 1, limit: query.limit || 20, totalPages: 0 };
+    }
   }
+
 
   async getProductById(sellerOfferId: string) {
     const product = await this.prisma.sellerOffer.findUnique({
