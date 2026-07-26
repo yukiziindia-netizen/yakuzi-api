@@ -1022,3 +1022,13 @@ model ProductWaitlist {
   @@index([catalogProductId])
   @@map("product_waitlists")
 }
+
+model SystemSetting {
+  key       String   @id
+  value     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("system_settings")
+}
+

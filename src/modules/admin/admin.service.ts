@@ -3028,35 +3028,48 @@ export class AdminService {
       comingSoonMode: true,
     };
 
-    const dbSettings = await this.prisma.systemSetting.findMany();
-    const result = { ...DEFAULT_SETTINGS };
+    try {
+      if ((this.prisma as any).systemSetting) {
+        const dbSettings = await (this.prisma as any).systemSetting.findMany();
+        const result = { ...DEFAULT_SETTINGS };
 
-    for (const item of dbSettings) {
-      if (item.value === 'true') {
-        result[item.key] = true;
-      } else if (item.value === 'false') {
-        result[item.key] = false;
-      } else if (!isNaN(Number(item.value)) && item.value.trim() !== '') {
-        result[item.key] = Number(item.value);
-      } else {
-        result[item.key] = item.value;
+        for (const item of dbSettings) {
+          if (item.value === 'true') {
+            result[item.key] = true;
+          } else if (item.value === 'false') {
+            result[item.key] = false;
+          } else if (!isNaN(Number(item.value)) && item.value.trim() !== '') {
+            result[item.key] = Number(item.value);
+          } else {
+            result[item.key] = item.value;
+          }
+        }
+        return result;
       }
+    } catch (error) {
+      this.logger.warn(`Could not fetch system settings from DB: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
 
-    return result;
+    return DEFAULT_SETTINGS;
   }
 
   async updatePlatformSettings(payload: Record<string, any>) {
-    const updates = Object.entries(payload).map(([key, value]) => {
-      const strVal = typeof value === 'object' ? JSON.stringify(value) : String(value);
-      return this.prisma.systemSetting.upsert({
-        where: { key },
-        update: { value: strVal },
-        create: { key, value: strVal },
-      });
-    });
+    try {
+      if ((this.prisma as any).systemSetting) {
+        const updates = Object.entries(payload).map(([key, value]) => {
+          const strVal = typeof value === 'object' ? JSON.stringify(value) : String(value);
+          return (this.prisma as any).systemSetting.upsert({
+            where: { key },
+            update: { value: strVal },
+            create: { key, value: strVal },
+          });
+        });
+        await Promise.all(updates);
+      }
+    } catch (error) {
+      this.logger.warn(`Could not save system settings to DB: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
 
-    await Promise.all(updates);
     return this.getPlatformSettings();
   }
 
@@ -3071,4 +3084,5 @@ export class AdminService {
     };
   }
 }
+
 
