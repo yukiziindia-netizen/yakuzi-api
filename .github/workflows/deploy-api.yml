@@ -15,13 +15,13 @@ jobs:
       - name: Sync Project to GCP
         uses: burnett01/rsync-deployments@7.0.2
         with:
-          switches: -avz
+          switches: -avz -e "ssh -o StrictHostKeyChecking=no"
           path: ./
           remote_path: /home/yukizi_india/yakuzi-api
           remote_host: ${{ secrets.SERVER_HOST }}
           remote_user: ${{ secrets.SERVER_USER }}
           remote_key: ${{ secrets.SERVER_SSH_KEY }}
-          rsh: ssh -o StrictHostKeyChecking=no
+
 
       - name: Deploy
         uses: appleboy/ssh-action@v1.0.3
