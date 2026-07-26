@@ -38,12 +38,17 @@ async function bootstrap() {
       );
     }
 
+    if (req.url === '/favicon.ico' || req.url === '/favicon.png') {
+      return res.status(204).end();
+    }
+
     if (req.method === 'OPTIONS') {
       return res.status(204).end();
     }
 
     next();
   });
+
 
 
   // Increase payload size limit for base64 image/file attachments
