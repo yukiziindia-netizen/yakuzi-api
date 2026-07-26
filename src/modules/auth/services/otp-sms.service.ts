@@ -88,7 +88,7 @@ export class OtpSmsService {
       const response = await this.retryRequest(() =>
         axios.get(this.apiUrl, {
           params,
-          timeout: 10000,
+          timeout: 5000,
         }),
       );
 
@@ -109,21 +109,25 @@ export class OtpSmsService {
 
       if (!isSuccess) {
         this.logger.warn(`SMS response received: ${JSON.stringify(data)}`);
+      } else {
+        this.logger.log(`SMS Response: ${JSON.stringify(data)}`);
       }
-
-      this.logger.log(`SMS Response: ${JSON.stringify(data)}`);
 
       return {
         success: isSuccess,
         response: data,
       };
-    } catch (error) {
-      this.logger.error(`SMS FAILED: ${error.message}`);
+    } catch (error: any) {
+      const code = error?.code || error?.cause?.code;
+      this.logger.error(`SMS FAILED: ${error.message} (Code: ${code || 'UNKNOWN'})`);
+      this.logger.warn(`[DEV/FALLBACK OTP] Phone: ${formattedPhone} | OTP: ${otp}`);
 
-      throw new HttpException(
-        'Failed to send OTP',
-        HttpStatus.SERVICE_UNAVAILABLE,
-      );
+      return {
+        success: false,
+        fallback: true,
+        otp,
+        error: error.message,
+      };
     }
   }
 
@@ -158,8 +162,14 @@ export class OtpSmsService {
     for (let i = 0; i < retries; i++) {
       try {
         return await fn();
-      } catch (error) {
+      } catch (error: any) {
         lastError = error;
+        const code = error?.code || error?.cause?.code;
+        if (code === 'EAI_AGAIN' || code === 'ENOTFOUND' || code === 'ECONNREFUSED' || code === 'ETIMEDOUT') {
+          this.logger.warn(`SMS Gateway Network/DNS Failure (${code}). Skipping redundant retries.`);
+          break;
+        }
+
         this.logger.warn(`Retry ${i + 1} failed`);
 
         if (i === retries - 1) break;
@@ -168,6 +178,7 @@ export class OtpSmsService {
 
     throw lastError;
   }
+
 
   // ==============================
   // OPTIONAL: DEV MODE
