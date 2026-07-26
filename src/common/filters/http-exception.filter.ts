@@ -31,9 +31,10 @@ export class HttpExceptionFilter implements ExceptionFilter {
       error = (res as any).error || HttpStatus[status] || 'Error';
     } else {
       status = HttpStatus.INTERNAL_SERVER_ERROR;
-      message = 'Internal server error';
+      message = exception instanceof Error ? exception.message : 'Internal server error';
       error = 'Internal Server Error';
     }
+
 
     const errorResponse = {
       statusCode: status,
