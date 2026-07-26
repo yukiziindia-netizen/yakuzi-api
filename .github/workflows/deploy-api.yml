@@ -43,7 +43,7 @@ jobs:
             npm run build
 
             echo "Restarting PM2..."
-            pm2 restart yukizi-api
+            pm2 restart yukizi-api || pm2 start dist/src/main.js --name yukizi-api
 
             pm2 save
 
