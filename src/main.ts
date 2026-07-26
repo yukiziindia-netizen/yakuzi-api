@@ -142,7 +142,8 @@ async function bootstrap() {
   const port = configService.get<number>('PORT') || 3000;
 
   await app.listen(port, '0.0.0.0');
-  logger.log(`🚀 Yukizi API is running on: http://0.0.0.0:${port}/api`);
-  logger.log(`📚 Swagger docs available at: http://0.0.0.0:${port}/api/docs`);
+  logger.log(`🚀 Yukizi API Engine is active on port ${port} (/api)`);
+  logger.log(`📚 Interactive Swagger API Documentation: http://localhost:${port}/api/docs`);
 }
 bootstrap();
+
