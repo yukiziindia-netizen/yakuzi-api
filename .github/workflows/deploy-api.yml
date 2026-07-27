@@ -1,4 +1,4 @@
-name: Deploy API on GCP
+name: Deploy API on GCP backendss
 on:
   push:
     branches:
@@ -12,19 +12,15 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Setup SSH Key Agent
-        uses: webfactory/ssh-agent@v0.9.0
+      - name: Sync Project to GCP
+        uses: burnett01/rsync-deployments@7.0.2
         with:
-          ssh-private-key: ${{ secrets.SERVER_SSH_KEY }}
-
-      - name: Add Server Host to Known Hosts
-        run: |
-          mkdir -p ~/.ssh
-          ssh-keyscan -H ${{ secrets.SERVER_HOST }} >> ~/.ssh/known_hosts
-
-      - name: Sync Project Files to GCP Server
-        run: |
-          rsync -avz -e "ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null" --delete --exclude '.git' --exclude 'node_modules' --exclude 'dist' ./ ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}:/home/yukizi_india/yakuzi-api/
+          switches: -avz --delete --exclude '.git' --exclude 'node_modules' --exclude 'dist'
+          path: ./
+          remote_path: /home/yukizi_india/yakuzi-api
+          remote_host: ${{ secrets.SERVER_HOST }}
+          remote_user: ${{ secrets.SERVER_USER }}
+          remote_key: ${{ secrets.SERVER_SSH_KEY }}
 
       - name: Execute Remote Build and Restart Script
         uses: appleboy/ssh-action@v1.0.3
@@ -32,7 +28,6 @@ jobs:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SERVER_SSH_KEY }}
-          script_stop: true
           script: |
             set -e
 
@@ -41,12 +36,6 @@ jobs:
             echo "Installing dependencies..."
             npm ci
 
-            echo "Loading environment variables..."
-            if [ -f .env ]; then export $(cat .env | xargs); fi
-
-            echo "Syncing database schema with Prisma..."
-            npx prisma db push --accept-data-loss || true
-
             echo "Generating Prisma Client..."
             npx prisma generate
 
@@ -54,7 +43,11 @@ jobs:
             npm run build
 
             echo "Restarting PM2..."
-            pm2 restart yukizi-api || pm2 start dist/src/main.js --name yukizi-api
+            pm2 restart yukizi-api
+
+            pm2 save
+
+            echo "Deployment completed successfully."
 
             pm2 save
 
