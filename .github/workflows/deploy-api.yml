@@ -17,7 +17,7 @@ jobs:
         with:
           switches: -avz --delete --exclude '.git' --exclude 'node_modules' --exclude 'dist'
           path: ./
-          remote_path: /home/yukizi_india/yakuzi-api
+          remote_path: /home/yukizi_deploy/yakuzi-api
           remote_host: ${{ secrets.SERVER_HOST }}
           remote_user: ${{ secrets.SERVER_USER }}
           remote_key: ${{ secrets.SERVER_SSH_KEY }}
@@ -31,7 +31,7 @@ jobs:
           script: |
             set -e
 
-            cd /home/yukizi_india/yakuzi-api
+            cd /home/yukizi_deploy/yakuzi-api
 
             echo "Installing dependencies..."
             npm ci
