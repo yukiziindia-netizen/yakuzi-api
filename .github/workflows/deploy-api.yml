@@ -24,7 +24,7 @@ jobs:
 
       - name: Sync Project Files to GCP Server
         run: |
-          rsync -avz --delete --exclude '.git' --exclude 'node_modules' --exclude 'dist' ./ ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}:/home/yukizi_india/yakuzi-api/
+          rsync -avz -e "ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null" --delete --exclude '.git' --exclude 'node_modules' --exclude 'dist' ./ ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}:/home/yukizi_india/yakuzi-api/
 
       - name: Execute Remote Build and Restart Script
         uses: appleboy/ssh-action@v1.0.3
