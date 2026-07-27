@@ -1,4 +1,4 @@
-name: Deploy API on GCP backend
+name: Deploy API on GCP backends
 on:
   push:
     branches:
