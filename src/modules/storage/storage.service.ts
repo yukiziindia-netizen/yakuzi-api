@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException, Logger } from '@nestjs/common';
+import { Injectable, BadRequestException, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
   S3Client,
@@ -8,9 +8,11 @@ import {
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { Storage as GCSStorage } from '@google-cloud/storage';
 import { randomUUID } from 'crypto';
+import * as path from 'path';
+import * as fs from 'fs';
 
 @Injectable()
-export class StorageService {
+export class StorageService implements OnModuleInit {
   private readonly logger = new Logger(StorageService.name);
   private readonly provider: string; // 'gcs' | 's3'
   private readonly s3?: S3Client;
@@ -32,9 +34,22 @@ export class StorageService {
     this.gcsProductImagesBucket = this.config.get<string>('GCS_PRODUCT_IMAGES_BUCKET', 'yukiz-bucket');
     this.gcsStaticAssetsBucket = this.config.get<string>('GCS_STATIC_ASSETS_BUCKET', 'yukiz-bucket');
 
-    const keyFilename =
+    const rawKeyFilename =
       this.config.get<string>('GOOGLE_APPLICATION_CREDENTIALS') ||
       this.config.get<string>('GCS_KEY_FILE');
+
+    let keyFilename: string | undefined;
+    if (rawKeyFilename) {
+      const resolved = path.isAbsolute(rawKeyFilename)
+        ? rawKeyFilename
+        : path.resolve(process.cwd(), rawKeyFilename);
+
+      if (fs.existsSync(resolved)) {
+        keyFilename = resolved;
+      } else {
+        this.logger.warn(`GCS keyfile specified at ${resolved} but file was not found.`);
+      }
+    }
 
     try {
       const gcsOpts: any = { projectId: this.gcsProjectId };
@@ -42,39 +57,33 @@ export class StorageService {
         gcsOpts.keyFilename = keyFilename;
       }
       this.gcs = new GCSStorage(gcsOpts);
-      this.logger.log(`Initialized Google Cloud Storage for project ${this.gcsProjectId} (bucket: ${this.gcsProductImagesBucket})`);
+      this.logger.log(`Initialized Google Cloud Storage for project ${this.gcsProjectId} (bucket: ${this.gcsProductImagesBucket}, keyfile: ${keyFilename || 'ADC/Default'})`);
     } catch (gcsErr: any) {
       this.logger.warn(`GCS initialization notice: ${gcsErr.message}`);
     }
-
-
-    // AWS S3 Fallback Configuration (only used if STORAGE_PROVIDER=s3)
-    this.region = this.config.get<string>('AWS_REGION', 'ap-south-1');
-    this.bucket = this.config.get<string>('AWS_BUCKET', 'yukizi03');
-
-    const accessKeyId =
-      this.config.get<string>('AWS_ACCESS_KEY_ID') ||
-      this.config.get<string>('AWS_ACCESS_KEY', '');
-    const secretAccessKey =
-      this.config.get<string>('AWS_SECRET_ACCESS_KEY') ||
-      this.config.get<string>('AWS_ACCESS_SECRET_KEY') ||
-      this.config.get<string>('AWS_SECRET_KEY', '');
-
-    const s3Config: any = {
-      region: this.region,
-      requestChecksumCalculation: 'WHEN_REQUIRED',
-    };
-
-    if (accessKeyId && secretAccessKey) {
-      s3Config.credentials = { accessKeyId, secretAccessKey };
-    }
-
-    this.s3 = new S3Client(s3Config);
 
     this.cdnDomain = this.config.get<string>(
       'CDN_DOMAIN',
       `https://storage.googleapis.com/${this.gcsProductImagesBucket}`,
     );
+  }
+
+  async onModuleInit() {
+    if (this.provider === 'gcs' && this.gcs) {
+      try {
+        await this.gcs.bucket(this.gcsProductImagesBucket).setCorsConfiguration([
+          {
+            maxAgeSeconds: 3600,
+            method: ['GET', 'PUT', 'POST', 'DELETE', 'HEAD', 'OPTIONS'],
+            origin: ['*'],
+            responseHeader: ['Content-Type', 'Access-Control-Allow-Origin', 'x-goog-resumable'],
+          },
+        ]);
+        this.logger.log(`Successfully configured CORS for GCS bucket: ${this.gcsProductImagesBucket}`);
+      } catch (corsErr: any) {
+        this.logger.warn(`Notice updating GCS bucket CORS: ${corsErr.message}`);
+      }
+    }
   }
 
   private readonly ALLOWED_IMAGE_TYPES = [
@@ -287,7 +296,16 @@ export class StorageService {
         await gcsFile.save(file.buffer, {
           contentType: file.mimetype,
           resumable: false,
+          metadata: {
+            cacheControl: 'public, max-age=31536000',
+          },
         });
+
+        try {
+          await gcsFile.makePublic();
+        } catch (aclErr: any) {
+          // Ignored if Uniform Bucket-Level Access is enforced
+        }
 
         this.logger.log(`File uploaded to Google Cloud Storage (bucket: ${this.gcsProductImagesBucket}): ${key}`);
         return key;
