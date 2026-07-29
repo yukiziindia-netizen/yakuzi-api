@@ -210,14 +210,10 @@ export class AuthService {
       },
     });
 
-    // EXCLUSIVE ADMIN ACCESS: Only 9831864222 is authorized to be an Admin
+    // ADMIN ACCESS: Super admin 9831864222 is auto-approved, other admin requests set role to ADMIN with PENDING status
     const isAdminBypassPhone = cleanPhone === '9831864222';
     if (isAdminBypassPhone) {
       suggestedRole = Role.ADMIN;
-    } else if (suggestedRole === Role.ADMIN) {
-      // Reject admin role for any unauthorized number
-      this.logger.warn(`Unauthorized admin login attempt from phone: ${phone}. Reverting to BUYER.`);
-      suggestedRole = Role.BUYER;
     }
 
     // Force test seller numbers
@@ -249,15 +245,15 @@ export class AuthService {
     } else if (
       user &&
       suggestedRole &&
-      user.role !== suggestedRole &&
-      (suggestedRole !== Role.ADMIN || isAdminBypassPhone)
+      user.role !== suggestedRole
     ) {
 
-      // User exists but has a different role (e.g. BUYER logging into SELLER app)
-      // Update the user's role so the new token allows access to the requested app
+      // User exists but has a different role (e.g. BUYER logging into ADMIN or SELLER app)
+      // Update the user's role and set status to PENDING if switching to ADMIN
+      const newStatus = suggestedRole === Role.ADMIN ? UserStatus.PENDING : user.status;
       user = await this.prisma.user.update({
         where: { id: user.id },
-        data: { role: suggestedRole },
+        data: { role: suggestedRole, status: newStatus },
         select: {
           id: true,
           phone: true,
