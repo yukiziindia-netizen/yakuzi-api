@@ -904,6 +904,24 @@ export class ProductsService {
           category: true,
           subCategory: true,
           images: { take: 1 },
+          sellerOffers: {
+            where: { isActive: true, deletedAt: null },
+            select: {
+              id: true,
+              mrp: true,
+              gstPercent: true,
+              discountType: true,
+              discountMeta: true,
+              deliveryText: true,
+              minimumOrderQuantity: true,
+              shippingCharges: true,
+              finalShippingPrice: true,
+              finalCustomerPayable: true,
+              isTaxIncluded: true,
+            },
+            orderBy: { mrp: 'asc' },
+            take: 1,
+          },
           productVariants: {
             include: {
               sellerOffers: {
@@ -1176,8 +1194,8 @@ export class ProductsService {
       slug: m.slug,
       manufacturer: m.manufacturer,
 
-      mrp: bestOffer ? bestOffer.mrp : m.mrp,
-      price: bestOffer ? bestOffer.sellingPrice : null,
+      mrp: bestOffer ? bestOffer.mrp : (m.mrp || null),
+      price: bestOffer ? bestOffer.sellingPrice : (m.price || m.mrp || null),
       shippingCharges: bestOffer ? (bestOffer.shippingCharges || 0) : (m.shippingCharges || 0),
       finalShippingPrice: bestOffer ? (bestOffer.finalShippingPrice || 0) : (m.finalShippingPrice || 0),
       discountType: bestOffer ? bestOffer.discountType : null,
