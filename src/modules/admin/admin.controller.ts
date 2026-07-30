@@ -379,7 +379,7 @@ export class AdminController {
   @ApiResponse({ status: 400, description: 'Settlement is already paid' })
   @ApiResponse({ status: 404, description: 'Settlement not found' })
   async markSettlementPaid(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id') id: string,
     @Body() dto: MarkPaidDto,
   ) {
     const data = await this.adminService.markSettlementPaid(

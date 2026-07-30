@@ -982,11 +982,28 @@ export class AdminService {
                 name: true,
                 manufacturer: true,
                 mrp: true,
-          finalCustomerPayable: true,
+                gstPercent: true,
+                shippingCharges: true,
+                finalShippingPrice: true,
+                discountType: true,
+                discountMeta: true,
+                isTaxIncluded: true,
+                finalCustomerPayable: true,
+                catalogProduct: {
+                  select: {
+                    commissionPercent: true,
+                    commissionGstPercent: true,
+                    images: {
+                      select: { url: true },
+                    },
+                  },
+                },
                 variant: {
                   select: {
                     catalogProduct: {
                       select: {
+                        commissionPercent: true,
+                        commissionGstPercent: true,
                         images: {
                           select: { url: true },
                         },
@@ -997,6 +1014,7 @@ export class AdminService {
               },
             },
             seller: { select: { id: true, companyName: true } },
+            settlement: true,
           },
         },
         address: true,
@@ -1306,7 +1324,7 @@ export class AdminService {
       const where: Prisma.SellerSettlementWhereInput = {};
       if (status && status !== 'PROJECTED') where.payoutStatus = status;
       if (sellerId) where.sellerId = sellerId;
-      if (orderItemId) where.orderItemId = orderItemId;
+      if (orderItemId) where.orderItemId = orderItemId.length === 36 ? orderItemId : ({ contains: orderItemId } as any);
 
       if (dateFrom || dateTo) {
         where.createdAt = {};
@@ -1325,7 +1343,7 @@ export class AdminService {
         settlement: null,
       };
       if (sellerId) pendingWhere.sellerId = sellerId;
-      if (orderItemId) pendingWhere.id = orderItemId;
+      if (orderItemId) pendingWhere.id = orderItemId.length === 36 ? orderItemId : ({ contains: orderItemId } as any);
       if (dateFrom || dateTo) {
         pendingWhere.createdAt = {};
         if (dateFrom) {
@@ -1453,8 +1471,55 @@ export class AdminService {
     payoutReference: string,
     paymentProofUrl?: string,
   ) {
+    let targetId = settlementId;
+
+    if (settlementId.startsWith('projected-')) {
+      const orderItemId = settlementId.replace(/^projected-/, '');
+      let existing = await this.prisma.sellerSettlement.findFirst({
+        where: { orderItemId },
+      });
+
+      if (existing) {
+        targetId = existing.id;
+      } else {
+        // Fetch order item directly to create settlement entry regardless of status
+        const item = await this.prisma.orderItem.findUnique({
+          where: { id: orderItemId },
+          include: {
+            sellerOffer: { include: { catalogProduct: true } },
+            seller: true,
+          },
+        });
+
+        if (!item) {
+          throw new NotFoundException('Order item not found');
+        }
+
+        const input = buildPayoutInputFromOrderItem(item);
+        const breakdown = calculateSellerPayout(input);
+
+        existing = await this.prisma.sellerSettlement.create({
+          data: {
+            sellerId: item.sellerId,
+            orderItemId: item.id,
+            amount: breakdown.netPayout.toString(),
+            grossAmount: breakdown.grossAmount.toString(),
+            commission: breakdown.commission.toString(),
+            commissionGst: breakdown.commissionGst.toString(),
+            fixedFee: '0',
+            fixedFeeGst: '0',
+            withholdingTax: '0',
+            netPayout: breakdown.netPayout.toString(),
+            payoutStatus: 'PENDING',
+          },
+        });
+
+        targetId = existing.id;
+      }
+    }
+
     const settlement = await this.prisma.sellerSettlement.findUnique({
-      where: { id: settlementId },
+      where: { id: targetId },
     });
 
     if (!settlement) throw new NotFoundException('Settlement not found');
@@ -1463,7 +1528,7 @@ export class AdminService {
     }
 
     const updated = await this.prisma.sellerSettlement.update({
-      where: { id: settlementId },
+      where: { id: targetId },
       data: {
         payoutStatus: 'PAID',
         payoutReference,
@@ -1473,16 +1538,22 @@ export class AdminService {
       include: { seller: { select: { id: true, companyName: true } } },
     });
 
-    this.logger.log(`Settlement ${settlementId} marked as paid by admin`);
+    this.logger.log(`Settlement ${targetId} marked as paid by admin`);
     return updated;
   }
 
   async syncSettlements() {
     const orders = await this.prisma.order.findMany({
       where: {
-        orderStatus: OrderStatus.DELIVERED,
+        orderStatus: { not: OrderStatus.CANCELLED },
       },
-      include: { items: true },
+      include: {
+        items: {
+          include: {
+            sellerOffer: { include: { catalogProduct: true } },
+          },
+        },
+      },
     });
 
     let createdCount = 0;
@@ -1493,19 +1564,21 @@ export class AdminService {
         });
 
         if (!existing) {
-          const commission = 0;
+          const input = buildPayoutInputFromOrderItem(item);
+          const breakdown = calculateSellerPayout(input);
+
           await this.prisma.sellerSettlement.create({
             data: {
               sellerId: item.sellerId,
               orderItemId: item.id,
-              amount: item.totalPrice,
-              commission,
-              grossAmount: item.totalPrice,
-              commissionGst: 0,
-              fixedFee: 0,
-              fixedFeeGst: 0,
-              withholdingTax: 0,
-              netPayout: item.totalPrice,
+              amount: breakdown.netPayout.toString(),
+              grossAmount: breakdown.grossAmount.toString(),
+              commission: breakdown.commission.toString(),
+              commissionGst: breakdown.commissionGst.toString(),
+              fixedFee: '0',
+              fixedFeeGst: '0',
+              withholdingTax: '0',
+              netPayout: breakdown.netPayout.toString(),
               payoutStatus: 'PENDING',
             },
           });

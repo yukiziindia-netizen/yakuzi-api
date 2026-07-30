@@ -16,7 +16,7 @@ export class AdminQuerySettlementsDto {
     description: 'Filter by seller profile ID',
   })
   @IsOptional()
-  @IsUUID()
+  @IsString()
   sellerId?: string;
 
   @ApiPropertyOptional({
@@ -24,7 +24,7 @@ export class AdminQuerySettlementsDto {
     description: 'Filter by specific order item ID',
   })
   @IsOptional()
-  @IsUUID()
+  @IsString()
   orderItemId?: string;
 
   @ApiPropertyOptional({
