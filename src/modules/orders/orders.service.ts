@@ -419,6 +419,8 @@ export class OrdersService {
       );
       if (hasSellerItem) {
         hasAccess = true;
+        // Multi-Seller Isolation: Filter order items so seller ONLY sees their own products
+        order.items = order.items.filter((item) => item.sellerId === sellerId);
       }
     }
 
@@ -426,8 +428,6 @@ export class OrdersService {
       throw new NotFoundException('Order not found');
     }
 
-    // 4. (Optional) Filter items if user is a seller?
-    // In Phase 1, we show the full order but often it's better to show everything for tracking.
     return order;
   }
 
