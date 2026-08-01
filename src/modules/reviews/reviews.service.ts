@@ -119,6 +119,7 @@ export class ReviewsService {
         id: true,
         rating: true,
         comment: true,
+        images: true,
         createdAt: true,
         user: {
           select: {
@@ -146,6 +147,7 @@ export class ReviewsService {
         userName: r.user.buyerProfile?.legalName || 'User',
         rating: r.rating,
         comment: r.comment || '',
+        images: r.images || [],
         createdAt: r.createdAt.toISOString(),
       })),
       total: avgResult._count || 0,
@@ -193,6 +195,7 @@ export class ReviewsService {
             userName: r.user.buyerProfile?.legalName || r.user.email || 'User',
             rating: r.rating,
             comment: r.comment || '',
+            images: r.images || [],
             createdAt: r.createdAt.toISOString(),
           })),
           total: total || 0,
