@@ -28,12 +28,10 @@ export class ReviewsController {
   constructor(private readonly reviewsService: ReviewsService) {}
 
   @Post()
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(Role.BUYER)
+  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('JWT-auth')
-  @ApiOperation({ summary: 'Submit a product review (buyer)' })
+  @ApiOperation({ summary: 'Submit a product review' })
   @ApiResponse({ status: 201, description: 'Review created' })
-  @ApiResponse({ status: 403, description: 'Forbidden — not a buyer' })
   createReview(
     @CurrentUser('id') userId: string,
     @Body() dto: CreateReviewDto,
@@ -42,11 +40,9 @@ export class ReviewsController {
   }
 
   @Get('product/:id')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth('JWT-auth')
   @ApiOperation({ summary: 'Get all reviews for a product' })
   @ApiResponse({ status: 200, description: 'Product reviews returned' })
-  getProductReviews(@Param('id', ParseUUIDPipe) productId: string) {
+  getProductReviews(@Param('id') productId: string) {
     return this.reviewsService.getProductReviews(productId);
   }
 

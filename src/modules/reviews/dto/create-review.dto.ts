@@ -11,8 +11,8 @@ import {
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreateReviewDto {
-  @ApiProperty({ example: 'uuid-of-product', description: 'Product UUID' })
-  @IsUUID('4', { message: 'catalogProductId must be a valid UUID' })
+  @ApiProperty({ example: 'uuid-of-product', description: 'Product UUID or ID' })
+  @IsString({ message: 'catalogProductId must be a string' })
   @IsNotEmpty({ message: 'catalogProductId is required' })
   catalogProductId: string;
 

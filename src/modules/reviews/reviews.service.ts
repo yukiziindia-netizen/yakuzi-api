@@ -21,35 +21,49 @@ export class ReviewsService {
   async createReview(userId: string, dto: CreateReviewDto) {
     const { catalogProductId, rating, comment } = dto;
 
-    // Verify product exists
-    const product = await this.prisma.catalogProduct.findUnique({
+    // Verify product exists by ID or Slug
+    let product = await this.prisma.catalogProduct.findUnique({
       where: { id: catalogProductId },
     });
+
+    if (!product) {
+      product = await this.prisma.catalogProduct.findFirst({
+        where: {
+          OR: [{ id: catalogProductId }, { slug: catalogProductId }],
+          deletedAt: null,
+        },
+      });
+    }
 
     if (!product) {
       throw new NotFoundException('Product not found');
     }
 
-    // Verify buyer has purchased this product (in a DELIVERED order)
+    const resolvedProductId = product.id;
+
+    // Verify buyer has purchased this product (matches direct catalogProductId or variant catalogProductId)
     const purchased = await this.prisma.orderItem.findFirst({
       where: {
-        sellerOffer: { variant: { catalogProductId } },
+        OR: [
+          { sellerOffer: { catalogProductId: resolvedProductId } },
+          { sellerOffer: { variant: { catalogProductId: resolvedProductId } } },
+        ],
         order: {
           buyerId: userId,
-          orderStatus: 'DELIVERED',
+          orderStatus: { not: 'CANCELLED' },
         },
       },
     });
 
     if (!purchased) {
       throw new BadRequestException(
-        'You can only review products you have purchased and received',
+        'You can only review products you have purchased',
       );
     }
 
-    // Check for existing review (Prisma unique constraint will also catch this)
+    // Check for existing review
     const existing = await this.prisma.review.findUnique({
-      where: { userId_catalogProductId: { userId, catalogProductId } },
+      where: { userId_catalogProductId: { userId, catalogProductId: resolvedProductId } },
     });
 
     if (existing) {
@@ -59,7 +73,7 @@ export class ReviewsService {
     const review = await this.prisma.review.create({
       data: {
         userId,
-        catalogProductId,
+        catalogProductId: resolvedProductId,
         sellerOfferId: purchased.sellerOfferId,
         rating,
         comment,
