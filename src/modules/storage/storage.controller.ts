@@ -57,6 +57,19 @@ export class StorageController {
     return { message: 'Product image uploaded', data: { url } };
   }
 
+  @Post('review-image')
+  @UseGuards(JwtAuthGuard)
+  @UseInterceptors(FileInterceptor('file', multerOptions))
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({ summary: 'Upload review image (buyer)' })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody(fileUploadBody)
+  @ApiResponse({ status: 201, description: 'Image uploaded, URL returned' })
+  async uploadReviewImage(@UploadedFile() file: Express.Multer.File) {
+    const url = await this.storageService.uploadProductImage(file);
+    return { message: 'Review image uploaded', data: { url } };
+  }
+
   @Post('drug-license')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.SELLER, Role.BUYER, Role.ADMIN)

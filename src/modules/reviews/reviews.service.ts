@@ -77,6 +77,7 @@ export class ReviewsService {
         sellerOfferId: purchased.sellerOfferId,
         rating,
         comment,
+        images: dto.images || [],
       },
       select: {
         id: true,
@@ -84,6 +85,7 @@ export class ReviewsService {
         catalogProductId: true,
         rating: true,
         comment: true,
+        images: true,
         createdAt: true,
       },
     });

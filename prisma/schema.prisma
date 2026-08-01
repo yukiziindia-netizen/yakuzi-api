@@ -385,6 +385,7 @@ model Review {
   catalogProductId String
   rating           Int
   comment          String?
+  images           String[]       @default([])
   createdAt        DateTime       @default(now())
   updatedAt        DateTime       @updatedAt
   sellerOfferId    String?

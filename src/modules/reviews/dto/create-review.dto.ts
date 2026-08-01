@@ -7,6 +7,7 @@ import {
   IsOptional,
   IsString,
   MaxLength,
+  IsArray,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
@@ -28,4 +29,9 @@ export class CreateReviewDto {
   @IsString()
   @MaxLength(1000, { message: 'Comment must not exceed 1000 characters' })
   comment?: string;
+
+  @ApiPropertyOptional({ example: ['https://example.com/img.jpg'] })
+  @IsOptional()
+  @IsArray()
+  images?: string[];
 }
