@@ -172,14 +172,35 @@ export class ProductsService {
           const matched = catalogProduct.productVariants.find(
             (pv) => pv.name === v.name,
           );
+          const vImg = v.image || (v.images && v.images[0]) || undefined;
+          const vImgs = v.images || (v.image ? [v.image] : undefined);
           if (matched) {
             matchedVariantId = matched.id;
+            if (vImg || vImgs || v.sku || v.serialNo) {
+              await this.prisma.productVariant.update({
+                where: { id: matched.id },
+                data: {
+                  sku: v.sku || normalized.sku || undefined,
+                  serialNo: v.serialNo || normalized.serialNo || undefined,
+                  options: {
+                    ...(typeof matched.options === 'object' && matched.options !== null ? matched.options : {}),
+                    ...(vImg ? { image: vImg } : {}),
+                    ...(vImgs ? { images: vImgs } : {}),
+                  },
+                },
+              });
+            }
           } else {
             const newVariant = await this.prisma.productVariant.create({
               data: {
                 catalogProductId: catalogProduct.id,
                 name: v.name,
-                options: {},
+                sku: v.sku || normalized.sku || undefined,
+                serialNo: v.serialNo || normalized.serialNo || undefined,
+                options: {
+                  ...(vImg ? { image: vImg } : {}),
+                  ...(vImgs ? { images: vImgs } : {}),
+                },
               },
             });
             matchedVariantId = newVariant.id;
@@ -207,6 +228,9 @@ export class ProductsService {
               subCategory: { connect: { id: normalized.subCategoryId } },
               manufacturer: normalized.manufacturer,
               description: normalized.description,
+              sku: v.sku || normalized.sku || undefined,
+              serialNo: v.serialNo || normalized.serialNo || undefined,
+              specifications: v.specifications || normalized.specifications || undefined,
               mrp: v.price > 0 ? v.price : normalized.mrp,
               gstPercent: v.gstPercent !== undefined ? Number(v.gstPercent) : normalized.gstPercent,
               isTaxIncluded: normalized.isTaxIncluded ?? false,
@@ -242,6 +266,9 @@ export class ProductsService {
               : undefined,
             name: offerName,
             slug: slug,
+            sku: v.sku || normalized.sku || undefined,
+            serialNo: v.serialNo || normalized.serialNo || undefined,
+            specifications: v.specifications || normalized.specifications || undefined,
             externalId: normalized.externalId
               ? `${normalized.externalId}-${v.name}`
               : undefined,

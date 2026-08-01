@@ -2749,11 +2749,15 @@ export class AdminService {
     });
 
     try {
-      if (variants.length > 0) {
-        await this.prisma.sellerOffer.deleteMany({
-          where: { variantId: { in: variants.map((v) => v.id) } },
-        });
-      }
+      const variantIds = variants.map((v) => v.id);
+      await this.prisma.sellerOffer.deleteMany({
+        where: {
+          OR: [
+            { catalogProductId: id },
+            ...(variantIds.length > 0 ? [{ variantId: { in: variantIds } }] : []),
+          ],
+        },
+      });
 
       const deleted = await this.prisma.catalogProduct.delete({
         where: { id },
