@@ -355,6 +355,28 @@ model OrderItem {
   sellerOffer   SellerOffer       @relation(fields: [sellerOfferId], references: [id])
   settlement    SellerSettlement?
 
+  // Shipping dimensions
+  packageLength  Float?
+  packageBreadth Float?
+  packageHeight  Float?
+  packageWeight  Float?
+
+  // Dimension images
+  lengthImage  String?
+  breadthImage String?
+  heightImage  String?
+  weightImage  String?
+
+  // Shipping documents
+  invoiceUrl            String?
+  manifestUrl           String?
+  adminShippingLabelUrl String?
+  adminInvoiceUrl       String?
+  packedPictureUrl      String?
+
+  // Shipping Lock
+  isShippingLocked      Boolean @default(false)
+
   @@index([orderId])
   @@index([sellerOfferId])
   @@index([sellerId])
