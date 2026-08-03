@@ -421,6 +421,25 @@ export class OrdersService {
         hasAccess = true;
         // Multi-Seller Isolation: Filter order items so seller ONLY sees their own products
         order.items = order.items.filter((item) => item.sellerId === sellerId);
+
+        // Dynamically copy the shipping details from the first item of this seller onto the parent order
+        const firstItem = order.items[0];
+        if (firstItem) {
+          order.packageLength = firstItem.packageLength;
+          order.packageBreadth = firstItem.packageBreadth;
+          order.packageHeight = firstItem.packageHeight;
+          order.packageWeight = firstItem.packageWeight;
+          order.lengthImage = firstItem.lengthImage;
+          order.breadthImage = firstItem.breadthImage;
+          order.heightImage = firstItem.heightImage;
+          order.weightImage = firstItem.weightImage;
+          order.invoiceUrl = firstItem.invoiceUrl;
+          order.manifestUrl = firstItem.manifestUrl;
+          order.adminShippingLabelUrl = firstItem.adminShippingLabelUrl;
+          order.adminInvoiceUrl = firstItem.adminInvoiceUrl;
+          order.packedPictureUrl = firstItem.packedPictureUrl;
+          order.isShippingLocked = firstItem.isShippingLocked;
+        }
       }
     }
 
@@ -784,20 +803,19 @@ export class OrdersService {
       throw new ForbiddenException('You do not have any items in this order');
     }
 
-    // 3. Fetch current order
-    const order = await this.prisma.order.findUnique({
-      where: { id: orderId },
-    });
-
-    if (!order) {
-      throw new NotFoundException('Order not found');
-    }
-
-    if (order.isShippingLocked) {
+    // 3. Check if shipping is locked for this seller's items
+    const isLocked = sellerItems.some((item) => item.isShippingLocked);
+    if (isLocked) {
       throw new ForbiddenException('Shipping details are locked by admin');
     }
 
-    // 4. Update the order with shipping details
+    // 4. Update all order items for this seller in this order
+    await this.prisma.orderItem.updateMany({
+      where: { orderId, sellerId: seller.id },
+      data: dto as any,
+    });
+
+    // Also update the parent order table for compatibility/fallback
     const updated = await this.prisma.order.update({
       where: { id: orderId },
       data: dto,
@@ -825,13 +843,16 @@ export class OrdersService {
   ) {
     const order = await this.prisma.order.findUnique({
       where: { id: orderId },
+      include: { items: true },
     });
 
     if (!order) {
       throw new NotFoundException('Order not found');
     }
 
-    if (!order.packageLength && Object.keys(dto).some(k => k !== 'isShippingLocked')) {
+    // Check if any seller has provided package details (or if it's only lock status changes)
+    const anyPackageProvided = order.items.some(item => item.packageLength != null) || order.packageLength != null;
+    if (!anyPackageProvided && Object.keys(dto).some(k => k !== 'isShippingLocked')) {
       throw new BadRequestException('Seller has not provided package details yet');
     }
 
@@ -839,6 +860,21 @@ export class OrdersService {
       where: { id: orderId },
       data: dto,
     });
+
+    // Update the corresponding order items so they reflect the admin documents
+    const itemsWithPackage = order.items.filter(item => item.packageLength != null);
+    if (itemsWithPackage.length > 0) {
+      const sellerIds = Array.from(new Set(itemsWithPackage.map(item => item.sellerId)));
+      await this.prisma.orderItem.updateMany({
+        where: { orderId, sellerId: { in: sellerIds } },
+        data: dto as any,
+      });
+    } else {
+      await this.prisma.orderItem.updateMany({
+        where: { orderId },
+        data: dto as any,
+      });
+    }
 
     this.logger.log(`Order ${orderId} admin shipping docs updated`);
     return updated;
