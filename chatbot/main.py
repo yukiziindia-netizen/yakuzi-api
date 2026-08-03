@@ -85,6 +85,10 @@ class ConversationTrainRequest(BaseModel):
     history: List[ChatMessage]
     custom_name: Optional[str] = "yukizi-custom-bot"
 
+class SyncTrainingRequest(BaseModel):
+    histories: List[List[ChatMessage]]
+
+
 # ==========================================
 # DATABASE TOOLS (Level 2)
 # ==========================================
@@ -266,6 +270,47 @@ async def train_conversation(background_tasks: BackgroundTasks, req: Conversatio
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to process conversation: {str(e)}")
+
+@app.post("/train/reset")
+def reset_training_memory():
+    global ACTIVE_SYSTEM_INSTRUCTION
+    ACTIVE_SYSTEM_INSTRUCTION = DEFAULT_PROMPT
+    with open(PROMPT_FILE, 'w', encoding='utf-8') as f:
+        f.write(DEFAULT_PROMPT)
+    return {
+        "message": "Training memory successfully cleared and reset to default system prompt.",
+        "active_prompt": ACTIVE_SYSTEM_INSTRUCTION
+    }
+
+@app.post("/train/sync")
+def sync_training_memory(req: SyncTrainingRequest):
+    global ACTIVE_SYSTEM_INSTRUCTION
+    new_prompt = DEFAULT_PROMPT
+    added_count = 0
+    for history in req.histories:
+        if not history or len(history) < 2:
+            continue
+        conversation_text = "\n[NEW LEARNED EXAMPLE]\n"
+        has_valid_pair = False
+        for i in range(len(history) - 1):
+            if history[i].role == "user" and history[i+1].role in ["assistant", "model"]:
+                u = history[i].content or ""
+                m = history[i+1].content or ""
+                if u and m:
+                    conversation_text += f"User: {u}\nAssistant: {m}\n\n"
+                    has_valid_pair = True
+        if has_valid_pair:
+            new_prompt += conversation_text
+            added_count += 1
+
+    ACTIVE_SYSTEM_INSTRUCTION = new_prompt
+    with open(PROMPT_FILE, 'w', encoding='utf-8') as f:
+        f.write(new_prompt)
+
+    return {
+        "message": f"Training memory synced with {added_count} job histories.",
+        "active_prompt": ACTIVE_SYSTEM_INSTRUCTION
+    }
 
 @app.post("/chat")
 async def chat(request: ChatRequest):
