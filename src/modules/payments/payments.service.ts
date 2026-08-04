@@ -49,23 +49,39 @@ export class PaymentsService {
       throw new NotFoundException('Order not found');
     }
 
-    // 2. Check if order is already fully paid
+    // 2. Find all orders created by this buyer in the same checkout session (within 5 seconds)
+    const orderTime = order.createdAt.getTime();
+    const relatedOrders = await this.prisma.order.findMany({
+      where: {
+        buyerId: userId,
+        createdAt: {
+          gte: new Date(orderTime - 5000),
+          lte: new Date(orderTime + 5000),
+        },
+      },
+    });
+
+    // Check if order is already fully paid
     if (order.paymentStatus === PaymentStatus.SUCCESS) {
       throw new BadRequestException('Order is already fully paid');
     }
 
-    // 3. Compute remaining balance dynamically
-    const confirmedTotal = await this.getConfirmedTotal(orderId);
-    const remaining = order.totalAmount.toNumber() - confirmedTotal;
+    // 3. Compute combined remaining balance dynamically across all related orders
+    let totalCombinedRemaining = 0;
+    for (const ro of relatedOrders) {
+      const roConfirmedTotal = await this.getConfirmedTotal(ro.id);
+      const roRemaining = Math.max(0, ro.totalAmount.toNumber() - roConfirmedTotal);
+      totalCombinedRemaining += roRemaining;
+    }
 
-    if (remaining <= 0) {
+    if (totalCombinedRemaining <= 0) {
       throw new BadRequestException('Order is already fully paid');
     }
 
     // 4. Validate amount does not exceed remaining
-    if (amount > remaining) {
+    if (amount > totalCombinedRemaining + 0.01) {
       throw new BadRequestException(
-        `Amount exceeds remaining balance. Remaining: ₹${remaining.toFixed(2)}`,
+        `Amount exceeds remaining balance. Remaining: ₹${totalCombinedRemaining.toFixed(2)}`,
       );
     }
 
@@ -81,7 +97,7 @@ export class PaymentsService {
     });
 
     this.logger.log(
-      `Payment recorded: ${payment.id} — ₹${amount} via ${method} for order ${orderId}`,
+      `Payment recorded: ${payment.id} — ₹${amount} via ${method} for order ${orderId} (part of group of ${relatedOrders.length} orders)`,
     );
 
     return payment;
@@ -218,28 +234,7 @@ export class PaymentsService {
     const payment = await this.prisma.payment.findUnique({
       where: { id: paymentId },
       include: {
-        order: {
-          include: {
-            items: {
-              include: {
-                sellerOffer: {
-                  select: { 
-                    id: true, 
-                    name: true, 
-                    category: true,
-                    finalShippingPrice: true,
-                    shippingCharges: true,
-                    variant: {
-                      include: {
-                        catalogProduct: true,
-                      },
-                    },
-                  },
-                },
-              },
-            },
-          },
-        },
+        order: true,
       },
     });
 
@@ -255,7 +250,39 @@ export class PaymentsService {
       throw new BadRequestException('Cannot confirm a rejected payment');
     }
 
-    // Transactional: confirm payment + recalculate order status + maybe settle
+    // Find all related orders created within 5 seconds of the primary order
+    const orderTime = payment.order.createdAt.getTime();
+    const relatedOrders = await this.prisma.order.findMany({
+      where: {
+        buyerId: payment.order.buyerId,
+        createdAt: {
+          gte: new Date(orderTime - 5000),
+          lte: new Date(orderTime + 5000),
+        },
+      },
+      include: {
+        items: {
+          include: {
+            sellerOffer: {
+              select: { 
+                id: true, 
+                name: true, 
+                category: true,
+                finalShippingPrice: true,
+                shippingCharges: true,
+                variant: {
+                  include: {
+                    catalogProduct: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    // Transactional: confirm payment + recalculate order status + maybe settle for each order in the group
     const result = await this.prisma.$transaction(async (tx) => {
       // 1. Mark payment as CONFIRMED
       const confirmed = await tx.payment.update({
@@ -263,52 +290,77 @@ export class PaymentsService {
         data: { verificationStatus: PaymentVerificationStatus.CONFIRMED },
       });
 
-      // 2. Recalculate order payment status
-      const confirmedPayments = await tx.payment.findMany({
-        where: {
-          orderId: payment.orderId,
-          verificationStatus: PaymentVerificationStatus.CONFIRMED,
-        },
-      });
+      let confirmedTotalPaid = 0;
+      let targetOrderNewStatus: PaymentStatus = PaymentStatus.SUCCESS;
 
-      const totalPaid = confirmedPayments.reduce((sum, p) => sum + p.amount.toNumber(), 0);
-      const newStatus = this.computePaymentStatus(
-        totalPaid,
-        payment.order.totalAmount.toNumber(),
-      );
+      for (const ro of relatedOrders) {
+        // Fetch existing confirmed payments for this order
+        const confirmedPayments = await tx.payment.findMany({
+          where: {
+            orderId: ro.id,
+            verificationStatus: PaymentVerificationStatus.CONFIRMED,
+          },
+        });
 
-      const isInitialStatus =
-        payment.order.orderStatus === OrderStatus.PLACED ||
-        payment.order.orderStatus === OrderStatus.ACCEPTED;
+        let roPaid = confirmedPayments.reduce((sum, p) => sum + p.amount.toNumber(), 0);
+        // If this is the primary order linked to the payment, add this payment's amount
+        if (ro.id === payment.orderId) {
+          roPaid += payment.amount.toNumber();
+        }
 
-      await tx.order.update({
-        where: { id: payment.orderId },
-        data: {
-          paymentStatus: newStatus,
-          ...(newStatus === PaymentStatus.SUCCESS &&
-            isInitialStatus && { orderStatus: OrderStatus.PAYMENT_RECEIVED }),
-        },
-      });
+        // Check if the total payment amount covers the remaining group balance.
+        // If yes, we can treat the entire group as paid.
+        const totalRemainingForOthers = relatedOrders.reduce((sum, o) => {
+          if (o.id === payment.orderId) return sum;
+          return sum + o.totalAmount.toNumber();
+        }, 0);
 
-      // 3. If fully paid AND delivered → create seller settlements
-      if (
-        newStatus === PaymentStatus.SUCCESS &&
-        payment.order.orderStatus === OrderStatus.DELIVERED
-      ) {
-        await this.createSettlements(tx, payment.order.items);
+        const isGroupFullyPaid = payment.amount.toNumber() >= (payment.order.totalAmount.toNumber() - (ro.id === payment.orderId ? 0 : roPaid) + totalRemainingForOthers);
+        const finalPaidAmount = isGroupFullyPaid ? ro.totalAmount.toNumber() : roPaid;
+
+        const newStatus = this.computePaymentStatus(
+          finalPaidAmount,
+          ro.totalAmount.toNumber(),
+        );
+
+        if (ro.id === payment.orderId) {
+          targetOrderNewStatus = newStatus;
+          confirmedTotalPaid = finalPaidAmount;
+        }
+
+        const isInitialStatus =
+          ro.orderStatus === OrderStatus.PLACED ||
+          ro.orderStatus === OrderStatus.ACCEPTED;
+
+        await tx.order.update({
+          where: { id: ro.id },
+          data: {
+            paymentStatus: newStatus,
+            ...(newStatus === PaymentStatus.SUCCESS &&
+              isInitialStatus && { orderStatus: OrderStatus.PAYMENT_RECEIVED }),
+          },
+        });
+
+        // 3. If fully paid AND delivered → create seller settlements
+        if (
+          newStatus === PaymentStatus.SUCCESS &&
+          ro.orderStatus === OrderStatus.DELIVERED
+        ) {
+          await this.createSettlements(tx, ro.items);
+        }
       }
 
-      return { confirmed, totalPaid, newStatus };
+      return { confirmed, confirmedTotalPaid, targetOrderNewStatus };
     });
 
     this.logger.log(
-      `Payment ${paymentId} confirmed → order ${payment.orderId} status: ${result.newStatus}`,
+      `Payment ${paymentId} confirmed for order group. Target order ${payment.orderId} status: ${result.targetOrderNewStatus}`,
     );
 
     return {
       payment: result.confirmed,
-      orderPaymentStatus: result.newStatus,
-      totalPaid: result.totalPaid,
+      orderPaymentStatus: result.targetOrderNewStatus,
+      totalPaid: result.confirmedTotalPaid,
       totalAmount: payment.order.totalAmount.toNumber(),
     };
   }

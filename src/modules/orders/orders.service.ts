@@ -83,69 +83,90 @@ export class OrdersService {
       }
     }
 
-    // 3. Calculate total amount
+    // 3. Group cart items by seller
+    const itemsBySeller = new Map<string, typeof cart.items>();
+    for (const item of cart.items) {
+      const sellerId = item.sellerOffer.seller.id;
+      if (!itemsBySeller.has(sellerId)) {
+        itemsBySeller.set(sellerId, []);
+      }
+      itemsBySeller.get(sellerId)!.push(item);
+    }
+
+    // Calculate total amount for all items in cart (for logging/summary)
     const totalAmount = cart.items.reduce(
       (sum, item) => sum + (item.quantity * Number(item.unitPrice)),
       0,
     );
 
-    // 4. Execute transactional checkout
+    // 4. Execute transactional checkout (split by seller)
     const order = await this.prisma.$transaction(async (tx) => {
-      // 4a. Create Order
-      const newOrder = await tx.order.create({
-        data: {
-          buyerId: userId,
-          totalAmount,
-          orderStatus: OrderStatus.PLACED,
-          referralCodeId: buyerProfile?.referralCodeId || null,
-        },
-      });
+      const createdOrders: any[] = [];
 
-      // 4b. Create OrderItems
-      const orderItemsData = cart.items.map((item) => ({
-        orderId: newOrder.id,
-        sellerOfferId: item.sellerOfferId,
-        sellerId: item.sellerOffer.seller.id,
-        quantity: item.quantity,
-        unitPrice: item.unitPrice,
-        totalPrice: item.quantity * Number(item.unitPrice),
-      }));
+      for (const [sellerId, sellerItems] of itemsBySeller.entries()) {
+        const sellerTotalAmount = sellerItems.reduce(
+          (sum, item) => sum + (item.quantity * Number(item.unitPrice)),
+          0,
+        );
 
-      await tx.orderItem.createMany({ data: orderItemsData });
+        // 4a. Create Order
+        const newOrder = await tx.order.create({
+          data: {
+            buyerId: userId,
+            totalAmount: sellerTotalAmount,
+            orderStatus: OrderStatus.PLACED,
+            referralCodeId: buyerProfile?.referralCodeId || null,
+          },
+        });
 
-      // 4c. Create OrderAddress snapshot
-      await tx.orderAddress.create({
-        data: {
+        // 4b. Create OrderItems
+        const orderItemsData = sellerItems.map((item) => ({
           orderId: newOrder.id,
-          name: dto.name,
-          phone: dto.phone,
-          address: dto.address,
-          city: dto.city,
-          state: dto.state,
-          pincode: dto.pincode,
-        },
-      });
+          sellerOfferId: item.sellerOfferId,
+          sellerId: sellerId,
+          quantity: item.quantity,
+          unitPrice: item.unitPrice,
+          totalPrice: item.quantity * Number(item.unitPrice),
+        }));
 
-      // 4d. Reduce ProductBatch stock (FIFO — earliest expiry first)
-      for (const item of cart.items) {
-        let remaining = item.quantity;
+        await tx.orderItem.createMany({ data: orderItemsData });
 
-        for (const batch of item.sellerOffer.batches) {
-          if (remaining <= 0) break;
+        // 4c. Create OrderAddress snapshot
+        await tx.orderAddress.create({
+          data: {
+            orderId: newOrder.id,
+            name: dto.name,
+            phone: dto.phone,
+            address: dto.address,
+            city: dto.city,
+            state: dto.state,
+            pincode: dto.pincode,
+          },
+        });
 
-          const deduct = Math.min(remaining, batch.stock);
-          await tx.productBatch.update({
-            where: { id: batch.id },
-            data: { stock: { decrement: deduct } },
-          });
-          remaining -= deduct;
+        // 4d. Reduce ProductBatch stock (FIFO — earliest expiry first)
+        for (const item of sellerItems) {
+          let remaining = item.quantity;
+
+          for (const batch of item.sellerOffer.batches) {
+            if (remaining <= 0) break;
+
+            const deduct = Math.min(remaining, batch.stock);
+            await tx.productBatch.update({
+              where: { id: batch.id },
+              data: { stock: { decrement: deduct } },
+            });
+            remaining -= deduct;
+          }
         }
+
+        createdOrders.push(newOrder);
       }
 
       // 4e. Clear buyer cart
       await tx.cartItem.deleteMany({ where: { cartId: cart.id } });
 
-      return newOrder;
+      return createdOrders[0];
     });
 
     // 5. Fetch the created order with full details
