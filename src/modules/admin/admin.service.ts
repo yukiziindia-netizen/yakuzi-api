@@ -2669,33 +2669,98 @@ export class AdminService {
       },
     });
 
+    // Propagate product name, manufacturer, and category/subcategory to all connected SellerOffer listings
+    if (dto.name || dto.manufacturer || resolvedCategoryId || resolvedSubCategoryId) {
+      const offersToUpdate = await this.prisma.sellerOffer.findMany({
+        where: {
+          OR: [
+            { catalogProductId: id },
+            { variant: { catalogProductId: id } }
+          ]
+        },
+        include: { variant: true }
+      });
+
+      for (const offer of offersToUpdate) {
+        const updateFields: any = {};
+        if (dto.name) {
+          let newOfferName = dto.name;
+          if (offer.variant && offer.variant.name && offer.variant.name !== 'Default') {
+            newOfferName = `${dto.name} - ${offer.variant.name}`;
+          }
+          updateFields.name = newOfferName;
+          updateFields.slug = slugify(newOfferName, { lower: true }) + '-' + Math.random().toString(36).substring(2, 6);
+        }
+        if (dto.manufacturer) {
+          updateFields.manufacturer = dto.manufacturer;
+        }
+        if (resolvedCategoryId) {
+          updateFields.categoryId = resolvedCategoryId;
+        }
+        if (resolvedSubCategoryId) {
+          updateFields.subCategoryId = resolvedSubCategoryId;
+        }
+
+        if (Object.keys(updateFields).length > 0) {
+          await this.prisma.sellerOffer.update({
+            where: { id: offer.id },
+            data: updateFields,
+          });
+        }
+      }
+    }
+
     // Handle variants update if provided
     if (dto.variants !== undefined) {
-      // Simple approach: delete existing variants and recreate
-      await this.prisma.productVariant.deleteMany({
+      const existingVariants = await this.prisma.productVariant.findMany({
         where: { catalogProductId: id },
       });
 
-      if (dto.variants.length > 0) {
-        await this.prisma.productVariant.createMany({
-          data: dto.variants.map((v: any) => ({
-            catalogProductId: id,
-            name: v.name,
-            sku: v.sku || undefined,
-            serialNo: v.serialNo || undefined,
-            options: { 
-              price: v.price, 
-              available: v.available, 
-              image: v.image,
-              images: v.images,
-              sku: v.sku,
-              serialNo: v.serialNo,
-              shippingCharges: v.shippingCharges !== undefined ? Number(v.shippingCharges) : 0,
-              finalShippingPrice: v.finalShippingPrice !== undefined ? Number(v.finalShippingPrice) : null,
-              shippingGstPercent: v.shippingGstPercent !== undefined && v.shippingGstPercent !== null ? Number(v.shippingGstPercent) : null,
-            },
-          })),
+      const dtoVariantNames = dto.variants.map((v: any) => v.name);
+
+      // 1. Delete variants that are no longer present
+      const variantsToDelete = existingVariants.filter(
+        (ev) => !dtoVariantNames.includes(ev.name)
+      );
+      if (variantsToDelete.length > 0) {
+        await this.prisma.productVariant.deleteMany({
+          where: { id: { in: variantsToDelete.map((v) => v.id) } },
         });
+      }
+
+      // 2. Update existing ones (preserving ID) and create new ones
+      for (const v of dto.variants) {
+        const existing = existingVariants.find((ev) => ev.name === v.name);
+        const variantData = {
+          sku: v.sku || undefined,
+          serialNo: v.serialNo || undefined,
+          options: {
+            price: v.price,
+            available: v.available,
+            image: v.image,
+            images: v.images,
+            sku: v.sku,
+            serialNo: v.serialNo,
+            shippingCharges: v.shippingCharges !== undefined ? Number(v.shippingCharges) : 0,
+            finalShippingPrice: v.finalShippingPrice !== undefined ? Number(v.finalShippingPrice) : null,
+            shippingGstPercent: v.shippingGstPercent !== undefined && v.shippingGstPercent !== null ? Number(v.shippingGstPercent) : null,
+          },
+        };
+
+        if (existing) {
+          await this.prisma.productVariant.update({
+            where: { id: existing.id },
+            data: variantData,
+          });
+        } else {
+          await this.prisma.productVariant.create({
+            data: {
+              catalogProductId: id,
+              name: v.name,
+              ...variantData,
+            },
+          });
+        }
       }
     }
 

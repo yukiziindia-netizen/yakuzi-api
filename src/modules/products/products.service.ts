@@ -226,6 +226,12 @@ export class ProductsService {
             data: {
               category: { connect: { id: normalized.categoryId } },
               subCategory: { connect: { id: normalized.subCategoryId } },
+              catalogProduct: catalogProduct
+                ? { connect: { id: catalogProduct.id } }
+                : undefined,
+              variant: matchedVariantId
+                ? { connect: { id: matchedVariantId } }
+                : undefined,
               manufacturer: normalized.manufacturer,
               description: normalized.description,
               sku: v.sku || normalized.sku || undefined,
@@ -261,6 +267,9 @@ export class ProductsService {
             seller: { connect: { id: seller.id } },
             category: { connect: { id: normalized.categoryId } },
             subCategory: { connect: { id: normalized.subCategoryId } },
+            catalogProduct: catalogProduct
+              ? { connect: { id: catalogProduct.id } }
+              : undefined,
             variant: matchedVariantId
               ? { connect: { id: matchedVariantId } }
               : undefined,
@@ -721,6 +730,7 @@ export class ProductsService {
       ...(subCategoryId
         ? { subCategory: { connect: { id: subCategoryId } } }
         : {}),
+      ...(masterProductId ? { catalogProduct: { connect: { id: masterProductId } } } : {}),
     };
 
     const updated = await this.prisma.sellerOffer.update({
@@ -1017,13 +1027,30 @@ export class ProductsService {
 
     if (listing) {
       this.logger.log(`findOne: Found specific listing ${id}`);
-      if (listing.variant?.catalogProductId) {
+      const masterProductId = listing.catalogProductId || listing.variant?.catalogProductId;
+      if (masterProductId) {
         const master = await this.prisma.catalogProduct.findFirst({
-          where: { id: listing.variant.catalogProductId, deletedAt: null },
+          where: { id: masterProductId, deletedAt: null },
           include: {
             category: true,
             subCategory: true,
             images: true,
+            sellerOffers: {
+              where: { deletedAt: null },
+              include: {
+                seller: {
+                  select: {
+                    id: true,
+                    companyName: true,
+                    rating: true,
+                    city: true,
+                    state: true,
+                  },
+                },
+                batches: { orderBy: { expiryDate: 'asc' } },
+              },
+              orderBy: { mrp: 'asc' },
+            },
             productVariants: {
               include: {
                 sellerOffers: {
@@ -1053,9 +1080,10 @@ export class ProductsService {
       }
       
       let catalogMatch: any = null;
-      if (!listing.variant?.catalogProductId) {
+      if (!masterProductId) {
         catalogMatch = await this.prisma.catalogProduct.findFirst({
-          where: { name: listing.name, deletedAt: null }
+          where: { name: listing.name, deletedAt: null },
+          include: { images: true }
         });
       }
 
@@ -1584,7 +1612,10 @@ export class ProductsService {
     const nearestExpiry = batches.length > 0 ? batches[0].expiryDate : null;
 
     // Standardize images as string array
-    const images = (product.images ?? []).map((img: any) =>
+    const images = (product.images && product.images.length > 0
+      ? product.images
+      : (catalogMatch?.images ?? [])
+    ).map((img: any) =>
       typeof img === 'string' ? img : (img.url ?? img),
     );
 
