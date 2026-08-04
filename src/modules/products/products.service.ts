@@ -811,13 +811,35 @@ export class ProductsService {
   async softDelete(userId: string, productId: string) {
     const product = await this.findOwnProduct(userId, productId);
 
+    // 1. Mark product as soft-deleted and inactive
     await this.prisma.sellerOffer.update({
       where: { id: product.id },
       data: { deletedAt: new Date(), isActive: false },
     });
 
-    this.logger.log(`Product soft-deleted: ${product.id}`);
+    // 2. Clean up from buyers' carts
+    await this.prisma.cartItem.deleteMany({
+      where: { sellerOfferId: product.id },
+    });
+
+    this.logger.log(`Product soft-deleted: ${product.id} and removed from all carts`);
     return { message: 'Product deleted successfully' };
+  }
+
+  /**
+   * Validate a list of product IDs, returning only the active and non-deleted ones.
+   */
+  async validateIds(ids: string[]) {
+    if (!ids || ids.length === 0) return [];
+    const activeProducts = await this.prisma.sellerOffer.findMany({
+      where: {
+        id: { in: ids },
+        isActive: true,
+        deletedAt: null,
+      },
+      select: { id: true },
+    });
+    return activeProducts.map((p) => p.id);
   }
 
   // ──────────────────────────────────────────────

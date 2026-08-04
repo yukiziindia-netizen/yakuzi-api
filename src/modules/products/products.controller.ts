@@ -132,6 +132,15 @@ export class ProductsController {
     return { message: 'Products retrieved successfully', data };
   }
 
+  @Post('validate-ids')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Validate if product IDs are active and not deleted' })
+  @ApiResponse({ status: 200, description: 'List of active product IDs' })
+  async validateIds(@Body() dto: { ids: string[] }) {
+    const data = await this.productsService.validateIds(dto.ids);
+    return { message: 'IDs validated successfully', data };
+  }
+
   @Get('categories')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'List all categories with sub-categories' })
