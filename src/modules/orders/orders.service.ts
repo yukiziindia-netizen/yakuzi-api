@@ -11,7 +11,7 @@ import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
 import { UpdateShippingDetailsDto } from './dto/update-shipping-details.dto';
 import { OrderStatus, Role, PaymentStatus } from '@prisma/client';
 import { ShiprocketService } from './shiprocket.service';
-import { calculateSellerPayout } from '../settlements/payout-calculator';
+import { calculateSellerPayout, buildPayoutInputFromOrderItem } from '../settlements/payout-calculator';
 
 @Injectable()
 export class OrdersService {
@@ -447,7 +447,52 @@ export class OrdersService {
       throw new NotFoundException('Order not found');
     }
 
-    return order;
+    const items = order.items.map((item: any) => {
+      let estimatedPayout: any = null;
+      if (item.settlement) {
+        const comm = Number(item.settlement.commission || 0);
+        const commGst = Number(item.settlement.commissionGst || 0);
+        const ship = Number(item.sellerOffer?.finalShippingPrice ?? item.sellerOffer?.shippingCharges ?? 0);
+        const net = Number(item.settlement.netPayout || item.settlement.amount || 0);
+        const gross = Number(item.settlement.grossAmount || item.totalPrice || 0);
+        estimatedPayout = {
+          grossAmount: gross,
+          commission: comm,
+          commissionGst: commGst,
+          finalShippingPrice: ship,
+          totalDeductions: comm + commGst + ship,
+          netPayout: net,
+          commissionPercent: Number(item.sellerOffer?.catalogProduct?.commissionPercent ?? item.sellerOffer?.variant?.catalogProduct?.commissionPercent ?? 0),
+          commissionGstPercent: Number(item.sellerOffer?.catalogProduct?.commissionGstPercent ?? item.sellerOffer?.variant?.catalogProduct?.commissionGstPercent ?? 18),
+          status: item.settlement.payoutStatus,
+          isLedgered: true,
+        };
+      } else {
+        const input = buildPayoutInputFromOrderItem(item);
+        const breakdown = calculateSellerPayout(input);
+        estimatedPayout = {
+          grossAmount: breakdown.grossAmount.toNumber(),
+          commission: breakdown.commission.toNumber(),
+          commissionGst: breakdown.commissionGst.toNumber(),
+          finalShippingPrice: breakdown.finalShippingPrice.toNumber(),
+          totalDeductions: breakdown.totalDeductions.toNumber(),
+          netPayout: breakdown.netPayout.toNumber(),
+          commissionPercent: input.commissionPercent,
+          commissionGstPercent: input.commissionGstPercent,
+          status: breakdown.status,
+          isLedgered: false,
+        };
+      }
+      return {
+        ...item,
+        estimatedPayout,
+      };
+    });
+
+    return {
+      ...order,
+      items,
+    };
   }
 
   // ──────────────────────────────────────────────

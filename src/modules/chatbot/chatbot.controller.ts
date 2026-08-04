@@ -146,6 +146,26 @@ export class ChatbotController {
     return { jobId: '', status: null };
   }
 
+  private getSidecarUrl(): string {
+    return process.env.CHATBOT_API_URL || 'http://127.0.0.1:5005';
+  }
+
+  private async resetSidecarMemory() {
+    try {
+      await axios.post(`${this.getSidecarUrl()}/train/reset`, {}, { timeout: 3000 });
+    } catch (error) {
+      // Ignore sidecar unreachable error gracefully
+    }
+  }
+
+  private async syncSidecarMemory(histories: any[]) {
+    try {
+      await axios.post(`${this.getSidecarUrl()}/train/sync`, { histories }, { timeout: 3000 });
+    } catch (error) {
+      // Ignore sidecar unreachable error gracefully
+    }
+  }
+
   @Get('job-history')
   async getJobHistory() {
     try {
@@ -153,21 +173,69 @@ export class ChatbotController {
         const jobs = await (this.prisma as any).chatbotJob.findMany({
           orderBy: { createdAt: 'desc' },
         });
+        if (!jobs || jobs.length === 0) {
+          await this.resetSidecarMemory();
+        }
         return jobs || [];
       }
     } catch (error) {
       // Ignore fallback errors
     }
+    await this.resetSidecarMemory();
     return [];
   }
 
-
   @Delete('job-history/:id')
   async deleteJob(@Param('id') id: string) {
-    await this.prisma.chatbotJob.delete({
-      where: { id },
-    });
+    try {
+      await (this.prisma as any).chatbotJob.delete({
+        where: { id },
+      });
+      const remainingJobs = await (this.prisma as any).chatbotJob.findMany();
+      if (!remainingJobs || remainingJobs.length === 0) {
+        await this.resetSidecarMemory();
+      } else {
+        const validHistories = remainingJobs
+          .map((j: any) => j.history)
+          .filter((h: any) => Array.isArray(h) && h.length > 0);
+        await this.syncSidecarMemory(validHistories);
+      }
+    } catch (error) {
+      // Ignore error if job doesn't exist
+    }
     return { success: true };
+  }
+
+  @Delete('job-history')
+  async clearJobHistory() {
+    try {
+      if ((this.prisma as any).chatbotJob) {
+        await (this.prisma as any).chatbotJob.deleteMany();
+      }
+    } catch (error) {
+      // Ignore fallback error
+    }
+    await this.resetSidecarMemory();
+    return { success: true };
+  }
+
+  @Post('train/reset')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Reset AI chatbot training memory to default' })
+  async resetTraining() {
+    try {
+      const response = await axios.post(`${this.getSidecarUrl()}/train/reset`);
+      return response.data;
+    } catch (error: any) {
+      if (error.response) {
+        throw new Error(
+          `Python sidecar error: ${JSON.stringify(error.response.data)}`,
+        );
+      }
+      throw new Error(
+        `Failed to communicate with Python sidecar: ${error.message}`,
+      );
+    }
   }
 
   @Post('chat')
@@ -189,8 +257,7 @@ export class ChatbotController {
   async trainConversation(@Body() dto: any) {
     try {
       // Proxy the request to the Python sidecar
-      const apiUrl = process.env.CHATBOT_API_URL || 'http://127.0.0.1:5005';
-      const response = await axios.post(`${apiUrl}/train/conversation`, dto);
+      const response = await axios.post(`${this.getSidecarUrl()}/train/conversation`, dto);
       return response.data;
     } catch (error: any) {
       if (error.response) {
