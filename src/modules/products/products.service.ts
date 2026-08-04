@@ -74,6 +74,14 @@ export class ProductsService {
    * Supports images, discount fields, externalId (idempotent upsert), and migration mode.
    */
   async create(userId: string, dto: CreateProductDto) {
+    if (dto.variants && dto.variants.length > 1) {
+      const names = dto.variants.map((v: any) => v.name?.trim().toLowerCase()).filter(Boolean);
+      const uniqueNames = new Set(names);
+      if (names.length !== uniqueNames.size) {
+        throw new BadRequestException('Duplicate variant names are not allowed');
+      }
+    }
+
     const normalized = this.normalizeDto(dto);
 
     const seller = await this.prisma.sellerProfile.findUnique({

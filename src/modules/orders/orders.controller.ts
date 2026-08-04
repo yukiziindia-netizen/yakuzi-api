@@ -172,6 +172,7 @@ export class OrdersController {
       manifestUrl?: string; 
       invoiceUrl?: string;
       isShippingLocked?: boolean;
+      sellerId?: string;
     },
   ) {
     const data = await this.ordersService.updateAdminShippingDocs(orderId, dto);

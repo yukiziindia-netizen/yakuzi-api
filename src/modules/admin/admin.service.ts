@@ -2546,6 +2546,14 @@ export class AdminService {
     id: string,
     dto: import('./dto/update-suggestion.dto').UpdateSuggestionDto,
   ) {
+    if (dto.variants && dto.variants.length > 1) {
+      const names = dto.variants.map((v: any) => v.name?.trim().toLowerCase()).filter(Boolean);
+      const uniqueNames = new Set(names);
+      if (names.length !== uniqueNames.size) {
+        throw new BadRequestException('Duplicate variant names are not allowed');
+      }
+    }
+
     const skusToCheck = new Set<string>();
     const serialNosToCheck = new Set<string>();
     if (dto.sku) skusToCheck.add(dto.sku);

@@ -884,6 +884,7 @@ export class OrdersService {
       manifestUrl?: string;
       invoiceUrl?: string;
       isShippingLocked?: boolean;
+      sellerId?: string;
     },
   ) {
     const order = await this.prisma.order.findUnique({
@@ -895,34 +896,56 @@ export class OrdersService {
       throw new NotFoundException('Order not found');
     }
 
-    // Check if any seller has provided package details (or if it's only lock status changes)
-    const anyPackageProvided = order.items.some(item => item.packageLength != null) || order.packageLength != null;
-    if (!anyPackageProvided && Object.keys(dto).some(k => k !== 'isShippingLocked')) {
-      throw new BadRequestException('Seller has not provided package details yet');
-    }
+    const { sellerId, ...updateFields } = dto;
 
-    const updated = await this.prisma.order.update({
-      where: { id: orderId },
-      data: dto,
-    });
-
-    // Update the corresponding order items so they reflect the admin documents
-    const itemsWithPackage = order.items.filter(item => item.packageLength != null);
-    if (itemsWithPackage.length > 0) {
-      const sellerIds = Array.from(new Set(itemsWithPackage.map(item => item.sellerId)));
+    if (sellerId) {
+      // Update only order items for this seller
       await this.prisma.orderItem.updateMany({
-        where: { orderId, sellerId: { in: sellerIds } },
-        data: dto as any,
+        where: { orderId, sellerId },
+        data: updateFields as any,
       });
+
+      // Also update the parent order table if this is the only seller or as fallback
+      const uniqueSellers = Array.from(new Set(order.items.map(i => i.sellerId)));
+      if (uniqueSellers.length === 1 || uniqueSellers[0] === sellerId) {
+        await this.prisma.order.update({
+          where: { id: orderId },
+          data: updateFields,
+        });
+      }
     } else {
-      await this.prisma.orderItem.updateMany({
-        where: { orderId },
-        data: dto as any,
+      // Check if any seller has provided package details (or if it's only lock status changes)
+      const anyPackageProvided = order.items.some(item => item.packageLength != null) || order.packageLength != null;
+      if (!anyPackageProvided && Object.keys(updateFields).some(k => k !== 'isShippingLocked')) {
+        throw new BadRequestException('Seller has not provided package details yet');
+      }
+
+      await this.prisma.order.update({
+        where: { id: orderId },
+        data: updateFields,
       });
+
+      // Update the corresponding order items so they reflect the admin documents
+      const itemsWithPackage = order.items.filter(item => item.packageLength != null);
+      if (itemsWithPackage.length > 0) {
+        const sellerIds = Array.from(new Set(itemsWithPackage.map(item => item.sellerId)));
+        await this.prisma.orderItem.updateMany({
+          where: { orderId, sellerId: { in: sellerIds } },
+          data: updateFields as any,
+        });
+      } else {
+        await this.prisma.orderItem.updateMany({
+          where: { orderId },
+          data: updateFields as any,
+        });
+      }
     }
 
     this.logger.log(`Order ${orderId} admin shipping docs updated`);
-    return updated;
+    return this.prisma.order.findUnique({
+      where: { id: orderId },
+      include: { items: { include: { seller: true } } }
+    });
   }
 
   // ──────────────────────────────────────────────
