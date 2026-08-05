@@ -82,7 +82,7 @@ export function calculateSellerPayout(input: PayoutInput): PayoutBreakdown {
  */
 export function buildPayoutInputFromOrderItem(orderItem: any): PayoutInput {
   const offer = orderItem.sellerOffer || {};
-  const product = orderItem.catalogProduct || offer.catalogProduct || {};
+  const product = orderItem.catalogProduct || offer.catalogProduct || offer.variant?.catalogProduct || {};
 
   // For base selling price, orderItem.price might be the exact selling price at the time of order.
   // If not present, fallback to mrp - discount
@@ -96,8 +96,20 @@ export function buildPayoutInputFromOrderItem(orderItem: any): PayoutInput {
     baseSellingPrice: Number(baseSellingPrice),
     quantity: Number(orderItem.quantity || 1),
     finalShippingPrice: Number(finalShippingPrice),
-    commissionPercent: Number(product.commissionPercent || 0),
-    commissionGstPercent: Number(product.commissionGstPercent || 18),
+    commissionPercent: Number(
+      product.commissionPercent ??
+      product.subCategory?.commissionPercent ??
+      product.category?.commissionPercent ??
+      offer.commissionPercent ??
+      0
+    ),
+    commissionGstPercent: Number(
+      product.commissionGstPercent ??
+      product.subCategory?.commissionGstPercent ??
+      product.category?.commissionGstPercent ??
+      offer.commissionGstPercent ??
+      18
+    ),
   };
 }
 

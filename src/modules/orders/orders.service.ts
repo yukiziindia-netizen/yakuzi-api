@@ -351,6 +351,27 @@ export class OrdersService {
                 discountType: true,
                 discountMeta: true,
                 isTaxIncluded: true,
+                catalogProduct: {
+                  select: {
+                    commissionPercent: true,
+                    commissionGstPercent: true,
+                    images: {
+                      select: { url: true },
+                    },
+                    category: {
+                      select: {
+                        commissionPercent: true,
+                        commissionGstPercent: true,
+                      },
+                    },
+                    subCategory: {
+                      select: {
+                        commissionPercent: true,
+                        commissionGstPercent: true,
+                      },
+                    },
+                  },
+                },
                 variant: {
                   select: {
                     name: true,
@@ -361,6 +382,18 @@ export class OrdersService {
                         commissionGstPercent: true,
                         images: {
                           select: { url: true },
+                        },
+                        category: {
+                          select: {
+                            commissionPercent: true,
+                            commissionGstPercent: true,
+                          },
+                        },
+                        subCategory: {
+                          select: {
+                            commissionPercent: true,
+                            commissionGstPercent: true,
+                          },
                         },
                       },
                     },
@@ -476,6 +509,21 @@ export class OrdersService {
         const ship = Number(item.sellerOffer?.finalShippingPrice ?? item.sellerOffer?.shippingCharges ?? 0);
         const net = Number(item.settlement.netPayout || item.settlement.amount || 0);
         const gross = Number(item.settlement.grossAmount || item.totalPrice || 0);
+        const catalogProd = item.sellerOffer?.catalogProduct ?? item.sellerOffer?.variant?.catalogProduct;
+        const commissionPercent = Number(
+          catalogProd?.commissionPercent ??
+          catalogProd?.subCategory?.commissionPercent ??
+          catalogProd?.category?.commissionPercent ??
+          item.sellerOffer?.commissionPercent ??
+          0
+        );
+        const commissionGstPercent = Number(
+          catalogProd?.commissionGstPercent ??
+          catalogProd?.subCategory?.commissionGstPercent ??
+          catalogProd?.category?.commissionGstPercent ??
+          item.sellerOffer?.commissionGstPercent ??
+          18
+        );
         estimatedPayout = {
           grossAmount: gross,
           commission: comm,
@@ -483,8 +531,8 @@ export class OrdersService {
           finalShippingPrice: ship,
           totalDeductions: comm + commGst + ship,
           netPayout: net,
-          commissionPercent: Number(item.sellerOffer?.catalogProduct?.commissionPercent ?? item.sellerOffer?.variant?.catalogProduct?.commissionPercent ?? 0),
-          commissionGstPercent: Number(item.sellerOffer?.catalogProduct?.commissionGstPercent ?? item.sellerOffer?.variant?.catalogProduct?.commissionGstPercent ?? 18),
+          commissionPercent,
+          commissionGstPercent,
           status: item.settlement.payoutStatus,
           isLedgered: true,
         };
