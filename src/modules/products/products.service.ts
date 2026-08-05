@@ -985,6 +985,12 @@ export class ProductsService {
               finalShippingPrice: true,
               finalCustomerPayable: true,
               isTaxIncluded: true,
+              batches: {
+                where: { stock: { gt: 0 } },
+                select: {
+                  stock: true,
+                },
+              },
             },
             orderBy: { mrp: 'asc' },
             take: 1,
@@ -1005,6 +1011,12 @@ export class ProductsService {
                   finalShippingPrice: true,
                   finalCustomerPayable: true,
                   isTaxIncluded: true,
+                  batches: {
+                    where: { stock: { gt: 0 } },
+                    select: {
+                      stock: true,
+                    },
+                  },
                 },
                 orderBy: { mrp: 'asc' },
                 take: 1,
@@ -1243,6 +1255,7 @@ export class ProductsService {
         bestOffer = {
           ...l,
           sellingPrice,
+          stock: (l.batches || []).reduce((sum: number, b: any) => sum + b.stock, 0),
         };
       }
     }
@@ -1297,6 +1310,7 @@ export class ProductsService {
       isYukiziChoice: m.isYukiziChoice || false,
       isBestSeller: m.isBestSeller || false,
       isAd: m.isAd || false,
+      stock: bestOffer ? (bestOffer.stock ?? 0) : 0,
       createdAt: m.createdAt,
       updatedAt: m.updatedAt,
     };
@@ -1599,7 +1613,7 @@ export class ProductsService {
       take: 12, // limit to 12 featured products per slot
     });
 
-    return featured.map((f) => this.flattenProduct(f.catalogProduct));
+    return featured.map((f) => this.mapMasterToGrid(f.catalogProduct));
   }
 
   // ──────────────────────────────────────────────
