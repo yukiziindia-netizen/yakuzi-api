@@ -13,6 +13,19 @@ import { OrderStatus, Role, PaymentStatus } from '@prisma/client';
 import { ShiprocketService } from './shiprocket.service';
 import { calculateSellerPayout, buildPayoutInputFromOrderItem } from '../settlements/payout-calculator';
 
+/**
+ * Fields a seller may still write once the admin has locked shipping.
+ *
+ * The lock freezes the package dimensions and their proof images so the admin
+ * can generate the shipping label against figures that cannot change. The final
+ * manifest and the packed-box picture are produced after that, so they stay
+ * writable - otherwise the seller can never provide them.
+ */
+const SELLER_FINAL_DOCUMENT_FIELDS: string[] = [
+  'manifestUrl',
+  'packedPictureUrl',
+];
+
 @Injectable()
 export class OrdersService {
   private readonly logger = new Logger(OrdersService.name);
@@ -917,10 +930,31 @@ export class OrdersService {
       throw new ForbiddenException('You do not have any items in this order');
     }
 
-    // 3. Check if shipping is locked for this seller's items
+    // 3. Check if shipping is locked for this seller's items.
+    //
+    // The lock exists so the admin can freeze the package dimensions and proof
+    // images before generating the shipping label. Uploading the final manifest
+    // and the packed-box picture happens AFTER that point, so blocking those two
+    // fields as well left the seller with no way to ever supply them: the portal
+    // hides the upload controls and this endpoint rejects the write.
+    //
+    // Dimensions and proofs stay frozen; the final documents remain accepted.
     const isLocked = sellerItems.some((item) => item.isShippingLocked);
     if (isLocked) {
-      throw new ForbiddenException('Shipping details are locked by admin');
+      const submittedFields = Object.keys(dto).filter(
+        (key) => (dto as Record<string, unknown>)[key] !== undefined,
+      );
+      const frozenFields = submittedFields.filter(
+        (key) => !SELLER_FINAL_DOCUMENT_FIELDS.includes(key),
+      );
+
+      if (frozenFields.length > 0) {
+        throw new ForbiddenException(
+          `Shipping details are locked by admin. Only ${SELLER_FINAL_DOCUMENT_FIELDS.join(
+            ' and ',
+          )} can still be updated (rejected: ${frozenFields.join(', ')}).`,
+        );
+      }
     }
 
     // 4. Update all order items for this seller in this order
