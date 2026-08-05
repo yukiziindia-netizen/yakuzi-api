@@ -1364,6 +1364,11 @@ export class ProductsService {
       fixedFee: m.fixedFee,
       commissionGstPercent: m.commissionGstPercent,
       fixedFeeGstPercent: m.fixedFeeGstPercent,
+      minimumOrderQuantity: sellerListing?.minimumOrderQuantity ?? bestListing?.minimumOrderQuantity ?? 1,
+      maximumOrderQuantity: sellerListing?.maximumOrderQuantity ?? bestListing?.maximumOrderQuantity ?? null,
+      stock: sellerListing
+        ? (sellerListing.batches || []).reduce((sum: number, b: any) => sum + b.stock, 0)
+        : (bestListing ? (bestListing.batches || []).reduce((sum: number, b: any) => sum + b.stock, 0) : 0),
       // Group seller listings
       listings: allListings.map((p: any) => {
         const batches = p.batches || [];

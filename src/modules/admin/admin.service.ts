@@ -2091,15 +2091,9 @@ export class AdminService {
       throw new NotFoundException('Admin not found');
     }
 
-    // Delete admin profile
-    await this.prisma.adminProfile.delete({
-      where: { userId: adminId },
-    });
-
-    // Remove admin user or just mark as blocked
-    await this.prisma.user.update({
+    // Delete the user record completely (cascades to adminProfile and other tables automatically)
+    await this.prisma.user.delete({
       where: { id: adminId },
-      data: { status: 'BLOCKED' },
     });
 
     return { success: true, message: 'Admin deleted successfully' };
