@@ -15,7 +15,20 @@ jobs:
       - name: Sync Project to GCP
         uses: burnett01/rsync-deployments@7.0.2
         with:
-          switches: -avz --delete --exclude '.git' --exclude 'node_modules' --exclude 'dist' --exclude '.env'
+          # NOTE: --delete removes anything on the server that is not in the repo.
+          # The chatbot sidecar's virtualenv (chatbot/.venv) and its runtime state
+          # files are created on the server and are NOT tracked in git, so they must
+          # be excluded or every deploy wipes them.
+          switches: >-
+            -avz --delete
+            --exclude '.git'
+            --exclude 'node_modules'
+            --exclude 'dist'
+            --exclude '.env'
+            --exclude '.venv'
+            --exclude '__pycache__'
+            --exclude 'chatbot/system_prompt.txt'
+            --exclude 'chatbot/current_model.txt'
           path: ./
           remote_path: /home/yukizi_deploy/yakuzi-api
           remote_host: ${{ secrets.SERVER_HOST }}
@@ -44,10 +57,6 @@ jobs:
 
             echo "Restarting PM2..."
             pm2 restart yakuzi-api
-
-            pm2 save
-
-            echo "Deployment completed successfully."
 
             pm2 save
 

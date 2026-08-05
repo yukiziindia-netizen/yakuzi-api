@@ -1,6 +1,11 @@
 # Dependencies
 node_modules/
 
+# Python chatbot sidecar (virtualenv is built on the server, never committed)
+.venv/
+__pycache__/
+*.pyc
+
 # Build output
 dist/
 
