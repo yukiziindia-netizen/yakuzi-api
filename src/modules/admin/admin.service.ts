@@ -1961,13 +1961,19 @@ export class AdminService {
   async createAdmin(createAdminDto: any) {
     const { phone, name, department, permissions } = createAdminDto;
 
-    // Check if admin already exists
-    const existingAdmin = await this.prisma.user.findFirst({
-      where: { phone, role: 'ADMIN' },
+    // Check if user already exists
+    const existingUser = await this.prisma.user.findUnique({
+      where: { phone },
     });
 
-    if (existingAdmin) {
-      throw new BadRequestException('Admin with this phone already exists');
+    if (existingUser) {
+      if (existingUser.role === 'ADMIN') {
+        throw new BadRequestException('Admin with this phone number already exists');
+      } else {
+        throw new BadRequestException(
+          `User with this phone number already exists as a ${existingUser.role.toLowerCase()}`,
+        );
+      }
     }
 
     // Create admin user
