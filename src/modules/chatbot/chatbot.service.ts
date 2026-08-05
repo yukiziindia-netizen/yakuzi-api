@@ -22,24 +22,74 @@ export class ChatbotService implements OnModuleInit, OnModuleDestroy {
   }
 
   async onModuleInit() {
+    // Never let sidecar problems stop the API from booting.
     try {
-      const apiUrl = process.env.CHATBOT_API_URL || `http://127.0.0.1:${this.port}`;
-      await axios.get(`${apiUrl}/docs`, { timeout: 1500 });
-      this.logger.log('Python Chatbot Sidecar is already active and healthy.');
-    } catch (err) {
-      this.logger.log('Python Chatbot Sidecar not detected on port 5005. Attempting auto-launch...');
-      const hasPython = await this.checkPythonInstallation();
-      if (!hasPython) {
+      const venvPresent = fs.existsSync(this.pythonExecutable());
+      const portResponding = await this.isSidecarResponding();
+
+      if (venvPresent && portResponding) {
+        this.logger.log('Python Chatbot Sidecar is already active and healthy.');
+        return;
+      }
+
+      if (!venvPresent && portResponding) {
+        // A sidecar whose virtualenv has been deleted underneath it keeps holding
+        // the port and answering this check, while failing every real request.
+        // The old port-only probe treated that as "healthy" and never rebuilt it.
+        this.logger.warn(
+          'Chatbot sidecar is running without its virtualenv (stale process). Retiring it and rebuilding...',
+        );
+        await this.killOrphanSidecar();
+      } else if (!portResponding) {
+        this.logger.log(
+          `Python Chatbot Sidecar not detected on port ${this.port}. Attempting auto-launch...`,
+        );
+      }
+
+      const pythonCmd = await this.resolvePythonCommand();
+      if (!pythonCmd) {
         this.logger.warn('Python is not installed on server host. Chatbot sidecar will remain disabled.');
         return;
       }
-      try {
-        await this.setupVirtualEnv();
-        this.startPythonApp();
-      } catch (setupErr) {
-        this.logger.error(`Failed to launch Python chatbot sidecar: ${setupErr instanceof Error ? setupErr.message : 'Unknown error'}`);
-      }
+
+      await this.setupVirtualEnv(pythonCmd);
+      this.startPythonApp();
+    } catch (setupErr) {
+      this.logger.error(
+        `Failed to launch Python chatbot sidecar: ${setupErr instanceof Error ? setupErr.message : 'Unknown error'}`,
+      );
     }
+  }
+
+  private pythonExecutable(): string {
+    return process.platform === 'win32'
+      ? path.join(this.chatbotDir, '.venv', 'Scripts', 'python.exe')
+      : path.join(this.chatbotDir, '.venv', 'bin', 'python');
+  }
+
+  private async isSidecarResponding(): Promise<boolean> {
+    const apiUrl =
+      process.env.CHATBOT_API_URL || `http://127.0.0.1:${this.port}`;
+    try {
+      await axios.get(`${apiUrl}/health`, { timeout: 1500 });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  private killOrphanSidecar(): Promise<void> {
+    return new Promise((resolve) => {
+      if (process.platform === 'win32') {
+        resolve();
+        return;
+      }
+      const mainPy = path.join(this.chatbotDir, 'main.py');
+      exec(`pkill -f "${mainPy}"`, () => {
+        // Give the OS a moment to release port 5005 before relaunching.
+        setTimeout(resolve, 1500);
+      });
+    });
   }
 
   onModuleDestroy() {
@@ -51,23 +101,31 @@ export class ChatbotService implements OnModuleInit, OnModuleDestroy {
   }
 
 
-  private checkPythonInstallation(): Promise<boolean> {
-    return new Promise((resolve) => {
-      exec('python --version', (err) => {
-        resolve(!err);
+  /**
+   * Ubuntu images generally ship `python3` with no `python` alias, so probing only
+   * `python` reported "Python is not installed" on a host that had it.
+   */
+  private async resolvePythonCommand(): Promise<string | null> {
+    for (const cmd of ['python3', 'python']) {
+      const available = await new Promise<boolean>((resolve) => {
+        exec(`${cmd} --version`, (err) => resolve(!err));
       });
-    });
+      if (available) {
+        return cmd;
+      }
+    }
+    return null;
   }
 
-  private setupVirtualEnv(): Promise<void> {
+  private setupVirtualEnv(pythonCmd: string): Promise<void> {
     return new Promise((resolve, reject) => {
       const venvPath = path.join(this.chatbotDir, '.venv');
       const reqPath = path.join(this.chatbotDir, 'requirements.txt');
 
-      // If venv doesn't exist, create it
-      if (!fs.existsSync(venvPath)) {
+      // If the interpreter is missing the venv is absent or half-deleted; rebuild it.
+      if (!fs.existsSync(this.pythonExecutable())) {
         this.logger.log('Creating Python virtual environment (.venv)...');
-        exec('python -m venv .venv', { cwd: this.chatbotDir }, (err) => {
+        exec(`${pythonCmd} -m venv .venv`, { cwd: this.chatbotDir }, (err) => {
           if (err) {
             return reject(new Error(`Failed to create venv: ${err.message}`));
           }
@@ -103,10 +161,7 @@ export class ChatbotService implements OnModuleInit, OnModuleDestroy {
   }
 
   private startPythonApp() {
-    const pythonExe =
-      process.platform === 'win32'
-        ? path.join(this.chatbotDir, '.venv', 'Scripts', 'python.exe')
-        : path.join(this.chatbotDir, '.venv', 'bin', 'python');
+    const pythonExe = this.pythonExecutable();
 
     const mainPy = path.join(this.chatbotDir, 'main.py');
 

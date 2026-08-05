@@ -1,6 +1,7 @@
 import os
 import sys
 import asyncio
+import traceback
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form, BackgroundTasks
 from pydantic import BaseModel
 from typing import List, Dict, Any, Optional
@@ -40,8 +41,12 @@ async def validation_exception_handler(request, exc):
 # ==========================================
 # STATE MANAGEMENT (Prompt & Active Model)
 # ==========================================
-PROMPT_FILE = "system_prompt.txt"
-MODEL_FILE = "current_model.txt"
+# Anchor state files to this file's directory. They used to be resolved against the
+# process CWD, so launching the sidecar from anywhere other than chatbot/ silently
+# created a second, empty set of state files instead of reading the real ones.
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+PROMPT_FILE = os.path.join(BASE_DIR, "system_prompt.txt")
+MODEL_FILE = os.path.join(BASE_DIR, "current_model.txt")
 
 DEFAULT_PROMPT = """You are the official AI Customer Support Agent for Yukizi, a premier e-commerce platform.
 Your role is to assist customers with their shopping experience, answer questions about products, and help with order inquiries.
@@ -90,6 +95,25 @@ class SyncTrainingRequest(BaseModel):
 
 
 # ==========================================
+# GEMINI CLIENT
+# ==========================================
+_GENAI_CLIENT = None
+_GENAI_CLIENT_KEY = None
+
+def get_genai_client(api_key: str):
+    """Build the Gemini client once and reuse it.
+
+    It used to be constructed on every /chat request, which re-read the TLS trust
+    store from disk each time -- so anything that disturbed the sidecar's virtualenv
+    turned every single message into an error.
+    """
+    global _GENAI_CLIENT, _GENAI_CLIENT_KEY
+    if _GENAI_CLIENT is None or _GENAI_CLIENT_KEY != api_key:
+        _GENAI_CLIENT = genai.Client(api_key=api_key)
+        _GENAI_CLIENT_KEY = api_key
+    return _GENAI_CLIENT
+
+# ==========================================
 # DATABASE TOOLS (Level 2)
 # ==========================================
 def get_db_connection():
@@ -99,7 +123,7 @@ def get_db_connection():
     try:
         return psycopg2.connect(db_url)
     except Exception as e:
-        print(f"Database connection error: {e}", sys.stderr)
+        print(f"Database connection error: {e}", file=sys.stderr)
         return None
 
 def search_products(query: str) -> str:
@@ -109,7 +133,11 @@ def search_products(query: str) -> str:
     try:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute(
-                "SELECT name, manufacturer, mrp, \"isActive\" FROM products WHERE name ILIKE %s OR manufacturer ILIKE %s LIMIT 5",
+                # Table is catalog_products (Prisma @@map on CatalogProduct).
+                # There is no "products" table, so this query always errored.
+                'SELECT name, manufacturer, mrp FROM catalog_products '
+                'WHERE (name ILIKE %s OR manufacturer ILIKE %s) '
+                'AND "isActive" = true AND "deletedAt" IS NULL LIMIT 5',
                 (f"%{query}%", f"%{query}%")
             )
             rows = cur.fetchall()
@@ -319,7 +347,7 @@ async def chat(request: ChatRequest):
         return {"response": f"[MOCK MODE] (Model: {ACTIVE_MODEL}) SDK/API key missing. You said: '{request.message}'"}
         
     try:
-        client = genai.Client(api_key=api_key)
+        client = get_genai_client(api_key)
         gemini_history = []
         if request.history:
             for msg in request.history:
@@ -362,8 +390,17 @@ async def chat(request: ChatRequest):
         response = chat_session.send_message(current_parts)
         return {"response": response.text}
     except Exception as e:
-        print(f"Error calling Gemini API: {str(e)}", sys.stderr)
-        return {"response": f"I encountered an error processing your request: {str(e)}"}
+        # Log the full detail server-side, but never echo raw exception text to the
+        # customer -- it leaked internals like "[Errno 2] No such file or directory"
+        # straight into the chat bubble.
+        print(f"Error calling Gemini API: {type(e).__name__}: {e}", file=sys.stderr)
+        traceback.print_exc(file=sys.stderr)
+        return {
+            "response": (
+                "Sorry, I'm having trouble answering right now. "
+                "Please try again in a moment, or contact Yukizi support if it keeps happening."
+            )
+        }
 
 if __name__ == "__main__":
     port = int(os.environ.get("CHATBOT_PORT", 5005))
