@@ -144,6 +144,11 @@ export class CartService {
                 shippingCharges: true,
                 finalShippingPrice: true,
 
+            batches: {
+              where: { stock: { gt: 0 } },
+              select: { stock: true },
+            },
+
             variant: {
               select: {
                 catalogProduct: {
@@ -197,7 +202,12 @@ export class CartService {
 
                 isActive: true,
                 deletedAt: true,
-    
+
+                batches: {
+                  where: { stock: { gt: 0 } },
+                  select: { stock: true },
+                },
+
                 variant: {
                   select: {
                     catalogProduct: {
@@ -337,6 +347,11 @@ minimumOrderQuantity: true,
                 shippingCharges: true,
                 finalShippingPrice: true,
 
+            batches: {
+              where: { stock: { gt: 0 } },
+              select: { stock: true },
+            },
+
             variant: {
               select: {
                 catalogProduct: {
@@ -441,11 +456,17 @@ minimumOrderQuantity: true,
       }
     }
 
-    // Remove variant to keep response clean and attach flat images array
-    const { variant, ...rest } = sellerOffer;
+    // Remove variant/batches to keep response clean, attach flat images array
+    // and the total available stock summed across in-stock batches.
+    const { variant, batches, ...rest } = sellerOffer;
     return {
       ...rest,
       images,
+      // Left undefined (not 0) when batches were not selected, so the client
+      // falls back to "unbounded" rather than wrongly showing out of stock.
+      stock: Array.isArray(batches)
+        ? batches.reduce((sum: number, b: any) => sum + b.stock, 0)
+        : undefined,
     };
   }
 }
