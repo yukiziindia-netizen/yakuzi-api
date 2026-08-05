@@ -1964,36 +1964,57 @@ export class AdminService {
     // Check if user already exists
     const existingUser = await this.prisma.user.findUnique({
       where: { phone },
-    });
-
-    if (existingUser) {
-      if (existingUser.role === 'ADMIN') {
-        throw new BadRequestException('Admin with this phone number already exists');
-      } else {
-        throw new BadRequestException(
-          `User with this phone number already exists as a ${existingUser.role.toLowerCase()}`,
-        );
-      }
-    }
-
-    // Create admin user
-    const adminUser = await this.prisma.user.create({
-      data: {
-        phone,
-        email: `admin+${phone}@yukizi.in`,
-        password: '', // Will be set on first login via OTP
-        role: 'ADMIN',
-        status: 'PENDING',
-        adminProfile: {
-          create: {
-            displayName: name,
-            department: department || '',
-            permissions: permissions || '',
-          },
-        },
-      },
       include: { adminProfile: true },
     });
+
+    let adminUser;
+
+    if (existingUser) {
+      // If the user exists (even as SELLER/BUYER), upgrade their role to ADMIN and upsert the admin profile
+      adminUser = await this.prisma.user.update({
+        where: { id: existingUser.id },
+        data: {
+          role: 'ADMIN',
+          status: 'PENDING',
+          adminProfile: {
+            upsert: {
+              create: {
+                displayName: name,
+                department: department || '',
+                permissions: permissions || '',
+              },
+              update: {
+                displayName: name,
+                department: department || '',
+                permissions: permissions || '',
+              },
+            },
+          },
+        },
+        include: { adminProfile: true },
+      });
+      this.logger.log(`Existing user ${existingUser.id} role updated/upgraded to ADMIN`);
+    } else {
+      // Create new admin user
+      adminUser = await this.prisma.user.create({
+        data: {
+          phone,
+          email: `admin+${phone}@yukizi.in`,
+          password: '', // Will be set on first login via OTP
+          role: 'ADMIN',
+          status: 'PENDING',
+          adminProfile: {
+            create: {
+              displayName: name,
+              department: department || '',
+              permissions: permissions || '',
+            },
+          },
+        },
+        include: { adminProfile: true },
+      });
+      this.logger.log(`New admin user created for phone ${phone}`);
+    }
 
     return {
       id: adminUser.id,
