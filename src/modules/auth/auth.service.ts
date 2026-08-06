@@ -12,6 +12,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import Redis from 'ioredis';
+import axios from 'axios';
 import * as crypto from 'crypto';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../../database/prisma.service';
@@ -32,6 +33,19 @@ const OTP_RATE_LIMIT_MAX = 3; // max 3 OTPs per minute per phone
 export interface TokenPair {
   accessToken: string;
   refreshToken: string;
+}
+
+/**
+ * The subset of Google's tokeninfo response this service relies on. Every value
+ * arrives as a string, including the booleans and the timestamps.
+ */
+interface GoogleTokenInfo {
+  aud?: string;
+  iss?: string;
+  exp?: string;
+  email?: string;
+  email_verified?: string | boolean;
+  name?: string;
 }
 
 export interface AuthResponse extends TokenPair {
@@ -691,6 +705,139 @@ export class AuthService {
         status: user.status,
       },
       isNewUser: false,
+    };
+  }
+
+  // ─── GOOGLE SIGN-IN ────────────────────────────────
+
+  /**
+   * Signs a buyer in with the ID token that Google Identity Services issues in
+   * the browser.
+   *
+   * The token is checked through Google's tokeninfo endpoint rather than by
+   * adding google-auth-library. The deploy runs `npm ci` on the server, so a new
+   * dependency is a deploy-time risk for the whole API, and tokeninfo performs
+   * the same signature validation on Google's side.
+   *
+   * Verification is inert until GOOGLE_CLIENT_ID is set: with no client id there
+   * is nothing to check the token's audience against, so the endpoint refuses
+   * rather than trusting it.
+   */
+  async loginWithGoogle(idToken: string): Promise<AuthResponse> {
+    const clientId = this.configService.get<string>('GOOGLE_CLIENT_ID');
+    if (!clientId) {
+      this.logger.warn(
+        'Google sign-in was attempted but GOOGLE_CLIENT_ID is not configured',
+      );
+      throw new ServiceUnavailableException(
+        'Google sign-in is not available right now.',
+      );
+    }
+
+    let claims: GoogleTokenInfo;
+    try {
+      const response = await axios.get<GoogleTokenInfo>(
+        'https://oauth2.googleapis.com/tokeninfo',
+        { params: { id_token: idToken }, timeout: 8000 },
+      );
+      claims = response.data;
+    } catch {
+      // Covers both a rejected token and Google being unreachable. The client
+      // gets one message either way; the distinction is not the user's problem.
+      this.logger.warn('Google did not accept the supplied ID token');
+      throw new UnauthorizedException('Google sign-in failed. Please try again.');
+    }
+
+    // Google validated the signature. These claims still have to be checked
+    // here: a perfectly valid token issued to a DIFFERENT application would
+    // otherwise be accepted as a login to this one.
+    if (claims.aud !== clientId) {
+      this.logger.warn('Google ID token was issued for a different client id');
+      throw new UnauthorizedException('Google sign-in failed. Please try again.');
+    }
+
+    const issuer = (claims.iss || '').replace(/^https:\/\//, '');
+    if (issuer !== 'accounts.google.com') {
+      throw new UnauthorizedException('Google sign-in failed. Please try again.');
+    }
+
+    const expiresAt = Number(claims.exp);
+    if (!Number.isFinite(expiresAt) || expiresAt * 1000 <= Date.now()) {
+      throw new UnauthorizedException('Google sign-in expired. Please try again.');
+    }
+
+    // tokeninfo returns the booleans as strings.
+    if (String(claims.email_verified) !== 'true') {
+      throw new UnauthorizedException(
+        'This Google account does not have a verified email address.',
+      );
+    }
+
+    const email = (claims.email || '').trim().toLowerCase();
+    if (!email) {
+      throw new UnauthorizedException(
+        'This Google account did not share an email address.',
+      );
+    }
+
+    let user = await this.prisma.user.findUnique({ where: { email } });
+    let isNewUser = false;
+
+    if (user) {
+      // An account already registered with this email signs in, rather than a
+      // duplicate being created. Sellers and admins are deliberately excluded:
+      // this is the buyer storefront, and their accounts carry other privileges.
+      if (user.role !== Role.BUYER) {
+        throw new UnauthorizedException(
+          'This email is registered to a staff account. Please sign in with your password.',
+        );
+      }
+      if (user.status === UserStatus.BLOCKED) {
+        throw new UnauthorizedException('This account has been blocked.');
+      }
+    } else {
+      isNewUser = true;
+      const displayName = (claims.name || '').trim();
+
+      user = await this.prisma.user.create({
+        data: {
+          email,
+          role: Role.BUYER,
+          // Matches registerBuyer: a buyer who signs up is approved, not left
+          // pending, or they cannot use the storefront they just joined.
+          status: UserStatus.APPROVED,
+        },
+      });
+
+      await this.prisma.buyerProfile.create({
+        data: { userId: user.id, legalName: displayName },
+      });
+
+      this.logger.log(`Created buyer ${user.id} from a Google sign-in`);
+    }
+
+    // Existing accounts created before this path may have no profile yet.
+    const profile = await this.prisma.buyerProfile.findUnique({
+      where: { userId: user.id },
+    });
+    if (!profile) {
+      await this.prisma.buyerProfile.create({
+        data: { userId: user.id, legalName: (claims.name || '').trim() },
+      });
+    }
+
+    const tokens = await this.generateTokens(user.id, user.role);
+
+    return {
+      ...tokens,
+      user: {
+        id: user.id,
+        phone: user.phone,
+        email: user.email,
+        role: user.role,
+        status: user.status,
+      },
+      isNewUser,
     };
   }
 

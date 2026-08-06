@@ -22,6 +22,7 @@ import { VerifyOtpDto } from './dto/verify-otp.dto';
 import { RegisterBuyerDto } from './dto/register-buyer.dto';
 import { LoginPasswordDto } from './dto/login-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
+import { GoogleLoginDto } from './dto/google-login.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 
@@ -124,6 +125,25 @@ export class AuthController {
   @ApiResponse({ status: 401, description: 'Invalid credentials' })
   async loginWithPassword(@Body() dto: LoginPasswordDto) {
     return this.authService.loginWithPassword(dto.contact, dto.password);
+  }
+
+  @Post('google')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
+  @ApiOperation({
+    summary: 'Sign in with a Google ID token (Buyers only)',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Login successful, tokens returned',
+  })
+  @ApiResponse({ status: 401, description: 'Google rejected the token' })
+  @ApiResponse({
+    status: 503,
+    description: 'GOOGLE_CLIENT_ID is not configured on the server',
+  })
+  async loginWithGoogle(@Body() dto: GoogleLoginDto) {
+    return this.authService.loginWithGoogle(dto.idToken);
   }
 
   @Post('refresh')
