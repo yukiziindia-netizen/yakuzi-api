@@ -1,0 +1,248 @@
+import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { PrismaService } from '../../database/prisma.service';
+
+/**
+ * Builds tax invoices for an order.
+ *
+ * Nothing is stored. Every value is derived from the order, its items and the
+ * seller and buyer records, so this needs no migration — which matters because
+ * the API deploy runs `prisma generate` but never `prisma migrate deploy`, so a
+ * new table would exist in the client and not in the database.
+ *
+ * Following the agreed layout, the SELLER is the supplier of record and Yukizi
+ * generates the document on their behalf. An order containing items from more
+ * than one seller therefore produces one invoice per seller.
+ */
+
+export interface InvoiceLine {
+  serial: number;
+  description: string;
+  quantity: number;
+  /** Per unit, excluding tax. */
+  unitPrice: number;
+  /** Line total excluding tax. */
+  taxableValue: number;
+  gstRate: number;
+  gstAmount: number;
+  /** Line total including tax — what the buyer paid. */
+  totalAmount: number;
+}
+
+export interface InvoiceParty {
+  name: string;
+  gstin: string | null;
+  address: string;
+  phone: string | null;
+  email: string | null;
+}
+
+export interface Invoice {
+  invoiceNumber: string;
+  invoiceDate: string;
+  orderReference: string;
+  seller: InvoiceParty;
+  buyer: InvoiceParty;
+  placeOfSupply: string;
+  /** True when seller and buyer are in the same state, so CGST + SGST apply. */
+  isIntraState: boolean;
+  lines: InvoiceLine[];
+  subtotal: number;
+  cgst: number;
+  sgst: number;
+  igst: number;
+  totalTax: number;
+  totalAmount: number;
+  amountInWords: string;
+}
+
+const ONES = [
+  '', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine',
+  'Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen',
+  'Seventeen', 'Eighteen', 'Nineteen',
+];
+const TENS = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
+
+@Injectable()
+export class InvoiceService {
+  constructor(private readonly prisma: PrismaService) {}
+
+  async getInvoicesForOrder(userId: string, orderId: string): Promise<Invoice[]> {
+    const order = await this.prisma.order.findUnique({
+      where: { id: orderId },
+      include: {
+        address: true,
+        // Order.buyer is the User; the GSTIN lives on their buyer profile.
+        buyer: {
+          select: {
+            id: true,
+            email: true,
+            phone: true,
+            buyerProfile: { select: { gstNumber: true } },
+          },
+        },
+        items: {
+          include: {
+            seller: true,
+            sellerOffer: {
+              select: { name: true, gstPercent: true, isTaxIncluded: true },
+            },
+          },
+        },
+      },
+    });
+
+    if (!order) throw new NotFoundException('Order not found');
+
+    // A buyer may only see their own invoices.
+    if (order.buyerId !== userId) {
+      throw new ForbiddenException('This order belongs to another account');
+    }
+
+    const buyerState = order.address?.state ?? '';
+
+    // One invoice per seller, in a stable order so invoice numbers do not move
+    // between requests.
+    const bySeller = new Map<string, typeof order.items>();
+    for (const item of order.items) {
+      const list = bySeller.get(item.sellerId) ?? [];
+      list.push(item);
+      bySeller.set(item.sellerId, list);
+    }
+
+    const sellerIds = Array.from(bySeller.keys()).sort();
+    const financialYear = this.financialYear(order.createdAt);
+    // Orders have no human-facing number, so the id prefix stands in. It is
+    // stable for a given order, which is what the invoice number needs.
+    const orderRef = order.id.slice(0, 8).toUpperCase();
+
+    return sellerIds.map((sellerId, index) => {
+      const items = bySeller.get(sellerId)!;
+      const seller = items[0].seller;
+
+      const lines: InvoiceLine[] = items.map((item, i) => {
+        const rate = Number(item.sellerOffer?.gstPercent ?? 0);
+        const stored = Number(item.totalPrice);
+        const quantity = Number(item.quantity) || 1;
+
+        // Listings record whether their price already contains the tax. When it
+        // does, the tax is extracted from the stored figure; when it does not,
+        // it is added. Assuming either way would make the invoice total
+        // disagree with what the buyer actually paid.
+        const taxInclusive = item.sellerOffer?.isTaxIncluded ?? true;
+        const taxableValue =
+          rate > 0 && taxInclusive ? stored / (1 + rate / 100) : stored;
+        const gstAmount = rate > 0 ? (taxInclusive ? stored - taxableValue : taxableValue * (rate / 100)) : 0;
+        const gross = taxableValue + gstAmount;
+
+        return {
+          serial: i + 1,
+          description: item.sellerOffer?.name ?? 'Item',
+          quantity,
+          unitPrice: this.round(taxableValue / quantity),
+          taxableValue: this.round(taxableValue),
+          gstRate: rate,
+          gstAmount: this.round(gstAmount),
+          totalAmount: this.round(gross),
+        };
+      });
+
+      const subtotal = this.round(lines.reduce((s, l) => s + l.taxableValue, 0));
+      const totalTax = this.round(lines.reduce((s, l) => s + l.gstAmount, 0));
+      const totalAmount = this.round(lines.reduce((s, l) => s + l.totalAmount, 0));
+
+      const isIntraState =
+        !!buyerState &&
+        !!seller.state &&
+        buyerState.trim().toLowerCase() === seller.state.trim().toLowerCase();
+
+      // Intra-state splits the same tax into halves; inter-state charges IGST.
+      const cgst = isIntraState ? this.round(totalTax / 2) : 0;
+      const sgst = isIntraState ? this.round(totalTax - cgst) : 0;
+      const igst = isIntraState ? 0 : totalTax;
+
+      const suffix = sellerIds.length > 1 ? `-${index + 1}` : '';
+
+      return {
+        invoiceNumber: `YKZ/INV/${financialYear}/${orderRef}${suffix}`,
+        invoiceDate: order.createdAt.toISOString(),
+        orderReference: `YKZ/ORD/${financialYear}/${orderRef}`,
+        seller: {
+          name: seller.companyName,
+          gstin: seller.gstNumber ?? null,
+          address: [seller.address, seller.city, seller.state, seller.pincode]
+            .filter(Boolean)
+            .join(', '),
+          phone: null,
+          email: seller.email ?? null,
+        },
+        buyer: {
+          name: order.address?.name ?? '',
+          gstin: order.buyer?.buyerProfile?.gstNumber ?? null,
+          address: order.address
+            ? [order.address.address, order.address.city, order.address.state, order.address.pincode]
+                .filter(Boolean)
+                .join(', ')
+            : '',
+          phone: order.address?.phone ?? order.buyer?.phone ?? null,
+          email: order.buyer?.email ?? null,
+        },
+        placeOfSupply: buyerState,
+        isIntraState,
+        lines,
+        subtotal,
+        cgst,
+        sgst,
+        igst,
+        totalTax,
+        totalAmount,
+        amountInWords: this.amountInWords(totalAmount),
+      };
+    });
+  }
+
+  private round(n: number): number {
+    return Math.round((n + Number.EPSILON) * 100) / 100;
+  }
+
+  /** Indian financial year, e.g. 2026-27 for any date from 1 April 2026. */
+  private financialYear(date: Date): string {
+    const year = date.getFullYear();
+    const startYear = date.getMonth() >= 3 ? year : year - 1;
+    return `${startYear}-${String((startYear + 1) % 100).padStart(2, '0')}`;
+  }
+
+  private amountInWords(amount: number): string {
+    const rupees = Math.floor(amount);
+    const paise = Math.round((amount - rupees) * 100);
+    const words = `${this.numberToWords(rupees)} Rupees`;
+    return paise > 0
+      ? `${words} and ${this.numberToWords(paise)} Paise Only`
+      : `${words} Only`;
+  }
+
+  /** Indian numbering: crore, lakh, thousand, hundred. */
+  private numberToWords(n: number): string {
+    if (n === 0) return 'Zero';
+    const parts: string[] = [];
+    const push = (value: number, label: string) => {
+      if (value > 0) parts.push(`${this.twoDigits(value)} ${label}`.trim());
+    };
+    push(Math.floor(n / 10000000), 'Crore');
+    n %= 10000000;
+    push(Math.floor(n / 100000), 'Lakh');
+    n %= 100000;
+    push(Math.floor(n / 1000), 'Thousand');
+    n %= 1000;
+    push(Math.floor(n / 100), 'Hundred');
+    n %= 100;
+    if (n > 0) parts.push(this.twoDigits(n));
+    return parts.join(' ');
+  }
+
+  private twoDigits(n: number): string {
+    if (n < 20) return ONES[n];
+    const tens = TENS[Math.floor(n / 10)];
+    const ones = ONES[n % 10];
+    return ones ? `${tens} ${ones}` : tens;
+  }
+}

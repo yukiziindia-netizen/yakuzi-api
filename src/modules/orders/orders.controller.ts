@@ -25,6 +25,7 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { OrdersService } from './orders.service';
 import { ShiprocketService } from './shiprocket.service';
+import { InvoiceService } from './invoice.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
 import { UpdateShippingDetailsDto } from './dto/update-shipping-details.dto';
@@ -37,6 +38,7 @@ export class OrdersController {
   constructor(
     private readonly ordersService: OrdersService,
     private readonly shiprocketService: ShiprocketService,
+    private readonly invoiceService: InvoiceService,
   ) {}
 
   // ──────────────────────────────────────────────
@@ -101,6 +103,24 @@ export class OrdersController {
   ) {
     const data = await this.ordersService.getOrderDetail(userId, orderId);
     return { message: 'Order details retrieved successfully', data };
+  }
+
+  @Get(':id/invoices')
+  @Roles(Role.BUYER, Role.ADMIN)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      'Tax invoices for an order, one per seller, generated on the seller behalf',
+  })
+  @ApiResponse({ status: 200, description: 'Invoices returned' })
+  @ApiResponse({ status: 403, description: 'Order belongs to another account' })
+  @ApiResponse({ status: 404, description: 'Order not found' })
+  async getOrderInvoices(
+    @CurrentUser('id') userId: string,
+    @Param('id', ParseUUIDPipe) orderId: string,
+  ) {
+    const data = await this.invoiceService.getInvoicesForOrder(userId, orderId);
+    return { message: 'Invoices retrieved successfully', data };
   }
 
   @Patch(':id/cancel')
