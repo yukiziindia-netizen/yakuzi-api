@@ -2926,31 +2926,40 @@ export class AdminService {
       where: { catalogProductId: id },
       select: { id: true },
     });
+    const variantIds = variants.map((v) => v.id);
 
-    try {
-      const variantIds = variants.map((v) => v.id);
-      await this.prisma.sellerOffer.deleteMany({
+    // Soft delete, which is what this endpoint has always advertised.
+    //
+    // It used to hard delete the seller offers and then the product itself.
+    // That fails with P2003 for any product that has been ordered, reviewed or
+    // put in a marketing slot, because OrderItem.sellerOfferId,
+    // Review.sellerOfferId, MarketingProduct.sellerOfferId and
+    // CustomOrder.catalogProductId all reference these rows without a cascade.
+    // The admin then just saw "Failed to delete" with no way to proceed.
+    //
+    // Hard deleting was the wrong goal anyway: removing a product that appears
+    // on past orders would tear rows out from under order history. Marking it
+    // deleted takes it off the storefront and out of this list (both queries
+    // filter on deletedAt) while leaving those records intact.
+    const deletedAt = new Date();
+
+    return this.prisma.$transaction(async (tx) => {
+      await tx.sellerOffer.updateMany({
         where: {
           OR: [
             { catalogProductId: id },
             ...(variantIds.length > 0 ? [{ variantId: { in: variantIds } }] : []),
           ],
+          deletedAt: null,
         },
+        data: { deletedAt, isActive: false },
       });
 
-      const deleted = await this.prisma.catalogProduct.delete({
+      return tx.catalogProduct.update({
         where: { id },
+        data: { deletedAt, isActive: false },
       });
-
-      return deleted;
-    } catch (error: any) {
-      if (error.code === 'P2003') {
-        throw new BadRequestException(
-          'Cannot hard delete this suggestion because it has existing orders or active dependencies.',
-        );
-      }
-      throw error;
-    }
+    });
   }
 
   async importSuggestions(
