@@ -61,8 +61,16 @@ jobs:
             # means chatbot/main.py changes are never picked up, and a sidecar that
             # has gone bad stays bad across every deploy. Retire it here so the API
             # always relaunches it from the code we just shipped.
+            # Retire it by the port it holds, never by a command-line pattern.
+            # `pkill -f` also matched this deploy script and terminated it with
+            # SIGTERM (exit 143), which skipped the pm2 restart below and left
+            # the API serving the previous build while the run looked merely
+            # "failed". `|| true` cannot help: a signal is not an exit code.
             echo "Stopping Python chatbot sidecar (the API relaunches it)..."
-            pkill -f 'chatbot/main.py' || true
+            if command -v fuser >/dev/null 2>&1; then
+              fuser -k 5005/tcp >/dev/null 2>&1 || true
+            fi
+            pm2 restart yukizi-chatbot >/dev/null 2>&1 || true
 
             echo "Restarting PM2..."
             pm2 restart yakuzi-api
