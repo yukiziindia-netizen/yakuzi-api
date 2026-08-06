@@ -80,54 +80,68 @@ export class AuthService {
     const isEmail = contact.includes('@');
 
     if (isEmail) {
-      // Mock email sending for now
-      console.log(
-        `[AUTH-SERVICE] OTP service NOT configured for email. Using dev mode...`,
+      // There is no mailer in this service — no nodemailer, SendGrid, SES or
+      // equivalent in package.json, and nothing in src/ that can send mail.
+      // This branch used to print the OTP to the server console and return
+      // "OTP sent to email successfully", so every email signup dead-ended:
+      // the user was told a code was on its way and the only copy of it was
+      // in a log file. Say so instead of pretending.
+      await this.discardOtp(redisKey);
+      this.logger.error(
+        `Email OTP requested for ${this.maskContact(contact)} but no email provider is configured.`,
       );
-      console.log(
-        `\n=== EMAIL OTP ===\nTo: ${contact}\nOTP: ${otp}\n=================\n`,
+      throw new ServiceUnavailableException(
+        'Email verification is not available yet. Please sign up with your mobile number.',
       );
-      this.logger.warn(
-        `[AUTH-SERVICE] Email OTP logged for development only to ${contact}`,
-      );
-      return { message: 'OTP sent to email successfully' };
     }
 
     // Send OTP via Nimbus IT SMS service
-    try {
-      console.log(`[AUTH-SERVICE] sendOtp called for phone: ${contact}`);
-      console.log(`[AUTH-SERVICE] Checking if OTP service is configured...`);
-
-      if (this.otpSmsService.isConfigured()) {
-        // Production: Send via Nimbus IT SMS API
-        console.log(
-          `[AUTH-SERVICE] OTP service IS configured. Attempting to send SMS...`,
-        );
-        await this.otpSmsService.sendOtp(contact, otp);
-        console.log(`[AUTH-SERVICE] OTP sent successfully via Nimbus IT SMS`);
-        this.logger.log(
-          `[AUTH-SERVICE] OTP sent to ${contact} via Nimbus IT SMS`,
-        );
-      } else {
-        // Development: Log OTP without sending
-        console.log(
-          `[AUTH-SERVICE] OTP service NOT configured. Using dev mode...`,
-        );
-        this.otpSmsService.logOtpForDevelopment(contact, otp);
-        this.logger.warn(
-          '[AUTH-SERVICE] OTP service not configured. OTP logged for development only.',
-        );
-      }
-    } catch (error) {
-      console.error(`[AUTH-SERVICE] Error during SMS send:`, error);
+    if (!this.otpSmsService.isConfigured()) {
+      await this.discardOtp(redisKey);
       this.logger.error(
-        `[AUTH-SERVICE] Failed to send OTP: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        'SMS gateway credentials are not configured; cannot send OTP.',
       );
-      // Don't throw - OTP is already stored in Redis, user can still verify it
-      // In production, you might want to throw and fail the request
+      throw new ServiceUnavailableException(
+        'We cannot send OTPs right now. Please try again later.',
+      );
     }
 
+    const result = await this.otpSmsService.sendOtp(contact, otp);
+
+    if (!result.success) {
+      // The OTP never reached the user, so leaving it live in Redis only
+      // widens the window for guessing it.
+      await this.discardOtp(redisKey);
+      this.logger.error(
+        `OTP delivery failed for ${this.maskContact(contact)}: ${result.reason ?? 'unknown reason'}`,
+      );
+      throw new ServiceUnavailableException(
+        'We could not send the OTP. Please check the number and try again.',
+      );
+    }
+
+    this.logger.log(`OTP sent to ${this.maskContact(contact)} via SMS`);
     return { message: 'OTP sent successfully' };
+  }
+
+  /** Drop an OTP that was never delivered. Never throws. */
+  private async discardOtp(redisKey: string): Promise<void> {
+    try {
+      if (this.redis) await this.redis.del(redisKey);
+    } catch {
+      // best effort — the TTL will clear it
+    }
+  }
+
+  /** Keep phone numbers and addresses out of the logs. */
+  private maskContact(contact: string): string {
+    if (contact.includes('@')) {
+      const [name, domain] = contact.split('@');
+      return `${name.slice(0, 2)}***@${domain}`;
+    }
+    return contact.length <= 4
+      ? '****'
+      : `${'*'.repeat(contact.length - 4)}${contact.slice(-4)}`;
   }
 
   // ─── VERIFY OTP ────────────────────────────────────

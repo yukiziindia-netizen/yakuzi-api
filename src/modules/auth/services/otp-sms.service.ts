@@ -2,6 +2,15 @@ import { Injectable, Logger, HttpException, HttpStatus } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
 
+export interface OtpSendResult {
+  /** True only when the gateway positively accepted the message. */
+  success: boolean;
+  /** Why it was not accepted — safe to log, never contains the OTP. */
+  reason?: string;
+  /** Raw gateway body, for diagnosing shapes not yet covered. */
+  raw?: unknown;
+}
+
 @Injectable()
 export class OtpSmsService {
   private readonly logger = new Logger(OtpSmsService.name);
@@ -14,11 +23,15 @@ export class OtpSmsService {
   private readonly templateId: string;
   private readonly rpt: string;
   private readonly messageTemplate: string;
+  private readonly strict: boolean;
 
   constructor(private readonly configService: ConfigService) {
+    // https, not http — the OTP text and the gateway credentials travel in
+    // this request. Confirmed the gateway serves https with an identical
+    // response body.
     this.apiUrl =
       this.configService.get<string>('NIMBUS_API_URL') ||
-      'http://nimbusit.net/api/pushsms';
+      'https://nimbusit.net/api/pushsms';
 
     this.user =
       this.configService.get<string>('NIMBUS_USER') || 'Yukizinet';
@@ -47,6 +60,13 @@ export class OtpSmsService {
       this.configService.get<string>('NIMBUS_OTP_MESSAGE') ||
       'Dear User, use OTP {#var#} to securely access your YUKIZI account. Do not share it with anyone. - YUKIZI MARKET SERVICES';
 
+    // When the gateway answers with something this service does not
+    // recognise, strict mode reports a failure rather than assuming it
+    // worked. Set OTP_SMS_STRICT=false to invert that if a legitimate
+    // success payload turns out not to be covered below.
+    this.strict =
+      this.configService.get<string>('OTP_SMS_STRICT') !== 'false';
+
     if (!this.user || !this.authkey) {
       this.logger.warn(
         'Nimbus SMS credentials (NIMBUS_USER/NIMBUS_AUTHKEY) missing!',
@@ -57,7 +77,7 @@ export class OtpSmsService {
   // ==============================
   // MAIN FUNCTION
   // ==============================
-  async sendOtp(phone: string, otp: string): Promise<any> {
+  async sendOtp(phone: string, otp: string): Promise<OtpSendResult> {
     if (!phone || !otp) {
       throw new HttpException('Phone and OTP required', HttpStatus.BAD_REQUEST);
     }
@@ -70,8 +90,8 @@ export class OtpSmsService {
       otp,
     );
 
-    this.logger.log(`Final message being sent: ${message}`);
-    this.logger.log(`Sending OTP to ${formattedPhone}`);
+    // The rendered message contains the OTP, so it must never be logged.
+    this.logger.log(`Sending OTP to ${this.maskPhone(formattedPhone)}`);
 
     const params = {
       user: this.user,
@@ -93,42 +113,90 @@ export class OtpSmsService {
       );
 
       const data = response.data;
+      const verdict = this.interpretGatewayResponse(data);
 
-      const isSuccess =
-        typeof data === 'string'
-          ? data.toLowerCase().includes('success') ||
-            data.toLowerCase().includes('ok') ||
-            data.toLowerCase().includes('submitted') ||
-            /^\d+$/.test(data.trim())
-          : data?.status === 'success' ||
-            data?.status === 'OK' ||
-            data?.status === 200 ||
-            data?.responseCode === '200' ||
-            !!data?.jobid ||
-            !!data?.msgid;
-
-      if (!isSuccess) {
-        this.logger.warn(`SMS response received: ${JSON.stringify(data)}`);
+      if (verdict.success) {
+        this.logger.log(`SMS accepted by gateway: ${JSON.stringify(data)}`);
       } else {
-        this.logger.log(`SMS Response: ${JSON.stringify(data)}`);
+        this.logger.error(
+          `SMS REJECTED by gateway: ${verdict.reason} | raw: ${JSON.stringify(data)}`,
+        );
       }
 
-      return {
-        success: isSuccess,
-        response: data,
-      };
+      return { success: verdict.success, reason: verdict.reason, raw: data };
     } catch (error: any) {
       const code = error?.code || error?.cause?.code;
-      this.logger.error(`SMS FAILED: ${error.message} (Code: ${code || 'UNKNOWN'})`);
-      this.logger.warn(`[DEV/FALLBACK OTP] Phone: ${formattedPhone} | OTP: ${otp}`);
+      this.logger.error(
+        `SMS FAILED: ${error.message} (Code: ${code || 'UNKNOWN'})`,
+      );
 
       return {
         success: false,
-        fallback: true,
-        otp,
-        error: error.message,
+        reason: `Gateway request failed: ${error.message}${code ? ` (${code})` : ''}`,
       };
     }
+  }
+
+  // ==============================
+  // RESPONSE INTERPRETATION
+  // ==============================
+  //
+  // The gateway's failure payload is:
+  //
+  //   {"RESPONSE":{"CODE":"200","INFO":"AUTHENTICATION FAILURE"},"STATUS":"ERROR"}
+  //
+  // Note CODE is "200" on a rejection, so the code alone can never be read as
+  // success — STATUS has to be checked first. The previous implementation
+  // looked for `status`, `responseCode`, `jobid` and `msgid` at the top level,
+  // none of which exist in that shape, so every rejection scored as "not
+  // success" and every acceptance did too.
+  private interpretGatewayResponse(data: any): {
+    success: boolean;
+    reason?: string;
+  } {
+    const unknown = (detail: string) => ({
+      success: !this.strict,
+      reason: `Unrecognised gateway response: ${detail}`,
+    });
+
+    if (typeof data === 'string') {
+      const text = data.trim();
+      if (/^\d+$/.test(text)) return { success: true }; // bare job id
+      if (/fail|error|invalid|reject|denied/i.test(text)) {
+        return { success: false, reason: text };
+      }
+      if (/success|submitted|\bok\b/i.test(text)) return { success: true };
+      return unknown(text);
+    }
+
+    if (data && typeof data === 'object') {
+      const inner = data.RESPONSE ?? data.response ?? {};
+      const status = String(data.STATUS ?? data.status ?? '').toUpperCase();
+      const info = String(inner.INFO ?? inner.info ?? data.INFO ?? data.info ?? '');
+      const code = String(inner.CODE ?? inner.code ?? data.responseCode ?? '');
+
+      // Failure first — CODE "200" accompanies rejections.
+      if (status === 'ERROR' || /fail|invalid|reject|denied/i.test(info)) {
+        return {
+          success: false,
+          reason: info || `STATUS=${status || 'none'} CODE=${code || 'none'}`,
+        };
+      }
+
+      if (status === 'OK' || status === 'SUCCESS') return { success: true };
+      if (data.jobid || data.msgid || data.job_id || inner.JOBID) {
+        return { success: true };
+      }
+      if (code === '200' && status) return { success: true };
+
+      return unknown(JSON.stringify(data));
+    }
+
+    return unknown('empty body');
+  }
+
+  private maskPhone(phone: string): string {
+    return phone.length <= 4 ? '****' : `${'*'.repeat(phone.length - 4)}${phone.slice(-4)}`;
   }
 
   // ==============================
