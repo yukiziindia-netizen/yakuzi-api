@@ -23,14 +23,20 @@ import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { PaymentsService } from './payments.service';
+import { RazorpayService } from './razorpay.service';
 import { CreatePaymentDto } from './dto/create-payment.dto';
 import { UploadProofDto } from './dto/upload-proof.dto';
+import { CreateRazorpayOrderDto } from './dto/create-razorpay-order.dto';
+import { VerifyRazorpayDto } from './dto/verify-razorpay.dto';
 
 @ApiTags('Payments')
 @ApiBearerAuth('JWT-auth')
 @Controller('payments')
 export class PaymentsController {
-  constructor(private readonly paymentsService: PaymentsService) {}
+  constructor(
+    private readonly paymentsService: PaymentsService,
+    private readonly razorpayService: RazorpayService,
+  ) {}
 
   // ──────────────────────────────────────────────
   // BUYER: Record a payment attempt
@@ -50,6 +56,43 @@ export class PaymentsController {
   ) {
     const data = await this.paymentsService.createPayment(userId, dto);
     return { message: 'Payment recorded', data };
+  }
+
+  // ──────────────────────────────────────────────
+  // BUYER: Pay online with Razorpay
+  // ──────────────────────────────────────────────
+
+  @Post('razorpay/order')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.BUYER)
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({ summary: 'Start an online payment for an order (buyer)' })
+  @ApiResponse({ status: 201, description: 'Razorpay order created' })
+  @ApiResponse({ status: 400, description: 'Order already paid or has no amount' })
+  @ApiResponse({ status: 503, description: 'Razorpay keys are not configured' })
+  async createRazorpayOrder(
+    @CurrentUser('id') userId: string,
+    @Body() dto: CreateRazorpayOrderDto,
+  ) {
+    const data = await this.razorpayService.createOrder(userId, dto.orderId);
+    return { message: 'Payment started', data };
+  }
+
+  @Post('razorpay/verify')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.BUYER)
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Confirm an online payment against its signature (buyer)' })
+  @ApiResponse({ status: 200, description: 'Payment verified and confirmed' })
+  @ApiResponse({ status: 400, description: 'Signature did not verify' })
+  async verifyRazorpayPayment(
+    @CurrentUser('id') userId: string,
+    @Body() dto: VerifyRazorpayDto,
+  ) {
+    const data = await this.razorpayService.verifyPayment(userId, dto);
+    return { message: 'Payment verified', data };
   }
 
   // ──────────────────────────────────────────────
