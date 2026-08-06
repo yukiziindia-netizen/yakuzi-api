@@ -7,6 +7,7 @@ import {
   HttpException,
   HttpStatus,
   NotFoundException,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
@@ -158,24 +159,34 @@ export class AuthService {
           storedOtp = await this.redis.get(redisKey);
         }
       } catch (redisErr) {
-        this.logger.warn(`Redis fetch failed during OTP verification: ${redisErr instanceof Error ? redisErr.message : 'Unknown error'}`);
+        // Fail closed. This used to fall through to the well-known-code
+        // fallback below, which meant an unreachable OTP store downgraded
+        // every account to "type 123456 to log in".
+        this.logger.error(
+          `Redis fetch failed during OTP verification: ${redisErr instanceof Error ? redisErr.message : 'Unknown error'}`,
+        );
+        throw new ServiceUnavailableException(
+          'Unable to verify the OTP right now. Please try again in a moment.',
+        );
       }
 
       if (!storedOtp) {
-        // Emergency fallback for test/admin logins when Redis is empty or unreachable
-        if (otp.trim() === '123456' || otp.trim() === '1234' || otp.trim() === '000000') {
-          storedOtp = otp.trim();
-        } else {
-          throw new BadRequestException(
-            'OTP expired or not found. Please request a new OTP.',
-          );
-        }
+        throw new BadRequestException(
+          'OTP expired or not found. Please request a new OTP.',
+        );
       }
 
       const normalizedOtp = otp.trim();
       const normalizedStoredOtp = storedOtp.trim();
 
-      if (normalizedOtp !== normalizedStoredOtp) {
+      // Constant-time, matching registerBuyer's comparison.
+      if (
+        normalizedOtp.length !== normalizedStoredOtp.length ||
+        !crypto.timingSafeEqual(
+          Buffer.from(normalizedOtp),
+          Buffer.from(normalizedStoredOtp),
+        )
+      ) {
         throw new BadRequestException('Invalid OTP');
       }
 
