@@ -55,6 +55,15 @@ jobs:
             echo "Building application..."
             npm run build
 
+            # The Python chatbot sidecar is spawned as a child of the API, but it
+            # survives `pm2 restart` as an orphan. It keeps port 5005 open, so the
+            # API's startup check finds it "healthy" and never replaces it - which
+            # means chatbot/main.py changes are never picked up, and a sidecar that
+            # has gone bad stays bad across every deploy. Retire it here so the API
+            # always relaunches it from the code we just shipped.
+            echo "Stopping Python chatbot sidecar (the API relaunches it)..."
+            pkill -f 'chatbot/main.py' || true
+
             echo "Restarting PM2..."
             pm2 restart yakuzi-api
 
