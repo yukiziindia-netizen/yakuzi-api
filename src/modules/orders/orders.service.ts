@@ -39,6 +39,85 @@ export class OrdersService {
   // CHECKOUT  — Create Order from Cart
   // ──────────────────────────────────────────────
 
+  /**
+   * Fill in the buyer's phone and address from what they entered at checkout.
+   *
+   * Only fills blanks — anything the buyer has already saved is left alone, so
+   * placing an order can never quietly rewrite their saved details.
+   */
+  private async syncBuyerContactDetails(userId: string, dto: CreateOrderDto) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        phone: true,
+        buyerProfile: {
+          select: {
+            id: true,
+            address: true,
+            city: true,
+            state: true,
+            pincode: true,
+          },
+        },
+      },
+    });
+    if (!user) return;
+
+    const phone = dto.phone?.trim();
+    if (!user.phone?.trim() && phone) {
+      // User.phone is unique and doubles as a login identifier, so only claim
+      // it when no other account holds it. Racing here would surface as P2002
+      // and is swallowed by the caller.
+      const takenBySomeoneElse = await this.prisma.user.findFirst({
+        where: { phone, NOT: { id: userId } },
+        select: { id: true },
+      });
+      if (!takenBySomeoneElse) {
+        await this.prisma.user.update({
+          where: { id: userId },
+          data: { phone },
+        });
+      }
+    }
+
+    const profile = user.buyerProfile;
+    if (!profile) return;
+
+    const existingAddress =
+      profile.address && typeof profile.address === 'object'
+        ? (profile.address as Record<string, unknown>)
+        : {};
+    const hasStreet =
+      typeof existingAddress.street1 === 'string' &&
+      existingAddress.street1.trim().length > 0;
+
+    const data: Record<string, unknown> = {};
+
+    const street = dto.address?.trim();
+    if (!hasStreet && street) {
+      // Shape matches what the profile screen reads: { street1, city, state, pincode }
+      data.address = {
+        ...existingAddress,
+        street1: street,
+        city: dto.city?.trim() ?? '',
+        state: dto.state?.trim() ?? '',
+        pincode: dto.pincode?.trim() ?? '',
+      };
+    }
+    if (!profile.city?.trim() && dto.city?.trim()) data.city = dto.city.trim();
+    if (!profile.state?.trim() && dto.state?.trim())
+      data.state = dto.state.trim();
+    if (!profile.pincode?.trim() && dto.pincode?.trim())
+      data.pincode = dto.pincode.trim();
+
+    if (Object.keys(data).length === 0) return;
+
+    await this.prisma.buyerProfile.update({
+      where: { id: profile.id },
+      data,
+    });
+  }
+
   async checkout(userId: string, dto: CreateOrderDto) {
     // 1. Fetch buyer cart with items + product + seller + batches
     const cart = await this.prisma.cart.findUnique({
@@ -180,6 +259,21 @@ export class OrdersService {
       await tx.cartItem.deleteMany({ where: { cartId: cart.id } });
 
       return createdOrders[0];
+    });
+
+    // 4f. Carry the checkout details onto the buyer's profile.
+    // The buyer types a phone number and address at checkout, but nothing ever
+    // copied them anywhere, so "Edit profile" kept offering "Add your phone"
+    // and "Add your address" no matter how many orders they had placed.
+    // Deliberately outside the transaction and never rethrown: this is a
+    // convenience, and it must not be able to roll back an order that the
+    // buyer has already paid for and seen confirmed.
+    await this.syncBuyerContactDetails(userId, dto).catch((err) => {
+      this.logger.warn(
+        `Could not copy checkout details to the buyer profile for user ${userId}: ${
+          err instanceof Error ? err.message : 'Unknown error'
+        }`,
+      );
     });
 
     // 5. Fetch the created order with full details
