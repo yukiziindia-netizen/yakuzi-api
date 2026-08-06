@@ -55,6 +55,21 @@ jobs:
             echo "Building application..."
             npm run build
 
+            # The chatbot sidecar is a child process of the API, and pm2 restart
+            # orphans it rather than stopping it. The orphan keeps port 5005 open
+            # and keeps answering the startup health check, so the API decides the
+            # sidecar is fine and never replaces it - which is why it has stayed
+            # on stale code across every deploy since 5 August.
+            #
+            # Retiring it here means the API rebuilds it on boot. `|| true` so a
+            # deploy never fails just because there was nothing to kill.
+            # The bracket keeps this command from matching itself: the pattern
+            # matches "chatbot/main.py", while this line contains
+            # "[c]hatbot/main.py" and so is not a match. Without it, a shell
+            # holding the script on its own command line could be killed too.
+            echo "Retiring the chatbot sidecar so it is rebuilt on boot..."
+            pkill -f '[c]hatbot/main.py' || true
+
             echo "Restarting PM2..."
             pm2 restart yakuzi-api
 
