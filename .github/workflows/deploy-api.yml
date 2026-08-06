@@ -58,11 +58,18 @@ jobs:
             # The Python chatbot sidecar is spawned as a child of the API, but it
             # survives `pm2 restart` as an orphan. It keeps port 5005 open, so the
             # API's startup check finds it "healthy" and never replaces it - which
-            # means chatbot/main.py changes are never picked up, and a sidecar that
+            # means changes to the sidecar are never picked up, and one that
             # has gone bad stays bad across every deploy. Retire it here so the API
             # always relaunches it from the code we just shipped.
+            # The bracket below stops the pattern matching itself. ssh-action
+            # puts this whole script on the remote shell's command line, so a
+            # plain pattern also matches that shell: the deploy kills its own
+            # session and the run ends with signal TERM before pm2 restarts.
+            # A bracketed character class matches the sidecar's path but not the
+            # text written here, so nothing in this file is ever a match.
+            # For the same reason, do not spell that path out in a comment.
             echo "Stopping Python chatbot sidecar (the API relaunches it)..."
-            pkill -f 'chatbot/main.py' || true
+            pkill -f '[c]hatbot/main.py' || true
 
             echo "Restarting PM2..."
             pm2 restart yakuzi-api
