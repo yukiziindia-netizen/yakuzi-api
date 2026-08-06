@@ -28,6 +28,17 @@ export interface InvoiceLine {
   totalAmount: number;
 }
 
+export interface InvoiceTaxLine {
+  /** The item's GST rate, e.g. 18. */
+  rate: number;
+  /** What each component is charged at: half the rate intra-state, all of it as IGST otherwise. */
+  componentRate: number;
+  taxableValue: number;
+  cgst: number;
+  sgst: number;
+  igst: number;
+}
+
 export interface InvoiceParty {
   name: string;
   gstin: string | null;
@@ -46,6 +57,8 @@ export interface Invoice {
   /** True when seller and buyer are in the same state, so CGST + SGST apply. */
   isIntraState: boolean;
   lines: InvoiceLine[];
+  /** Tax stated rate by rate, as a tax invoice requires. */
+  taxBreakdown: InvoiceTaxLine[];
   subtotal: number;
   cgst: number;
   sgst: number;
@@ -147,7 +160,6 @@ export class InvoiceService {
       });
 
       const subtotal = this.round(lines.reduce((s, l) => s + l.taxableValue, 0));
-      const totalTax = this.round(lines.reduce((s, l) => s + l.gstAmount, 0));
       const totalAmount = this.round(lines.reduce((s, l) => s + l.totalAmount, 0));
 
       const isIntraState =
@@ -155,10 +167,41 @@ export class InvoiceService {
         !!seller.state &&
         buyerState.trim().toLowerCase() === seller.state.trim().toLowerCase();
 
-      // Intra-state splits the same tax into halves; inter-state charges IGST.
-      const cgst = isIntraState ? this.round(totalTax / 2) : 0;
-      const sgst = isIntraState ? this.round(totalTax - cgst) : 0;
-      const igst = isIntraState ? 0 : totalTax;
+      // A tax invoice states the tax rate-wise, not as one merged figure: an
+      // order holding a 5% item and an 18% item owes two separate lines.
+      const byRate = new Map<number, { taxableValue: number; tax: number }>();
+      for (const line of lines) {
+        const bucket = byRate.get(line.gstRate) ?? { taxableValue: 0, tax: 0 };
+        bucket.taxableValue += line.taxableValue;
+        bucket.tax += line.gstAmount;
+        byRate.set(line.gstRate, bucket);
+      }
+
+      const taxBreakdown: InvoiceTaxLine[] = Array.from(byRate.entries())
+        .sort((a, b) => a[0] - b[0])
+        .map(([rate, bucket]) => {
+          const tax = this.round(bucket.tax);
+          // Intra-state splits the rate in half either side; inter-state
+          // charges the whole thing as IGST. SGST takes the remainder so the
+          // two halves always add back to the tax exactly.
+          const cgstAmount = isIntraState ? this.round(tax / 2) : 0;
+          return {
+            rate,
+            // Half the rate each for CGST and SGST, e.g. 5% -> 2.5% + 2.5%.
+            componentRate: isIntraState ? rate / 2 : rate,
+            taxableValue: this.round(bucket.taxableValue),
+            cgst: cgstAmount,
+            sgst: isIntraState ? this.round(tax - cgstAmount) : 0,
+            igst: isIntraState ? 0 : tax,
+          };
+        });
+
+      // Totals are summed from the rate lines, so the breakdown and the
+      // summary can never disagree.
+      const cgst = this.round(taxBreakdown.reduce((s, t) => s + t.cgst, 0));
+      const sgst = this.round(taxBreakdown.reduce((s, t) => s + t.sgst, 0));
+      const igst = this.round(taxBreakdown.reduce((s, t) => s + t.igst, 0));
+      const totalTax = this.round(cgst + sgst + igst);
 
       const suffix = sellerIds.length > 1 ? `-${index + 1}` : '';
 
@@ -189,6 +232,7 @@ export class InvoiceService {
         placeOfSupply: buyerState,
         isIntraState,
         lines,
+        taxBreakdown,
         subtotal,
         cgst,
         sgst,
