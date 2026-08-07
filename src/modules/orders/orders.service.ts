@@ -50,6 +50,7 @@ export class OrdersService {
       where: { id: userId },
       select: {
         phone: true,
+        email: true,
         buyerProfile: {
           select: {
             id: true,
@@ -76,6 +77,24 @@ export class OrdersService {
         await this.prisma.user.update({
           where: { id: userId },
           data: { phone },
+        });
+      }
+    }
+
+    const email = dto.email?.trim().toLowerCase();
+    if (!user.email?.trim() && email) {
+      // User.email is unique and is a login identifier, so only claim it when no
+      // other account holds it — the same rule the phone above follows. An
+      // existing address is never overwritten: it is a credential, not a
+      // preference. Racing here surfaces as P2002 and is swallowed by the caller.
+      const takenBySomeoneElse = await this.prisma.user.findFirst({
+        where: { email, NOT: { id: userId } },
+        select: { id: true },
+      });
+      if (!takenBySomeoneElse) {
+        await this.prisma.user.update({
+          where: { id: userId },
+          data: { email },
         });
       }
     }
