@@ -52,6 +52,13 @@ jobs:
             echo "Generating Prisma Client..."
             npx prisma generate
 
+            # Apply pending schema migrations BEFORE the new build goes live.
+            # Without this step a schema change ships a Prisma client that
+            # queries tables the database does not have, while the deploy
+            # still shows green. Reads DATABASE_URL from the server .env.
+            echo "Applying database migrations..."
+            npx prisma migrate deploy
+
             echo "Building application..."
             npm run build
 

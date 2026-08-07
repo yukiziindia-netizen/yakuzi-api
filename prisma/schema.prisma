@@ -171,6 +171,7 @@ model Category {
   image                String?
   createdAt            DateTime         @default(now())
   masterProducts       CatalogProduct[]
+  extraOfProducts      CatalogProduct[] @relation("ProductExtraCategories")
   sellerOffers         SellerOffer[]
   subCategories        SubCategory[]
   commissionPercent    Decimal?         @db.Decimal(10, 2)
@@ -187,6 +188,7 @@ model SubCategory {
   categoryId           String
   createdAt            DateTime         @default(now())
   masterProducts       CatalogProduct[]
+  extraOfProducts      CatalogProduct[] @relation("ProductExtraSubCategories")
   sellerOffers         SellerOffer[]
   commissionPercent    Decimal?         @db.Decimal(10, 2)
   fixedFee             Decimal?         @db.Decimal(10, 2)
@@ -748,6 +750,10 @@ model CatalogProduct {
   category             Category              @relation(fields: [categoryId], references: [id])
   subCategory          SubCategory           @relation(fields: [subCategoryId], references: [id])
   thirdCategory        ThirdCategory?        @relation(fields: [thirdCategoryId], references: [id])
+  // Additional categories beyond the primary pair above. The primary keeps
+  // commission config and breadcrumbs unambiguous; these only widen browsing.
+  extraCategories      Category[]            @relation("ProductExtraCategories")
+  extraSubCategories   SubCategory[]         @relation("ProductExtraSubCategories")
   customOrders         CustomOrder[]
   marketingProducts    MarketingProduct[]
   productAnalytics     ProductAnalytics?
