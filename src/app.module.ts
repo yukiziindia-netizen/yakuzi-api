@@ -34,6 +34,7 @@ import { CustomOrdersModule } from './modules/custom-orders/custom-orders.module
 import { ChatbotModule } from './modules/chatbot/chatbot.module';
 import { BrandsModule } from './modules/brands/brands.module';
 import { BannersModule } from './modules/banners/banners.module';
+import { MailModule } from './modules/mail/mail.module';
 
 @Module({
   imports: [
@@ -65,6 +66,10 @@ import { BannersModule } from './modules/banners/banners.module';
         GEMINI_API_KEY: Joi.string().allow('').optional(),
         COGNITO_USER_POOL_ID: Joi.string().allow('').optional(),
         COGNITO_CLIENT_ID: Joi.string().allow('').optional(),
+        SMTP_USER: Joi.string().allow('').optional(),
+        SMTP_APP_PASSWORD: Joi.string().allow('').optional(),
+        MAIL_FROM_NAME: Joi.string().allow('').optional(),
+        MAIL_REPLY_TO: Joi.string().allow('').optional(),
       }),
       validationOptions: { abortEarly: true },
     }),
@@ -112,6 +117,7 @@ import { BannersModule } from './modules/banners/banners.module';
     OrdersModule,
     PaymentsModule,
     NotificationsModule,
+    MailModule,
     AdminModule,
     StorageModule,
     SettlementsModule,
