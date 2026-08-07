@@ -152,12 +152,14 @@ model Brand {
 }
 
 model Banner {
-  id        String   @id @default(uuid())
-  title     String?
-  link      String?
-  imageUrl  String
-  isActive  Boolean  @default(true)
-  order     Int?
+  id             String   @id @default(uuid())
+  title          String?
+  link           String?
+  imageUrl       String
+  /// Optional narrow-viewport variant; buyers fall back to imageUrl when absent.
+  mobileImageUrl String?
+  isActive       Boolean  @default(true)
+  order          Int?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

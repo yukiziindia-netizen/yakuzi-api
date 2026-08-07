@@ -32,6 +32,11 @@ export class UpdateBannerDto {
   @IsOptional()
   @IsInt()
   order?: number;
+
+  /** Multipart fields arrive as strings; 'true' drops the mobile variant. */
+  @IsOptional()
+  @IsString()
+  removeMobileImage?: string;
 }
 
 @Injectable()
@@ -42,6 +47,7 @@ export class BannersService {
     title?: string;
     link?: string;
     imageUrl: string;
+    mobileImageUrl?: string;
     order: number;
   }) {
     return this.prisma.banner.create({
@@ -49,6 +55,7 @@ export class BannersService {
         title: data.title,
         link: data.link,
         imageUrl: data.imageUrl,
+        mobileImageUrl: data.mobileImageUrl,
         order: data.order || 0,
       },
     });
@@ -76,6 +83,8 @@ export class BannersService {
       title?: string;
       link?: string;
       imageUrl?: string;
+      /** A string replaces the mobile variant, null removes it. */
+      mobileImageUrl?: string | null;
       isActive?: boolean;
       order?: number;
     },
@@ -87,6 +96,8 @@ export class BannersService {
     if (data.title !== undefined) updateData.title = data.title;
     if (data.link !== undefined) updateData.link = data.link;
     if (data.imageUrl !== undefined) updateData.imageUrl = data.imageUrl;
+    if (data.mobileImageUrl !== undefined)
+      updateData.mobileImageUrl = data.mobileImageUrl;
     if (data.isActive !== undefined) updateData.isActive = data.isActive;
     if (data.order !== undefined) updateData.order = data.order;
 

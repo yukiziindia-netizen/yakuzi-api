@@ -11,10 +11,10 @@ import {
   HttpStatus,
   ParseUUIDPipe,
   UseInterceptors,
-  UploadedFile,
+  UploadedFiles,
   BadRequestException,
 } from '@nestjs/common';
-import { FileInterceptor } from '@nestjs/platform-express';
+import { FileFieldsInterceptor } from '@nestjs/platform-express';
 import {
   BannersService,
   CreateBannerDto,
@@ -48,18 +48,30 @@ export class AdminBannersController {
   ) {}
 
   @Post()
-  @UseInterceptors(FileInterceptor('image'))
+  @UseInterceptors(
+    FileFieldsInterceptor([
+      { name: 'image', maxCount: 1 },
+      { name: 'mobileImage', maxCount: 1 },
+    ]),
+  )
   @HttpCode(HttpStatus.CREATED)
   async create(
-    @UploadedFile() file: Express.Multer.File,
+    @UploadedFiles()
+    files: { image?: Express.Multer.File[]; mobileImage?: Express.Multer.File[] },
     @Body() dto: CreateBannerDto,
   ) {
+    const file = files?.image?.[0];
     if (!file) throw new BadRequestException('Image file is required');
     const imageUrl = await this.storageService.uploadBannerImage(file);
+    const mobileFile = files?.mobileImage?.[0];
+    const mobileImageUrl = mobileFile
+      ? await this.storageService.uploadBannerImage(mobileFile)
+      : undefined;
     const data = await this.bannersService.create({
       title: dto.title,
       link: dto.link,
       imageUrl,
+      mobileImageUrl,
       order: dto.order ? Number(dto.order) : 0,
     });
     return { message: 'Banner created successfully', data };
@@ -73,21 +85,38 @@ export class AdminBannersController {
   }
 
   @Patch(':id')
-  @UseInterceptors(FileInterceptor('image'))
+  @UseInterceptors(
+    FileFieldsInterceptor([
+      { name: 'image', maxCount: 1 },
+      { name: 'mobileImage', maxCount: 1 },
+    ]),
+  )
   @HttpCode(HttpStatus.OK)
   async update(
     @Param('id', ParseUUIDPipe) id: string,
-    @UploadedFile() file: Express.Multer.File,
+    @UploadedFiles()
+    files: { image?: Express.Multer.File[]; mobileImage?: Express.Multer.File[] },
     @Body() dto: UpdateBannerDto,
   ) {
+    const file = files?.image?.[0];
     let imageUrl: string | undefined;
     if (file) {
       imageUrl = await this.storageService.uploadBannerImage(file);
+    }
+    // A new file replaces the mobile variant; removeMobileImage clears it;
+    // neither leaves it untouched.
+    const mobileFile = files?.mobileImage?.[0];
+    let mobileImageUrl: string | null | undefined;
+    if (mobileFile) {
+      mobileImageUrl = await this.storageService.uploadBannerImage(mobileFile);
+    } else if (String(dto.removeMobileImage) === 'true') {
+      mobileImageUrl = null;
     }
     const data = await this.bannersService.update(id, {
       title: dto.title,
       link: dto.link,
       imageUrl,
+      mobileImageUrl,
       isActive:
         dto.isActive !== undefined
           ? String(dto.isActive) === 'true'
