@@ -504,18 +504,28 @@ export class BlogService {
   }
 
   // Legacy/Compatibility methods (if needed by blog.controller.ts)
-  async findAllPosts(query: { categoryId?: string; status?: BlogStatus }) {
+  async findAllPosts(
+    query: { categoryId?: string; status?: BlogStatus },
+    includeDrafts = false,
+  ) {
+    // Anonymous readers only ever see PUBLISHED posts; the blog CMS
+    // authenticates as ADMIN and keeps full visibility.
+    const status = includeDrafts ? query.status : BlogStatus.PUBLISHED;
     return this.prisma.blogPost.findMany({
-      where: query,
+      where: {
+        ...(query.categoryId && { categoryId: query.categoryId }),
+        ...(status && { status }),
+      },
       include: { author: true, category: true },
       orderBy: { createdAt: 'desc' },
     });
   }
 
-  async findOnePost(idOrSlug: string) {
+  async findOnePost(idOrSlug: string, includeDrafts = false) {
     return this.prisma.blogPost.findFirst({
       where: {
         OR: [{ id: idOrSlug }, { slug: idOrSlug }],
+        ...(!includeDrafts && { status: BlogStatus.PUBLISHED }),
       },
       include: { author: true, category: true },
     });

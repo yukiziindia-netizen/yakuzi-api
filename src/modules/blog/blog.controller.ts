@@ -16,6 +16,7 @@ import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { Role, BlogStatus } from '@prisma/client';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { OptionalJwtAuthGuard } from '../../common/guards/optional-jwt-auth.guard';
 
 @ApiTags('Blog')
 @Controller('blog')
@@ -32,18 +33,25 @@ export class BlogController {
   }
 
   @Get('posts')
+  @UseGuards(OptionalJwtAuthGuard)
   @ApiOperation({ summary: 'Get all public blog posts' })
   findAll(
     @Query('category') categoryId?: string,
     @Query('status') status?: BlogStatus,
+    @CurrentUser() user?: { role?: Role },
   ) {
-    return this.blogService.findAllPosts({ categoryId, status });
+    const isAdmin = user?.role === Role.ADMIN;
+    return this.blogService.findAllPosts({ categoryId, status }, isAdmin);
   }
 
   @Get('posts/:idOrSlug')
+  @UseGuards(OptionalJwtAuthGuard)
   @ApiOperation({ summary: 'Get a blog post by ID or Slug' })
-  findOne(@Param('idOrSlug') idOrSlug: string) {
-    return this.blogService.findOnePost(idOrSlug);
+  findOne(
+    @Param('idOrSlug') idOrSlug: string,
+    @CurrentUser() user?: { role?: Role },
+  ) {
+    return this.blogService.findOnePost(idOrSlug, user?.role === Role.ADMIN);
   }
 
   @Patch('posts/:id')
