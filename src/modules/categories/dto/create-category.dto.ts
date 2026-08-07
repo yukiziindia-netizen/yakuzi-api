@@ -15,4 +15,14 @@ export class CreateCategoryDto {
   @IsString()
   @IsOptional()
   image?: string;
+
+  @ApiProperty({
+    example: 'https://cdn.example.com/image-mobile.jpg',
+    required: false,
+    description:
+      'Banner shown on phones. Omit to reuse `image` on every screen size.',
+  })
+  @IsString()
+  @IsOptional()
+  mobileImage?: string;
 }

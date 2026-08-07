@@ -12,4 +12,13 @@ export class UpdateCategoryDto {
   @IsString()
   @IsOptional()
   image?: string;
+
+  @ApiPropertyOptional({
+    example: 'https://cdn.example.com/image-mobile.jpg',
+    description:
+      'Banner shown on phones. Send an empty string to clear it and fall back to `image`; omit it to leave it untouched.',
+  })
+  @IsString()
+  @IsOptional()
+  mobileImage?: string;
 }
