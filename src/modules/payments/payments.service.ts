@@ -14,6 +14,7 @@ import {
   OrderStatus,
 } from '@prisma/client';
 import { calculateSellerPayout } from '../settlements/payout-calculator';
+import { InvoiceEmailService } from '../orders/invoice-email.service';
 
 @Injectable()
 export class PaymentsService {
@@ -23,6 +24,7 @@ export class PaymentsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
+    private readonly invoiceEmailService: InvoiceEmailService,
   ) {
     this.commissionRate = parseFloat(
       this.config.get<string>('PLATFORM_COMMISSION_RATE', '0.05'),
@@ -352,6 +354,12 @@ export class PaymentsService {
 
       return { confirmed, confirmedTotalPaid, targetOrderNewStatus };
     });
+
+    // Email the buyer their tax invoice(s). Detached on purpose: a mail failure
+    // must never fail, slow or roll back a payment confirmation. Checkout splits
+    // one cart into an order per seller, so the whole group that this payment
+    // just confirmed goes out as a single email.
+    this.invoiceEmailService.dispatchForOrders(relatedOrders.map((o) => o.id));
 
     this.logger.log(
       `Payment ${paymentId} confirmed for order group. Target order ${payment.orderId} status: ${result.targetOrderNewStatus}`,
