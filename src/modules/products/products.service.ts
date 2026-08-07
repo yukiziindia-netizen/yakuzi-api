@@ -879,9 +879,22 @@ export class ProductsService {
       });
     }
 
-    if (query.categoryId) andConditions.push({ categoryId: query.categoryId });
+    // A product belongs to a category page when it is the primary OR one of
+    // the extras - the admin can now attach several categories per product.
+    if (query.categoryId)
+      andConditions.push({
+        OR: [
+          { categoryId: query.categoryId },
+          { extraCategories: { some: { id: query.categoryId } } },
+        ],
+      });
     if (query.subCategoryId)
-      andConditions.push({ subCategoryId: query.subCategoryId });
+      andConditions.push({
+        OR: [
+          { subCategoryId: query.subCategoryId },
+          { extraSubCategories: { some: { id: query.subCategoryId } } },
+        ],
+      });
     if (query.manufacturer) {
       andConditions.push({
         manufacturer: { contains: query.manufacturer, mode: 'insensitive' },
