@@ -169,6 +169,8 @@ model Category {
   name                 String           @unique
   slug                 String           @unique
   image                String?
+  /// Optional portrait-friendly banner for phones. Null means "use image".
+  mobileImage          String?
   createdAt            DateTime         @default(now())
   masterProducts       CatalogProduct[]
   extraOfProducts      CatalogProduct[] @relation("ProductExtraCategories")

@@ -39,7 +39,14 @@ export class CategoriesService {
 
     try {
       const category = await this.prisma.category.create({
-        data: { name, slug, image: dto.image },
+        data: {
+          name,
+          slug,
+          image: dto.image,
+          // Blank means "no separate phone banner" — store null so the
+          // storefront's `mobileImage || image` fallback kicks in.
+          mobileImage: dto.mobileImage?.trim() || null,
+        },
       });
       this.logger.log(`Category created: ${category.id} - ${name}`);
       return category;
@@ -81,6 +88,11 @@ export class CategoriesService {
     }
     if (dto.image !== undefined) {
       data.image = dto.image;
+    }
+    // Omitted leaves the phone banner alone; an empty string clears it and
+    // falls back to `image`.
+    if (dto.mobileImage !== undefined) {
+      data.mobileImage = dto.mobileImage.trim() || null;
     }
 
     try {
