@@ -1,0 +1,127 @@
+import { InvoicePdfService } from './invoice-pdf.service';
+import type { Invoice } from './invoice.service';
+
+const invoice = (over: Partial<Invoice> = {}): Invoice => ({
+  invoiceNumber: 'YKZ/INV/2026-27/00323711',
+  invoiceDate: '2026-08-06T10:00:00.000Z',
+  orderReference: 'YKZ/ORD/2026-27/00323711',
+  seller: {
+    name: 'Galazy Enterprises',
+    gstin: null,
+    address: '7th floor, Yamuna Building, Kolkata, West Bengal, 700048',
+    phone: null,
+    email: 'posting@theeraofmarketing.com',
+  },
+  buyer: {
+    name: 'Arko',
+    gstin: null,
+    address: 'sss, ss, West Bengal, 711303',
+    phone: '9008336683',
+    email: 'buyer@example.com',
+  },
+  placeOfSupply: 'West Bengal',
+  isIntraState: true,
+  lines: [
+    {
+      serial: 1,
+      description: 'Testing',
+      quantity: 1,
+      unitPrice: 168.71,
+      taxableValue: 168.71,
+      gstRate: 10,
+      gstAmount: 16.87,
+      totalAmount: 185.58,
+    },
+  ],
+  taxBreakdown: [
+    {
+      rate: 10,
+      componentRate: 5,
+      taxableValue: 168.71,
+      cgst: 8.44,
+      sgst: 8.43,
+      igst: 0,
+    },
+  ],
+  subtotal: 168.71,
+  cgst: 8.44,
+  sgst: 8.43,
+  igst: 0,
+  totalTax: 16.87,
+  totalAmount: 185.58,
+  amountInWords: 'One Hundred Eighty Five Rupees and Fifty Eight Paise Only',
+  ...over,
+});
+
+describe('InvoicePdfService', () => {
+  const service = new InvoicePdfService();
+
+  it('produces a non-empty PDF buffer', async () => {
+    const buffer = await service.render(invoice());
+
+    expect(Buffer.isBuffer(buffer)).toBe(true);
+    expect(buffer.subarray(0, 5).toString('latin1')).toBe('%PDF-');
+    expect(buffer.length).toBeGreaterThan(1000);
+  });
+
+  it('renders an inter-state invoice without throwing', async () => {
+    const buffer = await service.render(
+      invoice({
+        isIntraState: false,
+        taxBreakdown: [
+          {
+            rate: 18,
+            componentRate: 18,
+            taxableValue: 100,
+            cgst: 0,
+            sgst: 0,
+            igst: 18,
+          },
+        ],
+        cgst: 0,
+        sgst: 0,
+        igst: 18,
+      }),
+    );
+
+    expect(buffer.subarray(0, 5).toString('latin1')).toBe('%PDF-');
+  });
+
+  it('renders multiple tax rates and many lines without throwing', async () => {
+    const lines = Array.from({ length: 30 }, (_, i) => ({
+      serial: i + 1,
+      description: `Item ${i + 1}`,
+      quantity: 2,
+      unitPrice: 50,
+      taxableValue: 100,
+      gstRate: i % 2 ? 18 : 5,
+      gstAmount: 10,
+      totalAmount: 110,
+    }));
+
+    const buffer = await service.render(invoice({ lines }));
+
+    expect(buffer.subarray(0, 5).toString('latin1')).toBe('%PDF-');
+  });
+
+  it('does not throw when the GSTINs are blank', async () => {
+    const buffer = await service.render(
+      invoice({
+        seller: {
+          name: 'Galazy',
+          gstin: null,
+          address: '',
+          phone: null,
+          email: null,
+        },
+        buyer: { name: '', gstin: null, address: '', phone: null, email: null },
+      }),
+    );
+
+    expect(buffer.subarray(0, 5).toString('latin1')).toBe('%PDF-');
+  });
+
+  it('names the file from the invoice number, safe for a filesystem', () => {
+    expect(service.filename(invoice())).toBe('YKZ-INV-2026-27-00323711.pdf');
+  });
+});
