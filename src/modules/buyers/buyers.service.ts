@@ -333,6 +333,8 @@ export class BuyersService {
               phone: true,
               email: true,
               username: true,
+              gender: true,
+              dob: true,
               status: true,
             },
           },
@@ -354,6 +356,8 @@ export class BuyersService {
                 phone: true,
                 email: true,
                 username: true,
+                gender: true,
+                dob: true,
                 status: true,
               },
             },
@@ -361,7 +365,19 @@ export class BuyersService {
         });
       }
 
-      return profile;
+      // A buyer who ordered before saving a phone (or whose checkout number
+      // belongs to another account, so it could not be claimed) still has a
+      // reachable number on their latest order - surface it read-only.
+      let contactPhone: string | null = null;
+      if (!profile.user?.phone) {
+        const lastAddress = await this.prisma.orderAddress.findFirst({
+          where: { order: { buyerId: userId } },
+          orderBy: { order: { createdAt: 'desc' } },
+          select: { phone: true },
+        });
+        contactPhone = lastAddress?.phone?.trim() || null;
+      }
+      return { ...profile, contactPhone };
     } catch (error) {
       this.logger.warn(`Failed to fetch buyer profile for ${userId}: ${error instanceof Error ? error.message : 'Unknown error'}`);
       return {
@@ -390,7 +406,7 @@ export class BuyersService {
       );
     }
 
-    const { username, email, phone, ...profileDto } = dto;
+    const { username, email, phone, gender, dob, ...profileDto } = dto;
 
     // Check uniqueness for user fields if they are being updated
     if (username || email || phone) {
@@ -470,6 +486,8 @@ export class BuyersService {
     if (username !== undefined) userUpdateData.username = username;
     if (email !== undefined) userUpdateData.email = email;
     if (phone !== undefined) userUpdateData.phone = phone;
+    if (gender !== undefined) userUpdateData.gender = gender || null;
+    if (dob !== undefined) userUpdateData.dob = dob ? new Date(dob) : null;
 
     if (Object.keys(userUpdateData).length > 0) {
       await this.prisma.user.update({

@@ -1,5 +1,7 @@
 import {
   IsString,
+  MaxLength,
+  IsDateString,
   IsOptional,
   IsNumber,
   IsObject,
@@ -141,4 +143,23 @@ export class UpdateBuyerProfileDto {
   @IsOptional()
   @IsObject()
   gstPanResponse?: Record<string, any>;
+
+  @ApiPropertyOptional({
+    example: 'MALE',
+    description:
+      'Free-form to stay compatible with what signup collects; the buyer app sends MALE/FEMALE/OTHER/PREFER_NOT_TO_SAY. Empty string clears it.',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(32)
+  gender?: string;
+
+  @ApiPropertyOptional({
+    example: '2000-01-31',
+    description: 'Date of birth (ISO date). Empty string clears it.',
+  })
+  @IsOptional()
+  @ValidateIf((o) => !!o.dob)
+  @IsDateString()
+  dob?: string;
 }
