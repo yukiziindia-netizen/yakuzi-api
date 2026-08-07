@@ -9,6 +9,8 @@ import {
   HttpCode,
   HttpStatus,
   ParseUUIDPipe,
+  Req,
+  Headers,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -16,7 +18,7 @@ import {
   ApiResponse,
   ApiBearerAuth,
 } from '@nestjs/swagger';
-import { Throttle } from '@nestjs/throttler';
+import { Throttle, SkipThrottle } from '@nestjs/throttler';
 import { Role } from '@prisma/client';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
@@ -93,6 +95,28 @@ export class PaymentsController {
   ) {
     const data = await this.razorpayService.verifyPayment(userId, dto);
     return { message: 'Payment verified', data };
+  }
+
+  // ──────────────────────────────────────────────
+  // RAZORPAY: server-to-server webhook
+  // ──────────────────────────────────────────────
+
+  // No auth guard on purpose: Razorpay's servers call this, not a signed-in
+  // user. Authentication is the HMAC over the raw body, checked in the
+  // service. Throttling is skipped because Razorpay batches retries from its
+  // own IPs and a dropped event is a lost payment confirmation.
+  @Post('razorpay/webhook')
+  @SkipThrottle()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Razorpay webhook (payment.captured); HMAC-authenticated' })
+  @ApiResponse({ status: 200, description: 'Event acknowledged' })
+  @ApiResponse({ status: 400, description: 'Signature did not verify' })
+  @ApiResponse({ status: 503, description: 'Webhook secret is not configured' })
+  async razorpayWebhook(
+    @Req() req: { rawBody?: Buffer },
+    @Headers('x-razorpay-signature') signature?: string,
+  ) {
+    return this.razorpayService.handleWebhook(req.rawBody, signature);
   }
 
   // ──────────────────────────────────────────────
