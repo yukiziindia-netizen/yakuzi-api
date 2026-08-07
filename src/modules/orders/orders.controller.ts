@@ -26,6 +26,7 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { OrdersService } from './orders.service';
 import { ShiprocketService } from './shiprocket.service';
 import { InvoiceService } from './invoice.service';
+import { InvoiceEmailService } from './invoice-email.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
 import { UpdateShippingDetailsDto } from './dto/update-shipping-details.dto';
@@ -39,6 +40,7 @@ export class OrdersController {
     private readonly ordersService: OrdersService,
     private readonly shiprocketService: ShiprocketService,
     private readonly invoiceService: InvoiceService,
+    private readonly invoiceEmailService: InvoiceEmailService,
   ) {}
 
   // ──────────────────────────────────────────────
@@ -121,6 +123,33 @@ export class OrdersController {
   ) {
     const data = await this.invoiceService.getInvoicesForOrder(userId, orderId);
     return { message: 'Invoices retrieved successfully', data };
+  }
+
+  @Post(':id/invoice/email')
+  @Roles(Role.BUYER, Role.ADMIN)
+  @Throttle({ default: { limit: 3, ttl: 60000 } })
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Email the buyer the tax invoices for an order' })
+  @ApiResponse({ status: 200, description: 'Invoice email sent' })
+  @ApiResponse({ status: 403, description: 'Order belongs to another account' })
+  @ApiResponse({ status: 404, description: 'Order not found' })
+  async emailOrderInvoices(
+    @CurrentUser('id') userId: string,
+    @Param('id', ParseUUIDPipe) orderId: string,
+  ) {
+    // Reuse the guarded read purely for its ownership check: it throws
+    // ForbiddenException for anyone else's order and NotFoundException for one
+    // that does not exist. Duplicating that logic here would risk it drifting.
+    await this.invoiceService.getInvoicesForOrder(userId, orderId);
+
+    const sent = await this.invoiceEmailService.resendForOrder(orderId);
+
+    return {
+      message: sent
+        ? 'Invoice emailed successfully'
+        : 'We could not email the invoice. Please check that your account has an email address.',
+      data: { sent },
+    };
   }
 
   @Patch(':id/cancel')
