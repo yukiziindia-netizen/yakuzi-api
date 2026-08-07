@@ -25,18 +25,12 @@ export class RolesGuard implements CanActivate {
     const { user } = context.switchToHttp().getRequest();
 
     if (!user) {
-      console.log('[DEBUG-ROLES] Unauthorized: No authenticated user found');
       throw new ForbiddenException('No authenticated user found');
     }
-
-    console.log('[DEBUG-ROLES] Path:', context.switchToHttp().getRequest().url);
-    console.log('[DEBUG-ROLES] User Role:', user.role);
-    console.log('[DEBUG-ROLES] Required Roles:', requiredRoles);
 
     const hasRole = requiredRoles.some((role) => user.role === role);
 
     if (!hasRole) {
-      console.log('[DEBUG-ROLES] Forbidden: User role mismatch');
       throw new ForbiddenException(
         'You do not have permission to access this resource',
       );

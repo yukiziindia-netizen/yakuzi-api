@@ -6,6 +6,7 @@ import { Logger as PinoLogger } from 'nestjs-pino';
 import { AppModule } from './app.module';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { json, urlencoded } from 'express';
+import compression from 'compression';
 
 async function bootstrap() {
   const logger = new Logger('Bootstrap'); // Refreshing backend to pick up DTO changes
@@ -50,6 +51,10 @@ async function bootstrap() {
   });
 
 
+
+  // JSON responses leave uncompressed today (a 100-product listing is ~59 KB
+  // on the wire); gzip cuts that ~85% for every client that accepts it.
+  app.use(compression());
 
   // Increase payload size limit for base64 image/file attachments.
   // The verify hook keeps the raw bytes on the request: Razorpay signs the
