@@ -21,6 +21,22 @@ import { redactEmail } from '../mail/redact-email';
 
 const LEDGER_MARKER = 'tax invoice for order';
 
+/**
+ * Why a send did not happen, for callers that need to tell a caller-fixable
+ * problem (no email on file) from a server-side one (SMTP unconfigured, or
+ * configured but failing) from "there was genuinely nothing to send".
+ */
+export type InvoiceEmailFailure =
+  | 'no-recipient'
+  | 'not-configured'
+  | 'send-failed'
+  | 'nothing-to-send';
+
+export interface InvoiceEmailOutcome {
+  sent: boolean;
+  reason?: InvoiceEmailFailure;
+}
+
 @Injectable()
 export class InvoiceEmailService {
   private readonly logger = new Logger(InvoiceEmailService.name);
@@ -59,10 +75,10 @@ export class InvoiceEmailService {
   async sendForOrders(
     orderIds: string[],
     opts: { force?: boolean } = {},
-  ): Promise<boolean> {
+  ): Promise<InvoiceEmailOutcome> {
     try {
       const ids = Array.from(new Set(orderIds.filter(Boolean)));
-      if (ids.length === 0) return false;
+      if (ids.length === 0) return { sent: false, reason: 'nothing-to-send' };
 
       const pending = opts.force
         ? ids
@@ -72,7 +88,19 @@ export class InvoiceEmailService {
             )
           ).filter((id): id is string => id !== null);
 
-      if (pending.length === 0) return false;
+      if (pending.length === 0) {
+        return { sent: false, reason: 'nothing-to-send' };
+      }
+
+      // Checked before any order/buyer lookup: if the box has no SMTP creds,
+      // there is no point spending DB round-trips or rendering PDFs only to
+      // discard them.
+      if (!this.mailService.isConfigured()) {
+        this.logger.warn(
+          `invoice-email skipped: SMTP is not configured (orders=${pending.length})`,
+        );
+        return { sent: false, reason: 'not-configured' };
+      }
 
       let orders = await this.prisma.order.findMany({
         where: { id: { in: pending } },
@@ -82,7 +110,9 @@ export class InvoiceEmailService {
           buyer: { select: { id: true, email: true } },
         },
       });
-      if (orders.length === 0) return false;
+      if (orders.length === 0) {
+        return { sent: false, reason: 'nothing-to-send' };
+      }
 
       // Every order in a group shares one buyer — the group comes from a single
       // payment. Enforce it here rather than trusting the caller: a mixed group
@@ -105,7 +135,7 @@ export class InvoiceEmailService {
         this.logger.warn(
           `invoice-email skipped: buyer ${orders[0].buyerId} has no email address (orders=${pending.length})`,
         );
-        return false;
+        return { sent: false, reason: 'no-recipient' };
       }
 
       const invoices: Invoice[] = [];
@@ -114,7 +144,9 @@ export class InvoiceEmailService {
           ...(await this.invoiceService.buildInvoicesForOrder(order.id)),
         );
       }
-      if (invoices.length === 0) return false;
+      if (invoices.length === 0) {
+        return { sent: false, reason: 'nothing-to-send' };
+      }
 
       const attachments: MailAttachment[] = [];
       for (const invoice of invoices) {
@@ -126,7 +158,12 @@ export class InvoiceEmailService {
       }
 
       const sent = await this.sendWithRetry(recipient, invoices, attachments);
-      if (!sent) return false;
+      if (!sent) {
+        this.logger.error(
+          `invoice-email: send failed after retries for buyer ${orders[0].buyerId} (orders=${orders.length})`,
+        );
+        return { sent: false, reason: 'send-failed' };
+      }
 
       for (const order of orders) {
         await this.writeLedger(order.buyerId, order.id);
@@ -135,11 +172,11 @@ export class InvoiceEmailService {
       this.logger.log(
         `invoice-email sent to ${redactEmail(recipient)} (orders=${orders.length}, invoices=${invoices.length})`,
       );
-      return true;
+      return { sent: true };
     } catch (error) {
       // Nothing here may surface to the payment path.
       this.logger.error(`invoice-email failed: ${(error as Error).message}`);
-      return false;
+      return { sent: false, reason: 'send-failed' };
     }
   }
 
@@ -148,7 +185,7 @@ export class InvoiceEmailService {
    * the buyer owns the order — orders.controller does that through
    * InvoiceService.getInvoicesForOrder, which throws for anyone else.
    */
-  async resendForOrder(orderId: string): Promise<boolean> {
+  async resendForOrder(orderId: string): Promise<InvoiceEmailOutcome> {
     return this.sendForOrders([orderId], { force: true });
   }
 

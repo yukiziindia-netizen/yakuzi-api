@@ -10,6 +10,10 @@ import {
   HttpCode,
   HttpStatus,
   ParseUUIDPipe,
+  NotFoundException,
+  UnprocessableEntityException,
+  ServiceUnavailableException,
+  Logger,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -36,6 +40,8 @@ import { UpdateShippingDetailsDto } from './dto/update-shipping-details.dto';
 @Controller('orders')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class OrdersController {
+  private readonly logger = new Logger(OrdersController.name);
+
   constructor(
     private readonly ordersService: OrdersService,
     private readonly shiprocketService: ShiprocketService,
@@ -132,7 +138,15 @@ export class OrdersController {
   @ApiOperation({ summary: 'Email the buyer the tax invoices for an order' })
   @ApiResponse({ status: 200, description: 'Invoice email sent' })
   @ApiResponse({ status: 403, description: 'Order belongs to another account' })
-  @ApiResponse({ status: 404, description: 'Order not found' })
+  @ApiResponse({
+    status: 404,
+    description: 'Order not found, or nothing to invoice',
+  })
+  @ApiResponse({ status: 422, description: 'No email address on the account' })
+  @ApiResponse({
+    status: 503,
+    description: 'The invoice could not be sent right now',
+  })
   async emailOrderInvoices(
     @CurrentUser('id') userId: string,
     @Param('id', ParseUUIDPipe) orderId: string,
@@ -142,14 +156,37 @@ export class OrdersController {
     // that does not exist. Duplicating that logic here would risk it drifting.
     await this.invoiceService.getInvoicesForOrder(userId, orderId);
 
-    const sent = await this.invoiceEmailService.resendForOrder(orderId);
+    const outcome = await this.invoiceEmailService.resendForOrder(orderId);
 
-    return {
-      message: sent
-        ? 'Invoice emailed successfully'
-        : 'We could not email the invoice. Please check that your account has an email address.',
-      data: { sent },
-    };
+    if (outcome.sent) {
+      return {
+        message: 'Invoice emailed successfully',
+        data: { sent: true },
+      };
+    }
+
+    switch (outcome.reason) {
+      case 'no-recipient':
+        throw new UnprocessableEntityException(
+          'Add an email address to your account to receive invoices.',
+        );
+      case 'nothing-to-send':
+        throw new NotFoundException(
+          'There is nothing to invoice on this order.',
+        );
+      case 'not-configured':
+      case 'send-failed':
+      default:
+        // The distinction (SMTP unconfigured vs. a send that genuinely failed
+        // after retries) is a server-side detail — the client only needs to
+        // know it can try again.
+        this.logger.error(
+          `invoice email resend for order ${orderId} did not send: ${outcome.reason ?? 'unknown'}`,
+        );
+        throw new ServiceUnavailableException(
+          'We could not email your invoice just now. Please try again shortly.',
+        );
+    }
   }
 
   @Patch(':id/cancel')
@@ -191,7 +228,9 @@ export class OrdersController {
   @Patch(':id/shipping-details')
   @Roles(Role.SELLER)
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Update shipping dimensions and documents (seller)' })
+  @ApiOperation({
+    summary: 'Update shipping dimensions and documents (seller)',
+  })
   @ApiResponse({ status: 200, description: 'Shipping details updated' })
   async updateShippingDetails(
     @CurrentUser('id') userId: string,
@@ -215,10 +254,11 @@ export class OrdersController {
   @ApiResponse({ status: 200, description: 'Documents uploaded' })
   async updateAdminShippingDocs(
     @Param('id', ParseUUIDPipe) orderId: string,
-    @Body() dto: { 
-      adminShippingLabelUrl?: string; 
-      adminInvoiceUrl?: string; 
-      manifestUrl?: string; 
+    @Body()
+    dto: {
+      adminShippingLabelUrl?: string;
+      adminInvoiceUrl?: string;
+      manifestUrl?: string;
       invoiceUrl?: string;
       isShippingLocked?: boolean;
       sellerId?: string;

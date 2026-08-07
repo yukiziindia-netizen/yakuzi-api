@@ -104,9 +104,9 @@ describe('InvoiceEmailService', () => {
   it('sends one email carrying every order invoice and writes the ledger', async () => {
     const { service, mail, prisma } = build();
 
-    const sent = await service.sendForOrders([ORDER_ID]);
+    const outcome = await service.sendForOrders([ORDER_ID]);
 
-    expect(sent).toBe(true);
+    expect(outcome).toEqual({ sent: true });
     expect(mail.sendMail).toHaveBeenCalledTimes(1);
     const sentMessage = (mail.sendMail.mock.calls as SendMailOptions[][])[0][0];
     expect(sentMessage.to).toBe('buyer@example.com');
@@ -117,9 +117,9 @@ describe('InvoiceEmailService', () => {
   it('does nothing when the invoice was already emailed', async () => {
     const { service, mail, prisma } = build({ ledgerHit: true });
 
-    const sent = await service.sendForOrders([ORDER_ID]);
+    const outcome = await service.sendForOrders([ORDER_ID]);
 
-    expect(sent).toBe(false);
+    expect(outcome).toEqual({ sent: false, reason: 'nothing-to-send' });
     expect(mail.sendMail).not.toHaveBeenCalled();
     expect(prisma.notification.create).not.toHaveBeenCalled();
   });
@@ -127,18 +127,31 @@ describe('InvoiceEmailService', () => {
   it('resends when forced, ignoring the ledger', async () => {
     const { service, mail } = build({ ledgerHit: true });
 
-    await service.sendForOrders([ORDER_ID], { force: true });
+    const outcome = await service.sendForOrders([ORDER_ID], { force: true });
 
+    expect(outcome).toEqual({ sent: true });
     expect(mail.sendMail).toHaveBeenCalledTimes(1);
   });
 
   it('skips silently when the buyer has no email address', async () => {
     const { service, mail, prisma } = build({ buyerEmail: null });
 
-    const sent = await service.sendForOrders([ORDER_ID]);
+    const outcome = await service.sendForOrders([ORDER_ID]);
 
-    expect(sent).toBe(false);
+    expect(outcome).toEqual({ sent: false, reason: 'no-recipient' });
     expect(mail.sendMail).not.toHaveBeenCalled();
+    expect(prisma.notification.create).not.toHaveBeenCalled();
+  });
+
+  it('reports not-configured and never touches the database when SMTP is unset', async () => {
+    const { service, mail, prisma } = build();
+    mail.isConfigured.mockReturnValue(false);
+
+    const outcome = await service.sendForOrders([ORDER_ID]);
+
+    expect(outcome).toEqual({ sent: false, reason: 'not-configured' });
+    expect(mail.sendMail).not.toHaveBeenCalled();
+    expect(prisma.order.findMany).not.toHaveBeenCalled();
     expect(prisma.notification.create).not.toHaveBeenCalled();
   });
 
@@ -150,9 +163,9 @@ describe('InvoiceEmailService', () => {
       ],
     });
 
-    const sent = await service.sendForOrders([ORDER_ID]);
+    const outcome = await service.sendForOrders([ORDER_ID]);
 
-    expect(sent).toBe(true);
+    expect(outcome).toEqual({ sent: true });
     expect(mail.sendMail).toHaveBeenCalledTimes(2);
     expect(prisma.notification.create).toHaveBeenCalledTimes(1);
   });
@@ -162,9 +175,9 @@ describe('InvoiceEmailService', () => {
       mailResults: [{ sent: false, retryable: true }],
     });
 
-    const sent = await service.sendForOrders([ORDER_ID]);
+    const outcome = await service.sendForOrders([ORDER_ID]);
 
-    expect(sent).toBe(false);
+    expect(outcome).toEqual({ sent: false, reason: 'send-failed' });
     expect(mail.sendMail).toHaveBeenCalledTimes(3);
     expect(prisma.notification.create).not.toHaveBeenCalled();
   });
@@ -174,8 +187,9 @@ describe('InvoiceEmailService', () => {
       mailResults: [{ sent: false, retryable: false }],
     });
 
-    await service.sendForOrders([ORDER_ID]);
+    const outcome = await service.sendForOrders([ORDER_ID]);
 
+    expect(outcome).toEqual({ sent: false, reason: 'send-failed' });
     expect(mail.sendMail).toHaveBeenCalledTimes(1);
   });
 
@@ -183,7 +197,10 @@ describe('InvoiceEmailService', () => {
     const { service, prisma } = build();
     prisma.order.findMany.mockRejectedValue(new Error('connection lost'));
 
-    await expect(service.sendForOrders([ORDER_ID])).resolves.toBe(false);
+    await expect(service.sendForOrders([ORDER_ID])).resolves.toEqual({
+      sent: false,
+      reason: 'send-failed',
+    });
   });
 
   it('drops orders belonging to a different buyer and still emails the rest', async () => {
@@ -229,9 +246,9 @@ describe('InvoiceEmailService', () => {
     );
     (service as unknown as { backoffMs: number[] }).backoffMs = [0, 0, 0];
 
-    const sent = await service.sendForOrders([ORDER_ID, ORDER_ID_2]);
+    const outcome = await service.sendForOrders([ORDER_ID, ORDER_ID_2]);
 
-    expect(sent).toBe(true);
+    expect(outcome).toEqual({ sent: true });
     expect(mail.sendMail).toHaveBeenCalledTimes(1);
     const sentMessage = (mail.sendMail.mock.calls as SendMailOptions[][])[0][0];
     // Only the first buyer's single order should have produced an invoice/attachment.
