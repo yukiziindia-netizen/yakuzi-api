@@ -234,6 +234,34 @@ export class InvoicePdfService {
     const totalsLeft = left + width / 2;
     const totalsWidth = width / 2;
 
+    // Note to Customer, in the left column level with the totals. The web
+    // invoice carries this and the PDF did not, and on a short invoice it also
+    // fills what was otherwise a large empty band above the footer.
+    const noteTop = y;
+    const noteWidth = totalsWidth - 20;
+    const noteInner = noteWidth - 16;
+    const noteBody =
+      'This is a tax invoice for the supply of goods. The products have been sold by the ' +
+      'seller (Supplier) and this invoice is generated on their behalf by Yukizi Marketplace.';
+    const noteBodyHeight = doc
+      .font('Helvetica')
+      .fontSize(8)
+      .heightOfString(noteBody, { width: noteInner });
+
+    doc
+      .rect(left, noteTop, noteWidth, noteBodyHeight + 32)
+      .fillAndStroke('#f8fafc', BORDER);
+    doc
+      .font('Helvetica-Bold')
+      .fontSize(9)
+      .fillColor(PURPLE)
+      .text('Note to Customer', left + 8, noteTop + 8, { width: noteInner });
+    doc
+      .font('Helvetica')
+      .fontSize(8)
+      .fillColor(SLATE)
+      .text(noteBody, left + 8, noteTop + 22, { width: noteInner });
+
     const row = (label: string, value: string, bold = false) => {
       doc
         .font(bold ? 'Helvetica-Bold' : 'Helvetica')
@@ -309,6 +337,36 @@ export class InvoicePdfService {
         .fillColor(SLATE)
         .text(`Place of supply: ${invoice.placeOfSupply}`, left, y);
       y += 16;
+    }
+
+    // ── Assurances ───────────────────────────────────────────
+    // Four columns, as on the web invoice. Purely decorative, so it is drawn
+    // only when it genuinely fits above the footer — on a long multi-page
+    // invoice it is skipped rather than allowed to collide with anything.
+    const assurances: [string, string][] = [
+      ['100% Authentic Products', 'Sourced directly from trusted sellers.'],
+      ['Hassle-free Returns', 'Easy returns & refunds as per Yukizi policy.'],
+      ['Need Help?', 'Email support@yukizi.com'],
+      ['Secure Payments', 'Your transactions are safe and secure.'],
+    ];
+    const assuranceHeight = 44;
+    if (y + assuranceHeight < doc.page.height - 130) {
+      doc.rect(left, y, width, assuranceHeight).stroke(BORDER);
+      const colWidth = (width - 32) / assurances.length;
+      assurances.forEach(([title, body], i) => {
+        const x = left + 12 + i * colWidth;
+        doc
+          .font('Helvetica-Bold')
+          .fontSize(7.5)
+          .fillColor(PURPLE)
+          .text(title, x, y + 10, { width: colWidth - 8 });
+        doc
+          .font('Helvetica')
+          .fontSize(7)
+          .fillColor(MUTED)
+          .text(body, x, y + 22, { width: colWidth - 8 });
+      });
+      y += assuranceHeight + 12;
     }
 
     // ── Footer ───────────────────────────────────────────────
