@@ -19,6 +19,7 @@ import { PrismaService } from '../../database/prisma.service';
 import { REDIS_CLIENT } from '../../config/redis.config';
 import { Role, UserStatus } from '@prisma/client';
 import { OtpSmsService } from './services/otp-sms.service';
+import { MailService } from '../mail/mail.service';
 import { RegisterBuyerDto } from './dto/register-buyer.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 
@@ -69,6 +70,7 @@ export class AuthService {
     private readonly configService: ConfigService,
     @Inject(REDIS_CLIENT) private readonly redis: Redis,
     private readonly otpSmsService: OtpSmsService,
+    private readonly mailService: MailService,
   ) {}
 
   // ─── SEND OTP ──────────────────────────────────────
@@ -94,19 +96,39 @@ export class AuthService {
     const isEmail = contact.includes('@');
 
     if (isEmail) {
-      // There is no mailer in this service — no nodemailer, SendGrid, SES or
-      // equivalent in package.json, and nothing in src/ that can send mail.
-      // This branch used to print the OTP to the server console and return
-      // "OTP sent to email successfully", so every email signup dead-ended:
-      // the user was told a code was on its way and the only copy of it was
-      // in a log file. Say so instead of pretending.
-      await this.discardOtp(redisKey);
-      this.logger.error(
-        `Email OTP requested for ${this.maskContact(contact)} but no email provider is configured.`,
-      );
-      throw new ServiceUnavailableException(
-        'Email verification is not available yet. Please sign up with your mobile number.',
-      );
+      // Mirrors the SMS branch below: refuse loudly when we cannot deliver,
+      // and drop the stored OTP rather than leave a live code nobody received.
+      if (!this.mailService.isConfigured()) {
+        await this.discardOtp(redisKey);
+        this.logger.error(
+          `Email OTP requested for ${this.maskContact(contact)} but SMTP is not configured (SMTP_USER / SMTP_APP_PASSWORD unset).`,
+        );
+        throw new ServiceUnavailableException(
+          'Email verification is not available yet. Please sign up with your mobile number.',
+        );
+      }
+
+      const result = await this.mailService.sendMail({
+        to: contact,
+        subject: `${otp} is your Yukizi verification code`,
+        text: `Your Yukizi verification code is ${otp}. It expires in ${Math.round(OTP_TTL_SECONDS / 60)} minutes. If you did not request it, you can ignore this email.`,
+        html: `<p>Your Yukizi verification code is:</p>
+<p style="font-size:24px;font-weight:bold;letter-spacing:3px;margin:16px 0">${otp}</p>
+<p>It expires in ${Math.round(OTP_TTL_SECONDS / 60)} minutes. If you did not request it, you can ignore this email.</p>`,
+      });
+
+      if (!result.sent) {
+        await this.discardOtp(redisKey);
+        this.logger.error(
+          `Email OTP delivery failed for ${this.maskContact(contact)} (retryable: ${result.retryable}).`,
+        );
+        throw new ServiceUnavailableException(
+          'We could not send the verification email. Please try again, or sign up with your mobile number.',
+        );
+      }
+
+      this.logger.log(`OTP sent to ${this.maskContact(contact)} via email`);
+      return { message: 'OTP sent successfully' };
     }
 
     // Send OTP via Nimbus IT SMS service
