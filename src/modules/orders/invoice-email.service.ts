@@ -74,7 +74,7 @@ export class InvoiceEmailService {
 
       if (pending.length === 0) return false;
 
-      const orders = await this.prisma.order.findMany({
+      let orders = await this.prisma.order.findMany({
         where: { id: { in: pending } },
         select: {
           id: true,
@@ -83,6 +83,19 @@ export class InvoiceEmailService {
         },
       });
       if (orders.length === 0) return false;
+
+      // Every order in a group shares one buyer — the group comes from a single
+      // payment. Enforce it here rather than trusting the caller: a mixed group
+      // would email one buyer another buyer's invoice PDFs, which carry their
+      // name, address and order contents.
+      const buyerId = orders[0].buyerId;
+      const foreign = orders.filter((o) => o.buyerId !== buyerId);
+      if (foreign.length > 0) {
+        this.logger.error(
+          `invoice-email: refusing ${foreign.length} order(s) belonging to a different buyer than ${buyerId}`,
+        );
+        orders = orders.filter((o) => o.buyerId === buyerId);
+      }
 
       const recipient = orders[0].buyer?.email?.trim();
       if (!recipient) {

@@ -3,6 +3,7 @@ import type { Invoice } from './invoice.service';
 import type { SendMailOptions } from '../mail/mail.service';
 
 const ORDER_ID = '00323711-1111-2222-3333-444444444444';
+const ORDER_ID_2 = '00abcdef-5555-6666-7777-888888888888';
 
 const invoice = (): Invoice => ({
   invoiceNumber: 'YKZ/INV/2026-27/00323711',
@@ -183,5 +184,62 @@ describe('InvoiceEmailService', () => {
     prisma.order.findMany.mockRejectedValue(new Error('connection lost'));
 
     await expect(service.sendForOrders([ORDER_ID])).resolves.toBe(false);
+  });
+
+  it('drops orders belonging to a different buyer and still emails the rest', async () => {
+    const prisma = {
+      order: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: ORDER_ID,
+            buyerId: 'buyer-1',
+            buyer: { id: 'buyer-1', email: 'buyer@example.com' },
+          },
+          {
+            id: ORDER_ID_2,
+            buyerId: 'buyer-2',
+            buyer: { id: 'buyer-2', email: 'other@example.com' },
+          },
+        ]),
+      },
+      notification: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({ id: 'n2' }),
+      },
+    };
+
+    const mail = {
+      isConfigured: jest.fn().mockReturnValue(true),
+      sendMail: jest.fn().mockResolvedValue({ sent: true, retryable: false }),
+    };
+
+    const invoices = {
+      buildInvoicesForOrder: jest.fn().mockResolvedValue([invoice()]),
+    };
+    const pdf = {
+      render: jest.fn().mockResolvedValue(Buffer.from('%PDF-1.3 fake')),
+      filename: jest.fn().mockReturnValue('YKZ-INV-2026-27-00323711.pdf'),
+    };
+
+    const service = new InvoiceEmailService(
+      prisma as never,
+      invoices as never,
+      pdf as never,
+      mail as never,
+    );
+    (service as unknown as { backoffMs: number[] }).backoffMs = [0, 0, 0];
+
+    const sent = await service.sendForOrders([ORDER_ID, ORDER_ID_2]);
+
+    expect(sent).toBe(true);
+    expect(mail.sendMail).toHaveBeenCalledTimes(1);
+    const sentMessage = (mail.sendMail.mock.calls as SendMailOptions[][])[0][0];
+    // Only the first buyer's single order should have produced an invoice/attachment.
+    expect(sentMessage.attachments).toHaveLength(1);
+    expect(prisma.notification.create).toHaveBeenCalledTimes(1);
+    const createArgs = (
+      prisma.notification.create.mock.calls as { data: { userId: string } }[][]
+    )[0][0];
+    expect(createArgs.data.userId).toBe('buyer-1');
   });
 });
