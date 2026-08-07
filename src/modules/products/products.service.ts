@@ -850,6 +850,67 @@ export class ProductsService {
    * Browse all master products with filtering & pagination.
    * This is the "Marketplace" view where unique items are shown once.
    */
+  /** The include every buyer grid/search query hydrates cards with. */
+  private buyerGridInclude(): Prisma.CatalogProductInclude {
+    return {
+          category: true,
+          subCategory: true,
+          images: { take: 1 },
+          sellerOffers: {
+            where: { isActive: true, deletedAt: null },
+            select: {
+              id: true,
+              mrp: true,
+              gstPercent: true,
+              discountType: true,
+              discountMeta: true,
+              deliveryText: true,
+              minimumOrderQuantity: true,
+              shippingCharges: true,
+              finalShippingPrice: true,
+              finalCustomerPayable: true,
+              isTaxIncluded: true,
+              batches: {
+                where: { stock: { gt: 0 } },
+                select: {
+                  stock: true,
+                },
+              },
+            },
+            orderBy: { mrp: 'asc' },
+            take: 1,
+          },
+          productVariants: {
+            include: {
+              sellerOffers: {
+                where: { isActive: true, deletedAt: null },
+                select: {
+                  id: true,
+                  mrp: true,
+                  gstPercent: true,
+                  discountType: true,
+                  discountMeta: true,
+                  deliveryText: true,
+                  minimumOrderQuantity: true,
+                  shippingCharges: true,
+                  finalShippingPrice: true,
+                  finalCustomerPayable: true,
+                  isTaxIncluded: true,
+                  batches: {
+                    where: { stock: { gt: 0 } },
+                    select: {
+                      stock: true,
+                    },
+                  },
+                },
+                orderBy: { mrp: 'asc' },
+                take: 1,
+              },
+            },
+          },
+        };
+  }
+
   async findAll(query: QueryProductDto) {
     const {
       page = 1,
@@ -870,18 +931,26 @@ export class ProductsService {
 
     const andConditions: Prisma.CatalogProductWhereInput[] = [];
 
-    if (query.search) {
+    // Search matching is handled AFTER the rest of the filters: results are
+    // ranked name -> category -> description, which needs bucketed queries
+    // rather than a single OR (see the block above the findMany below).
+
+    // A product belongs to a category page when it is the primary OR one of
+    // the extras - the admin can now attach several categories per product.
+    if (query.categoryId)
       andConditions.push({
         OR: [
-          { name: { contains: query.search, mode: 'insensitive' } },
-          { manufacturer: { contains: query.search, mode: 'insensitive' } },
+          { categoryId: query.categoryId },
+          { extraCategories: { some: { id: query.categoryId } } },
         ],
       });
-    }
-
-    if (query.categoryId) andConditions.push({ categoryId: query.categoryId });
     if (query.subCategoryId)
-      andConditions.push({ subCategoryId: query.subCategoryId });
+      andConditions.push({
+        OR: [
+          { subCategoryId: query.subCategoryId },
+          { extraSubCategories: { some: { id: query.subCategoryId } } },
+        ],
+      });
     if (query.manufacturer) {
       andConditions.push({
         manufacturer: { contains: query.manufacturer, mode: 'insensitive' },
@@ -964,66 +1033,99 @@ export class ProductsService {
       where.AND = andConditions;
     }
 
+    if (query.search) {
+      const s = query.search;
+      const contains = (value: string) => ({
+        contains: value,
+        mode: 'insensitive' as Prisma.QueryMode,
+      });
+      // Rank buckets, best first. A product matches the highest bucket it
+      // qualifies for; the NOTs keep the buckets disjoint so pagination
+      // never shows the same product twice.
+      const nameCond: Prisma.CatalogProductWhereInput = {
+        OR: [{ name: contains(s) }, { manufacturer: contains(s) }],
+      };
+      const categoryCond: Prisma.CatalogProductWhereInput = {
+        OR: [
+          { category: { name: contains(s) } },
+          { subCategory: { name: contains(s) } },
+          { extraCategories: { some: { name: contains(s) } } },
+          { extraSubCategories: { some: { name: contains(s) } } },
+        ],
+      };
+      const descriptionCond: Prisma.CatalogProductWhereInput = {
+        description: contains(s),
+      };
+
+      // An explicit user sort (price, newest, ...) outranks relevance; then a
+      // single query over the union keeps their chosen order.
+      if (query.sortBy) {
+        const unionWhere: Prisma.CatalogProductWhereInput = {
+          AND: [where, { OR: [nameCond, categoryCond, descriptionCond] }],
+        };
+        const [masters, total] = await Promise.all([
+          this.prisma.catalogProduct.findMany({
+            where: unionWhere,
+            include: this.buyerGridInclude(),
+            orderBy: { [effectiveSortBy]: sortOrder },
+            skip,
+            take: limit,
+          }),
+          this.prisma.catalogProduct.count({ where: unionWhere }),
+        ]);
+        return {
+          products: masters.map((m) => this.mapMasterToGrid(m)),
+          meta: { total, page, limit, totalPages: Math.ceil(total / limit) },
+        };
+      }
+
+      const bucketWheres: Prisma.CatalogProductWhereInput[] = [
+        { AND: [where, nameCond] },
+        { AND: [where, categoryCond, { NOT: nameCond }] },
+        {
+          AND: [where, descriptionCond, { NOT: nameCond }, { NOT: categoryCond }],
+        },
+      ];
+
+      const counts = await Promise.all(
+        bucketWheres.map((w) => this.prisma.catalogProduct.count({ where: w })),
+      );
+      const total = counts.reduce((a, b) => a + b, 0);
+
+      // The requested page can straddle bucket boundaries: walk the buckets,
+      // translating the global offset into a per-bucket skip/take.
+      const masters: Awaited<
+        ReturnType<typeof this.prisma.catalogProduct.findMany>
+      > = [];
+      let remainingSkip = skip;
+      let remainingTake = limit;
+      for (let i = 0; i < bucketWheres.length && remainingTake > 0; i++) {
+        if (remainingSkip >= counts[i]) {
+          remainingSkip -= counts[i];
+          continue;
+        }
+        const rows = await this.prisma.catalogProduct.findMany({
+          where: bucketWheres[i],
+          include: this.buyerGridInclude(),
+          orderBy: { [effectiveSortBy]: sortOrder },
+          skip: remainingSkip,
+          take: remainingTake,
+        });
+        masters.push(...(rows as any));
+        remainingTake -= rows.length;
+        remainingSkip = 0;
+      }
+
+      return {
+        products: masters.map((m) => this.mapMasterToGrid(m)),
+        meta: { total, page, limit, totalPages: Math.ceil(total / limit) },
+      };
+    }
+
     const [masters, total] = await Promise.all([
       this.prisma.catalogProduct.findMany({
         where,
-        include: {
-          category: true,
-          subCategory: true,
-          images: { take: 1 },
-          sellerOffers: {
-            where: { isActive: true, deletedAt: null },
-            select: {
-              id: true,
-              mrp: true,
-              gstPercent: true,
-              discountType: true,
-              discountMeta: true,
-              deliveryText: true,
-              minimumOrderQuantity: true,
-              shippingCharges: true,
-              finalShippingPrice: true,
-              finalCustomerPayable: true,
-              isTaxIncluded: true,
-              batches: {
-                where: { stock: { gt: 0 } },
-                select: {
-                  stock: true,
-                },
-              },
-            },
-            orderBy: { mrp: 'asc' },
-            take: 1,
-          },
-          productVariants: {
-            include: {
-              sellerOffers: {
-                where: { isActive: true, deletedAt: null },
-                select: {
-                  id: true,
-                  mrp: true,
-                  gstPercent: true,
-                  discountType: true,
-                  discountMeta: true,
-                  deliveryText: true,
-                  minimumOrderQuantity: true,
-                  shippingCharges: true,
-                  finalShippingPrice: true,
-                  finalCustomerPayable: true,
-                  isTaxIncluded: true,
-                  batches: {
-                    where: { stock: { gt: 0 } },
-                    select: {
-                      stock: true,
-                    },
-                  },
-                },
-                orderBy: { mrp: 'asc' },
-                take: 1,
-              },
-            },
-          },
-        },
+        include: this.buyerGridInclude(),
         orderBy: { [effectiveSortBy]: sortOrder },
         skip,
         take: limit,

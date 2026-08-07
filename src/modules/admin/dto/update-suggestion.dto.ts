@@ -130,6 +130,22 @@ export class UpdateSuggestionDto {
   @IsOptional()
   subCategoryId?: string;
 
+  @ApiPropertyOptional({
+    example: ['uuid-category-id'],
+    description:
+      'Additional categories beyond the primary categoryId. Ids only (never names). On update the list REPLACES the stored extras; omit the field to leave them unchanged.',
+  })
+  @IsArray()
+  @IsString({ each: true })
+  @IsOptional()
+  extraCategoryIds?: string[];
+
+  @ApiPropertyOptional({ example: ['uuid-subcategory-id'] })
+  @IsArray()
+  @IsString({ each: true })
+  @IsOptional()
+  extraSubCategoryIds?: string[];
+
   @ApiPropertyOptional({ example: true })
   @IsBoolean()
   @IsOptional()

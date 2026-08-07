@@ -2271,6 +2271,15 @@ export class AdminService {
   // SUGGESTIONS (MASTER PRODUCTS)
   // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
+  /** Dedupes and drops the primary id - a category is either primary or extra, never both. */
+  private normalizeExtraIds(
+    ids: string[] | undefined,
+    primaryId: string | undefined,
+  ): string[] {
+    if (!ids?.length) return [];
+    return [...new Set(ids)].filter((id) => id && id !== primaryId);
+  }
+
   async getSuggestions(query: AdminQuerySuggestionsDto) {
     const {
       search,
@@ -2306,6 +2315,8 @@ export class AdminService {
         include: {
           category: { select: { id: true, name: true } },
           subCategory: { select: { id: true, name: true } },
+          extraCategories: { select: { id: true, name: true, slug: true } },
+          extraSubCategories: { select: { id: true, name: true, slug: true, categoryId: true } },
           images: { select: { id: true, url: true } },
           productVariants: true,
         },
@@ -2351,6 +2362,8 @@ export class AdminService {
       include: {
         category: { select: { id: true, name: true } },
         subCategory: { select: { id: true, name: true } },
+        extraCategories: { select: { id: true, name: true, slug: true } },
+        extraSubCategories: { select: { id: true, name: true, slug: true, categoryId: true } },
 
         productVariants: {
           include: {
@@ -2509,6 +2522,15 @@ export class AdminService {
       resolvedSubCategoryId = dto.subCategoryId;
     }
 
+    const extraCategoryIds = this.normalizeExtraIds(
+      dto.extraCategoryIds,
+      resolvedCategoryId,
+    );
+    const extraSubCategoryIds = this.normalizeExtraIds(
+      dto.extraSubCategoryIds,
+      resolvedSubCategoryId,
+    );
+
     const meta = {
       isMetadata: true,
       price: dto.price !== undefined ? dto.price : (dto.mrp ?? 0),
@@ -2542,6 +2564,12 @@ export class AdminService {
         specifications: dto.specifications || null,
         categoryId: resolvedCategoryId,
         subCategoryId: resolvedSubCategoryId,
+        ...(extraCategoryIds.length
+          ? { extraCategories: { connect: extraCategoryIds.map((eid) => ({ id: eid })) } }
+          : {}),
+        ...(extraSubCategoryIds.length
+          ? { extraSubCategories: { connect: extraSubCategoryIds.map((eid) => ({ id: eid })) } }
+          : {}),
         packSize: dto.packSize,
         slug,
         options: finalOptions,
@@ -2578,6 +2606,8 @@ export class AdminService {
       include: {
         category: { select: { id: true, name: true } },
         subCategory: { select: { id: true, name: true } },
+        extraCategories: { select: { id: true, name: true, slug: true } },
+        extraSubCategories: { select: { id: true, name: true, slug: true, categoryId: true } },
       },
     });
       return product;
@@ -2767,6 +2797,28 @@ export class AdminService {
         ...(resolvedSubCategoryId
           ? { subCategoryId: resolvedSubCategoryId as string }
           : {}),
+        // `set` replaces the stored extras so deselecting works; the field
+        // absent means "leave them alone" (older admin builds keep working).
+        ...(dto.extraCategoryIds !== undefined
+          ? {
+              extraCategories: {
+                set: this.normalizeExtraIds(
+                  dto.extraCategoryIds,
+                  resolvedCategoryId ?? suggestion.categoryId,
+                ).map((eid) => ({ id: eid })),
+              },
+            }
+          : {}),
+        ...(dto.extraSubCategoryIds !== undefined
+          ? {
+              extraSubCategories: {
+                set: this.normalizeExtraIds(
+                  dto.extraSubCategoryIds,
+                  resolvedSubCategoryId ?? suggestion.subCategoryId,
+                ).map((eid) => ({ id: eid })),
+              },
+            }
+          : {}),
         options: finalOptions,
         ...(dto.isActive !== undefined ? { isActive: dto.isActive } : {}),
         ...(dto.isYukiziChoice !== undefined
@@ -2780,6 +2832,8 @@ export class AdminService {
       include: {
         category: { select: { id: true, name: true } },
         subCategory: { select: { id: true, name: true } },
+        extraCategories: { select: { id: true, name: true, slug: true } },
+        extraSubCategories: { select: { id: true, name: true, slug: true, categoryId: true } },
       },
     });
 
