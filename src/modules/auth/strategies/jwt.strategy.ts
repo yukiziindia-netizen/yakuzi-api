@@ -21,13 +21,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     }
 
     super({
-      jwtFromRequest: (req) => {
-        const token = ExtractJwt.fromAuthHeaderAsBearerToken()(req);
-        console.log('--- JWT STRATEGY ---');
-        console.log('Incoming Auth Header:', req.headers.authorization);
-        console.log('Extracted Token:', token);
-        return token;
-      },
+      jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
       secretOrKey: secret,
     });
