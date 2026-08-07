@@ -1230,12 +1230,30 @@ export class ProductsService {
     });
   }
 
-  private getBestOffer(m: any) {
-    const directListings = m.sellerOffers || [];
-    const variantListings = (m.productVariants || []).flatMap(
-      (v: any) => v.sellerOffers || [],
+  /**
+   * Every seller offer for a master product, listed once.
+   *
+   * A SellerOffer carries both catalogProductId and variantId, so an offer
+   * attached to a variant is returned in the master's own sellerOffers AND in
+   * that variant's. Concatenating the two showed the same seller two, three or
+   * four times on the product page and inflated sellerCount by the same amount.
+   *
+   * The variant copy wins, because it is the one carrying variantName, which is
+   * what the storefront filters the offer list on.
+   */
+  private collectListings(m: any) {
+    const variantListings = (m.productVariants || []).flatMap((v: any) =>
+      (v.sellerOffers || []).map((o: any) => ({ ...o, variantName: v.name })),
     );
-    const listings = [...directListings, ...variantListings];
+    const seen = new Set(variantListings.map((o: any) => o.id));
+    const directListings = (m.sellerOffers || []).filter(
+      (o: any) => !seen.has(o.id),
+    );
+    return [...directListings, ...variantListings];
+  }
+
+  private getBestOffer(m: any) {
+    const listings = this.collectListings(m);
     if (listings.length === 0) return null;
 
     let bestOffer: any = null;
@@ -1264,11 +1282,7 @@ export class ProductsService {
   }
 
   private mapMasterToGrid(m: any) {
-    const directListings = m.sellerOffers || [];
-    const variantListings = (m.productVariants || []).flatMap(
-      (v: any) => v.sellerOffers || [],
-    );
-    const listings = [...directListings, ...variantListings];
+    const listings = this.collectListings(m);
     const bestOffer = this.getBestOffer(m);
     const minPrice =
       listings.length > 0
@@ -1317,11 +1331,7 @@ export class ProductsService {
   }
 
   private formatMasterDetail(m: any, sellerListing?: any) {
-    const directListings = m.sellerOffers || [];
-    const variantListings = (m.productVariants || []).flatMap(
-      (v: any) => (v.sellerOffers || []).map((o: any) => ({ ...o, variantName: v.name }))
-    );
-    const allListings = [...directListings, ...variantListings];
+    const allListings = this.collectListings(m);
     const bestListing =
       allListings.length > 0
         ? allListings.reduce((prev: any, curr: any) =>
