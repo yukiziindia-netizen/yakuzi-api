@@ -27,6 +27,23 @@ const BORDER = '#e2e8f0';
 
 const DASH = '—';
 
+/** Pure formatter, exported so it can be unit tested directly against the
+ * PDF's compressed content streams instead of parsed out of them. */
+export function formatMoney(n: number): string {
+  return `Rs. ${Number(n ?? 0).toFixed(2)}`;
+}
+
+/** Pure formatter, exported for the same reason as {@link formatMoney}. */
+export function formatInvoiceDate(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleDateString('en-IN', {
+    day: '2-digit',
+    month: 'long',
+    year: 'numeric',
+  });
+}
+
 @Injectable()
 export class InvoicePdfService {
   /** A filesystem-safe attachment name, e.g. YKZ-INV-2026-27-00323711.pdf */
@@ -72,7 +89,7 @@ export class InvoicePdfService {
     let y = 72;
     const meta: [string, string][] = [
       ['Invoice No.', invoice.invoiceNumber],
-      ['Invoice Date', this.formatDate(invoice.invoiceDate)],
+      ['Invoice Date', formatInvoiceDate(invoice.invoiceDate)],
       ['Order ID', invoice.orderReference],
     ];
     for (const [label, value] of meta) {
@@ -234,23 +251,23 @@ export class InvoicePdfService {
       y += 14;
     };
 
-    row('Subtotal (Taxable Value)', this.money(invoice.subtotal));
+    row('Subtotal (Taxable Value)', formatMoney(invoice.subtotal));
 
     // Stated rate by rate: a 5% item and an 18% item owe two lines, not one.
     if (invoice.taxBreakdown?.length) {
       for (const tax of invoice.taxBreakdown) {
         if (invoice.isIntraState) {
-          row(`CGST (${tax.componentRate}%)`, this.money(tax.cgst));
-          row(`SGST (${tax.componentRate}%)`, this.money(tax.sgst));
+          row(`CGST (${tax.componentRate}%)`, formatMoney(tax.cgst));
+          row(`SGST (${tax.componentRate}%)`, formatMoney(tax.sgst));
         } else {
-          row(`IGST (${tax.componentRate}%)`, this.money(tax.igst));
+          row(`IGST (${tax.componentRate}%)`, formatMoney(tax.igst));
         }
       }
     } else if (invoice.isIntraState) {
-      row('CGST', this.money(invoice.cgst));
-      row('SGST', this.money(invoice.sgst));
+      row('CGST', formatMoney(invoice.cgst));
+      row('SGST', formatMoney(invoice.sgst));
     } else {
-      row('IGST', this.money(invoice.igst));
+      row('IGST', formatMoney(invoice.igst));
     }
 
     y += 4;
@@ -266,7 +283,7 @@ export class InvoicePdfService {
       .font('Helvetica-Bold')
       .fontSize(12)
       .fillColor(PURPLE)
-      .text(this.money(invoice.totalAmount), totalsLeft, y + 6, {
+      .text(formatMoney(invoice.totalAmount), totalsLeft, y + 6, {
         width: totalsWidth - 8,
         align: 'right',
       });
@@ -298,7 +315,7 @@ export class InvoicePdfService {
     // Yukizi's own registered details are intentionally blank until the legal
     // name, GSTIN, CIN and address are supplied. Placeholder values on a tax
     // document are worse than empty ones.
-    const footerTop = doc.page.height - 90;
+    const footerTop = doc.page.height - 110;
     doc.rect(left, footerTop, width, 50).fill(PURPLE);
     doc
       .font('Helvetica')
@@ -363,19 +380,5 @@ export class InvoicePdfService {
       y = doc.y + 2;
     }
     return y;
-  }
-
-  private money(n: number): string {
-    return `Rs. ${Number(n ?? 0).toFixed(2)}`;
-  }
-
-  private formatDate(iso: string): string {
-    const date = new Date(iso);
-    if (Number.isNaN(date.getTime())) return '';
-    return date.toLocaleDateString('en-IN', {
-      day: '2-digit',
-      month: 'long',
-      year: 'numeric',
-    });
   }
 }
