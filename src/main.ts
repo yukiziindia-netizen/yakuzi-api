@@ -51,8 +51,18 @@ async function bootstrap() {
 
 
 
-  // Increase payload size limit for base64 image/file attachments
-  app.use(json({ limit: '50mb' }));
+  // Increase payload size limit for base64 image/file attachments.
+  // The verify hook keeps the raw bytes on the request: Razorpay signs the
+  // exact body it sends, so the webhook must HMAC the raw payload - a
+  // re-serialised JSON.parse round-trip would not verify.
+  app.use(
+    json({
+      limit: '50mb',
+      verify: (req: any, _res: any, buf: Buffer) => {
+        req.rawBody = buf;
+      },
+    }),
+  );
   app.use(urlencoded({ extended: true, limit: '50mb' }));
 
   // Use Pino structured logger

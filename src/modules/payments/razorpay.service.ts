@@ -210,6 +210,129 @@ export class RazorpayService {
     return result;
   }
 
+  private get webhookSecret(): string | undefined {
+    return this.configService.get<string>('RAZORPAY_WEBHOOK_SECRET');
+  }
+
+  /**
+   * Server-to-server confirmation from Razorpay.
+   *
+   * The browser-side /verify call only happens if the buyer keeps the tab open
+   * after paying. This is the path that cannot be skipped: Razorpay POSTs
+   * payment.captured to us directly, so a buyer who pays and closes the tab
+   * still gets their order confirmed instead of the money sitting unmatched
+   * until someone reconciles by hand.
+   *
+   * Trust model mirrors verifyPayment: the HMAC over the RAW body (Razorpay
+   * signs the exact bytes) proves Razorpay sent it, and the lookup against our
+   * own Payment row ties it to one of our orders. The amount is additionally
+   * checked against our order so even a signed event cannot confirm the wrong
+   * figure.
+   *
+   * Return contract: a 2xx tells Razorpay to stop retrying, so every outcome
+   * that a retry cannot fix (not ours, wrong amount, non-captured event)
+   * acknowledges with handled:false and a log line. Only transport-level
+   * problems (bad signature, no secret) and unexpected internal errors are
+   * thrown - those are the cases where a retry is either an attack (drop it)
+   * or genuinely worth repeating.
+   */
+  async handleWebhook(rawBody: Buffer | undefined, signature: string | undefined) {
+    const secret = this.webhookSecret;
+    if (!secret) {
+      // The webhook should not be registered on the dashboard before the
+      // secret is on this box; if it is, tell Razorpay to keep retrying
+      // rather than silently swallowing real payment events.
+      this.logger.warn(
+        'Razorpay webhook was called but RAZORPAY_WEBHOOK_SECRET is not set',
+      );
+      throw new ServiceUnavailableException('Webhook is not configured.');
+    }
+    if (!rawBody || rawBody.length === 0) {
+      throw new BadRequestException('Missing body');
+    }
+
+    const expected = crypto
+      .createHmac('sha256', secret)
+      .update(rawBody)
+      .digest('hex');
+    if (!this.signaturesMatch(expected, signature ?? '')) {
+      this.logger.warn('Rejected a Razorpay webhook: signature did not verify');
+      throw new BadRequestException('This event could not be verified.');
+    }
+
+    let event: {
+      event?: string;
+      payload?: { payment?: { entity?: { id?: string; order_id?: string; amount?: number } } };
+    };
+    try {
+      event = JSON.parse(rawBody.toString('utf8'));
+    } catch {
+      throw new BadRequestException('Body is not JSON');
+    }
+
+    if (event?.event !== 'payment.captured') {
+      // Signed and well-formed, just not an event we act on.
+      return { ok: true, handled: false };
+    }
+
+    const entity = event.payload?.payment?.entity;
+    const razorpayOrderId = entity?.order_id;
+    const razorpayPaymentId = entity?.id;
+    if (!razorpayOrderId || !razorpayPaymentId) {
+      this.logger.warn('payment.captured arrived without ids; acknowledged and skipped');
+      return { ok: true, handled: false };
+    }
+
+    const payment = await this.prisma.payment.findFirst({
+      where: { referenceNumber: { startsWith: razorpayOrderId } },
+    });
+    if (!payment) {
+      // Real money moved but we have no row for it - most likely a payment
+      // from before createOrder started writing rows, or another integration
+      // on the same Razorpay account. Retrying will not create the row.
+      this.logger.error(
+        `payment.captured for unknown Razorpay order ${razorpayOrderId} (payment ${razorpayPaymentId}) - needs manual reconciliation`,
+      );
+      return { ok: true, handled: false };
+    }
+
+    if (payment.verificationStatus === PaymentVerificationStatus.CONFIRMED) {
+      return { ok: true, handled: true, alreadyConfirmed: true };
+    }
+
+    const expectedPaise = Math.round(Number(payment.amount) * 100);
+    if (typeof entity?.amount === 'number' && entity.amount !== expectedPaise) {
+      // Signed by Razorpay yet the figure does not match our order. Never
+      // auto-confirm a mismatched amount; leave it PENDING for an admin.
+      this.logger.error(
+        `payment.captured amount ${entity.amount} != expected ${expectedPaise} for payment ${payment.id} - left PENDING for admin review`,
+      );
+      return { ok: true, handled: false };
+    }
+
+    // Both ids kept, same as verifyPayment, so the payment stays traceable.
+    await this.prisma.payment.update({
+      where: { id: payment.id },
+      data: { referenceNumber: `${razorpayOrderId}|${razorpayPaymentId}` },
+    });
+
+    try {
+      await this.paymentsService.confirmPayment(payment.id);
+    } catch (err) {
+      // The browser's /verify can win the race between our status check and
+      // this call; "already confirmed" is a success, not a failure.
+      if (err instanceof BadRequestException) {
+        return { ok: true, handled: true, alreadyConfirmed: true };
+      }
+      throw err;
+    }
+
+    this.logger.log(
+      `Webhook confirmed Razorpay payment ${razorpayPaymentId} for order ${payment.orderId}`,
+    );
+    return { ok: true, handled: true };
+  }
+
   /** Constant-time compare, so a wrong signature cannot be narrowed down by timing. */
   private signaturesMatch(expected: string, received: string): boolean {
     const a = Buffer.from(expected, 'utf8');
