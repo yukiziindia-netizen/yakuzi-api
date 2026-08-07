@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../database/prisma.service';
 
 /**
@@ -75,35 +76,41 @@ const ONES = [
 ];
 const TENS = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
 
+const ORDER_INCLUDE = {
+  address: true,
+  // Order.buyer is the User; the GSTIN lives on their buyer profile.
+  buyer: {
+    select: {
+      id: true,
+      email: true,
+      phone: true,
+      buyerProfile: { select: { gstNumber: true } },
+    },
+  },
+  items: {
+    include: {
+      seller: true,
+      sellerOffer: {
+        select: { name: true, gstPercent: true, isTaxIncluded: true },
+      },
+    },
+  },
+} satisfies Prisma.OrderInclude;
+
+type LoadedOrder = Prisma.OrderGetPayload<{ include: typeof ORDER_INCLUDE }>;
+
 @Injectable()
 export class InvoiceService {
   constructor(private readonly prisma: PrismaService) {}
 
+  /**
+   * Invoices for an order, for the buyer who owns it.
+   *
+   * The ownership guard lives here, on the path a request can reach. The
+   * system path below deliberately has no user to check.
+   */
   async getInvoicesForOrder(userId: string, orderId: string): Promise<Invoice[]> {
-    const order = await this.prisma.order.findUnique({
-      where: { id: orderId },
-      include: {
-        address: true,
-        // Order.buyer is the User; the GSTIN lives on their buyer profile.
-        buyer: {
-          select: {
-            id: true,
-            email: true,
-            phone: true,
-            buyerProfile: { select: { gstNumber: true } },
-          },
-        },
-        items: {
-          include: {
-            seller: true,
-            sellerOffer: {
-              select: { name: true, gstPercent: true, isTaxIncluded: true },
-            },
-          },
-        },
-      },
-    });
-
+    const order = await this.loadOrder(orderId);
     if (!order) throw new NotFoundException('Order not found');
 
     // A buyer may only see their own invoices.
@@ -111,6 +118,29 @@ export class InvoiceService {
       throw new ForbiddenException('This order belongs to another account');
     }
 
+    return this.build(order);
+  }
+
+  /**
+   * Invoices for an order with no ownership check, for callers that are the
+   * system rather than a user — the payment-confirmation email in particular.
+   * Returns an empty list rather than throwing, because a missing order is not
+   * an error worth failing a background send over.
+   */
+  async buildInvoicesForOrder(orderId: string): Promise<Invoice[]> {
+    const order = await this.loadOrder(orderId);
+    if (!order) return [];
+    return this.build(order);
+  }
+
+  private async loadOrder(orderId: string): Promise<LoadedOrder | null> {
+    return this.prisma.order.findUnique({
+      where: { id: orderId },
+      include: ORDER_INCLUDE,
+    });
+  }
+
+  private build(order: LoadedOrder): Invoice[] {
     const buyerState = order.address?.state ?? '';
 
     // One invoice per seller, in a stable order so invoice numbers do not move
