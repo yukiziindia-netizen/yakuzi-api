@@ -35,6 +35,7 @@ import { ChatbotModule } from './modules/chatbot/chatbot.module';
 import { BrandsModule } from './modules/brands/brands.module';
 import { BannersModule } from './modules/banners/banners.module';
 import { MailModule } from './modules/mail/mail.module';
+import { SeoModule } from './modules/seo/seo.module';
 
 @Module({
   imports: [
@@ -118,6 +119,7 @@ import { MailModule } from './modules/mail/mail.module';
     PaymentsModule,
     NotificationsModule,
     MailModule,
+    SeoModule,
     AdminModule,
     StorageModule,
     SettlementsModule,
