@@ -1,4 +1,11 @@
-import { IsNotEmpty, IsString, Length, Matches } from 'class-validator';
+import {
+  IsEmail,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  Length,
+  Matches,
+} from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
 export class CreateOrderDto {
@@ -36,4 +43,9 @@ export class CreateOrderDto {
   @Length(6, 6, { message: 'Pincode must be exactly 6 digits' })
   @Matches(/^\d{6}$/, { message: 'Pincode must be a 6-digit number' })
   pincode: string;
+
+  @ApiProperty({ example: 'buyer@example.com', required: false })
+  @IsOptional()
+  @IsEmail({}, { message: 'Enter a valid email address' })
+  email?: string;
 }
