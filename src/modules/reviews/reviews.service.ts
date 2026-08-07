@@ -15,13 +15,10 @@ export class ReviewsService {
   constructor(private readonly prisma: PrismaService) {}
 
   /**
-   * Create a review. Only buyers who purchased the product may review it.
-   * One review per user per product (enforced by @@unique([userId, productId])).
+   * Resolve a catalog product by ID or slug, the same way the buyer app's
+   * product page URL can carry either.
    */
-  async createReview(userId: string, dto: CreateReviewDto) {
-    const { catalogProductId, rating, comment } = dto;
-
-    // Verify product exists by ID or Slug
+  private async resolveProduct(catalogProductId: string) {
     let product = await this.prisma.catalogProduct.findUnique({
       where: { id: catalogProductId },
     });
@@ -39,10 +36,15 @@ export class ReviewsService {
       throw new NotFoundException('Product not found');
     }
 
-    const resolvedProductId = product.id;
+    return product;
+  }
 
-    // Verify buyer has purchased this product (matches direct catalogProductId or variant catalogProductId)
-    const purchased = await this.prisma.orderItem.findFirst({
+  /**
+   * The order line that makes this buyer eligible to review the product,
+   * matching either a direct listing or a variant of one.
+   */
+  private async findPurchase(userId: string, resolvedProductId: string) {
+    return this.prisma.orderItem.findFirst({
       where: {
         OR: [
           { sellerOffer: { catalogProductId: resolvedProductId } },
@@ -54,6 +56,45 @@ export class ReviewsService {
         },
       },
     });
+  }
+
+  /**
+   * Whether a buyer may review a product right now: purchased it, and
+   * hasn't already reviewed it. Lets the buyer app tell someone up front
+   * that they need a purchase, rather than only after they've written a
+   * full review and hit submit.
+   */
+  async getEligibility(userId: string, catalogProductId: string) {
+    const product = await this.resolveProduct(catalogProductId);
+    const purchased = await this.findPurchase(userId, product.id);
+
+    if (!purchased) {
+      return { canReview: false, reason: 'NOT_PURCHASED' as const };
+    }
+
+    const existing = await this.prisma.review.findUnique({
+      where: { userId_catalogProductId: { userId, catalogProductId: product.id } },
+    });
+
+    if (existing) {
+      return { canReview: false, reason: 'ALREADY_REVIEWED' as const };
+    }
+
+    return { canReview: true, reason: null };
+  }
+
+  /**
+   * Create a review. Only buyers who purchased the product may review it.
+   * One review per user per product (enforced by @@unique([userId, productId])).
+   */
+  async createReview(userId: string, dto: CreateReviewDto) {
+    const { catalogProductId, rating, comment } = dto;
+
+    const product = await this.resolveProduct(catalogProductId);
+    const resolvedProductId = product.id;
+
+    // Verify buyer has purchased this product (matches direct catalogProductId or variant catalogProductId)
+    const purchased = await this.findPurchase(userId, resolvedProductId);
 
     if (!purchased) {
       throw new BadRequestException(
