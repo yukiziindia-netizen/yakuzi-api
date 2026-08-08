@@ -19,6 +19,7 @@ import {
   Prisma,
 } from '@prisma/client';
 import { PrismaService } from '../../database/prisma.service';
+import { OrdersService } from '../orders/orders.service';
 import { QueryUsersDto } from './dto/query-users.dto';
 import { AdminQueryProductsDto } from './dto/query-products.dto';
 import { AdminQueryOrdersDto } from './dto/query-orders.dto';
@@ -37,6 +38,7 @@ export class AdminService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly notificationsService: NotificationsService,
+    private readonly ordersService: OrdersService,
   ) {}
 
   // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
@@ -1128,13 +1130,36 @@ export class AdminService {
   ) {
     const order = await this.prisma.order.findUnique({
       where: { id: orderId },
-      include: { items: true },
+      include: {
+        address: true,
+        buyer: {
+          select: {
+            email: true,
+            phone: true,
+            buyerProfile: { select: { legalName: true } },
+          },
+        },
+        items: { include: { sellerOffer: true } },
+      },
     });
     if (!order) throw new NotFoundException('Order not found');
 
+    const updateData: Prisma.OrderUpdateInput = { orderStatus: dto.status };
+
+    // Push to Shiprocket if the admin advances the order to READY_TO_SHIP —
+    // this is the path admin actually uses (the seller-facing status buttons
+    // are hidden), so this must carry the same Shiprocket push the seller
+    // path has, or nothing ever creates the shipment. See OrdersService.
+    if (dto.status === OrderStatus.READY_TO_SHIP) {
+      Object.assign(
+        updateData,
+        await this.ordersService.pushOrderToShiprocketIfNeeded(order),
+      );
+    }
+
     const updated = await this.prisma.order.update({
       where: { id: orderId },
-      data: { orderStatus: dto.status },
+      data: updateData,
       include: {
         buyer: {
           select: {

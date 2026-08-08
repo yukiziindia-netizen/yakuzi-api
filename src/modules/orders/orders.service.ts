@@ -36,6 +36,161 @@ export class OrdersService {
   ) {}
 
   // ──────────────────────────────────────────────
+  // SHIPROCKET PUSH — shared by the seller and admin
+  // status-update paths so both actually create the
+  // Shiprocket shipment on the READY_TO_SHIP transition.
+  // ──────────────────────────────────────────────
+
+  /**
+   * Idempotent: no-ops (returns {}) if the order already has a
+   * shiprocketOrderId, or if the Shiprocket API call fails — a failed push
+   * must never block the order status transition itself.
+   */
+  async pushOrderToShiprocketIfNeeded(order: {
+    id: string;
+    createdAt: Date;
+    totalAmount: unknown;
+    paymentStatus: PaymentStatus;
+    shiprocketOrderId: string | null;
+    packageLength?: number | null;
+    packageBreadth?: number | null;
+    packageHeight?: number | null;
+    packageWeight?: number | null;
+    address: {
+      name?: string | null;
+      address?: string | null;
+      city?: string | null;
+      pincode?: string | null;
+      state?: string | null;
+      phone?: string | null;
+    } | null;
+    buyer: {
+      email?: string | null;
+      phone?: string | null;
+      buyerProfile?: { legalName?: string | null } | null;
+    };
+    items: Array<{
+      quantity: number;
+      unitPrice: unknown;
+      sellerOffer: { id: string; name: string };
+    }>;
+  }): Promise<{
+    shiprocketOrderId?: string;
+    shipmentId?: string;
+    awbCode?: string;
+    courierName?: string;
+  }> {
+    if (order.shiprocketOrderId) {
+      return {};
+    }
+
+    // Real package dimensions come from the seller's own submission
+    // (updateShippingDetails). Fall back to placeholder measurements only
+    // if the seller hasn't submitted any yet, so admin is never blocked
+    // from pushing an order — but log it, since the resulting label will
+    // under/over-charge the actual courier cost.
+    const hasRealDimensions =
+      order.packageLength != null &&
+      order.packageBreadth != null &&
+      order.packageHeight != null &&
+      order.packageWeight != null;
+
+    if (!hasRealDimensions) {
+      this.logger.warn(
+        `Order ${order.id} pushed to Shiprocket without seller-submitted dimensions — using placeholder 10x10x10cm/1kg`,
+      );
+    }
+
+    const payload = {
+      order_id: order.id,
+      order_date: order.createdAt
+        .toISOString()
+        .replace('T', ' ')
+        .substring(0, 16),
+      pickup_location: 'Primary',
+      billing_customer_name:
+        order.address?.name ||
+        order.buyer.buyerProfile?.legalName ||
+        'Buyer',
+      billing_last_name: '',
+      billing_address: order.address?.address || 'Address',
+      billing_city: order.address?.city || 'City',
+      billing_pincode: order.address?.pincode || '110001',
+      billing_state: order.address?.state || 'State',
+      billing_country: 'India',
+      billing_email: order.buyer.email || 'no-reply@yukizi.com',
+      billing_phone:
+        order.buyer.phone || order.address?.phone || '9999999999',
+      shipping_is_billing: true,
+      order_items: order.items.map((item) => ({
+        name: item.sellerOffer.name,
+        sku: item.sellerOffer.id.substring(0, 8), // placeholder sku
+        units: item.quantity,
+        selling_price: item.unitPrice,
+        discount: 0,
+        tax: 0,
+        hsn: null,
+      })),
+      payment_method: order.paymentStatus === 'SUCCESS' ? 'Prepaid' : 'COD',
+      sub_total: order.totalAmount,
+      length: order.packageLength ?? 10,
+      breadth: order.packageBreadth ?? 10,
+      height: order.packageHeight ?? 10,
+      weight: order.packageWeight ?? 1,
+    };
+
+    try {
+      const shiprocketData = await this.shiprocketService.createOrder(
+        payload,
+      );
+
+      this.logger.log(
+        `Order ${order.id} pushed to Shiprocket: ${shiprocketData.shipment_id}`,
+      );
+
+      return {
+        shiprocketOrderId: shiprocketData.order_id?.toString(),
+        shipmentId: shiprocketData.shipment_id?.toString(),
+        awbCode: shiprocketData.awb_code?.toString(),
+        courierName: shiprocketData.courier_name?.toString(),
+      };
+    } catch (error: any) {
+      this.logger.error(
+        `Failed to push order ${order.id} to Shiprocket: ${error.message}`,
+      );
+      // Not failing the status transition if Shiprocket fails; admin can
+      // retry by re-triggering the transition (pushOrderToShiprocketIfNeeded
+      // is idempotent on shiprocketOrderId being unset).
+      return {};
+    }
+  }
+
+  /**
+   * Writes back AWB/courier from a live Shiprocket tracking response.
+   * Called on every GET .../tracking poll so the values the admin sees stay
+   * current even though Shiprocket only assigns them once a human manually
+   * books the shipment and generates the AWB inside the Shiprocket dashboard
+   * — there is no webhook wired up to push that assignment to us.
+   */
+  async syncTrackingFields(
+    orderId: string,
+    tracking: { awb_code?: string | null; courier?: string | null },
+  ): Promise<void> {
+    const data: { awbCode?: string; courierName?: string } = {};
+    if (tracking.awb_code) data.awbCode = tracking.awb_code;
+    if (tracking.courier) data.courierName = tracking.courier;
+    if (Object.keys(data).length === 0) return;
+
+    try {
+      await this.prisma.order.update({ where: { id: orderId }, data });
+    } catch (error: any) {
+      this.logger.warn(
+        `Failed to sync tracking fields for order ${orderId}: ${error.message}`,
+      );
+    }
+  }
+
+  // ──────────────────────────────────────────────
   // CHECKOUT  — Create Order from Cart
   // ──────────────────────────────────────────────
 
@@ -873,65 +1028,11 @@ export class OrdersService {
     const updateData: any = { orderStatus: dto.status as OrderStatus };
 
     // Push to Shiprocket if status is READY_TO_SHIP and it hasn't been pushed yet
-    if (dto.status === OrderStatus.READY_TO_SHIP && !order.shiprocketOrderId) {
-      try {
-        const payload = {
-          order_id: order.id,
-          order_date: order.createdAt
-            .toISOString()
-            .replace('T', ' ')
-            .substring(0, 16),
-          pickup_location: 'Primary',
-          billing_customer_name:
-            order.address?.name ||
-            order.buyer.buyerProfile?.legalName ||
-            'Buyer',
-          billing_last_name: '',
-          billing_address: order.address?.address || 'Address',
-          billing_city: order.address?.city || 'City',
-          billing_pincode: order.address?.pincode || '110001',
-          billing_state: order.address?.state || 'State',
-          billing_country: 'India',
-          billing_email: order.buyer.email || 'no-reply@yukizi.com',
-          billing_phone:
-            order.buyer.phone || order.address?.phone || '9999999999',
-          shipping_is_billing: true,
-          order_items: order.items.map((item) => ({
-            name: item.sellerOffer.name,
-            sku: item.sellerOffer.id.substring(0, 8), // placeholder sku
-            units: item.quantity,
-            selling_price: item.unitPrice,
-            discount: 0,
-            tax: 0,
-            hsn: null,
-          })),
-          payment_method: order.paymentStatus === 'SUCCESS' ? 'Prepaid' : 'COD',
-          sub_total: order.totalAmount,
-          length: 10, // Defaults, should be mapped from product in real scenario
-          breadth: 10,
-          height: 10,
-          weight: 1, // 1 kg default
-        };
-
-        const shiprocketData =
-          await this.shiprocketService.createOrder(payload);
-
-        // Update data with Shiprocket fields
-        updateData.shiprocketOrderId = shiprocketData.order_id?.toString();
-        updateData.shipmentId = shiprocketData.shipment_id?.toString();
-        updateData.awbCode = shiprocketData.awb_code?.toString();
-        updateData.courierName = shiprocketData.courier_name?.toString();
-
-        this.logger.log(
-          `Order ${orderId} pushed to Shiprocket: ${shiprocketData.shipment_id}`,
-        );
-      } catch (error: any) {
-        this.logger.error(
-          `Failed to push order to Shiprocket: ${error.message}`,
-        );
-        // Not failing the transition if Shiprocket fails, or we could throw error.
-        // For robustness we allow transition but log error.
-      }
+    if (dto.status === OrderStatus.READY_TO_SHIP) {
+      Object.assign(
+        updateData,
+        await this.pushOrderToShiprocketIfNeeded(order),
+      );
     }
 
     const updated = await this.prisma.order.update({

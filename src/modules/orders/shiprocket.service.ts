@@ -107,6 +107,7 @@ export class ShiprocketService {
         current_status: shipmentTrack.current_status,
         delivered_date: shipmentTrack.delivered_date,
         estimated_delivery: shipmentTrack.etd,
+        track_url: trackingData.track_url || shipmentTrack.track_url || null,
         activities: trackingData.shipment_track_activities || [],
       };
     } catch (error: any) {
