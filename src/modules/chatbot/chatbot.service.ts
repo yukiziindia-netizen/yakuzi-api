@@ -10,6 +10,8 @@ import * as path from 'path';
 import * as fs from 'fs';
 import axios from 'axios';
 
+import { PrismaService } from '../../database/prisma.service';
+
 @Injectable()
 export class ChatbotService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(ChatbotService.name);
@@ -17,7 +19,10 @@ export class ChatbotService implements OnModuleInit, OnModuleDestroy {
   private readonly chatbotDir: string;
   private readonly port = 5005;
 
-  constructor(private readonly configService: ConfigService) {
+  constructor(
+    private readonly configService: ConfigService,
+    private readonly prisma: PrismaService,
+  ) {
     this.chatbotDir = path.resolve(process.cwd(), 'chatbot');
   }
 
@@ -29,6 +34,7 @@ export class ChatbotService implements OnModuleInit, OnModuleDestroy {
 
       if (venvPresent && portResponding) {
         this.logger.log('Python Chatbot Sidecar is already active and healthy.');
+        await this.syncTrainingFromDatabase();
         return;
       }
 
@@ -54,9 +60,50 @@ export class ChatbotService implements OnModuleInit, OnModuleDestroy {
 
       await this.setupVirtualEnv(pythonCmd);
       this.startPythonApp();
+
+      // Wait briefly for sidecar to boot then sync database training jobs
+      setTimeout(async () => {
+        const active = await this.isSidecarResponding();
+        if (active) {
+          await this.syncTrainingFromDatabase();
+        }
+      }, 3000);
     } catch (setupErr) {
       this.logger.error(
         `Failed to launch Python chatbot sidecar: ${setupErr instanceof Error ? setupErr.message : 'Unknown error'}`,
+      );
+    }
+  }
+
+  async syncTrainingFromDatabase(): Promise<void> {
+    try {
+      if ((this.prisma as any).chatbotJob) {
+        const jobs = await (this.prisma as any).chatbotJob.findMany();
+        if (jobs && jobs.length > 0) {
+          const validHistories = jobs
+            .map((j: any) => j.history)
+            .filter((h: any) => Array.isArray(h) && h.length > 0);
+
+          if (validHistories.length > 0) {
+            const apiUrl =
+              process.env.CHATBOT_API_URL || `http://127.0.0.1:${this.port}`;
+            await axios.post(
+              `${apiUrl}/train/sync`,
+              { histories: validHistories },
+              { timeout: 5000 },
+            );
+            this.logger.log(
+              `Synced ${validHistories.length} database training job(s) into Python Chatbot sidecar.`,
+            );
+            return;
+          }
+        }
+      }
+    } catch (err) {
+      this.logger.warn(
+        `Could not sync database training memory to sidecar: ${
+          err instanceof Error ? err.message : 'Unknown error'
+        }`,
       );
     }
   }
