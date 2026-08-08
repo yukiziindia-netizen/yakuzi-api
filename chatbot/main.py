@@ -15,8 +15,8 @@ from dotenv import load_dotenv
 load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
 
 try:
-    import psycopg2
-    from psycopg2.extras import RealDictCursor
+    import psycopg2  # type: ignore
+    from psycopg2.extras import RealDictCursor  # type: ignore
     HAS_PSYCOPG2 = True
 except ImportError:
     HAS_PSYCOPG2 = False
@@ -181,9 +181,8 @@ async def monitor_tuning_job(job_id: str, client: Any):
     print(f"Started monitoring tuning job: {job_id}")
     while True:
         try:
-            # Note: Depending on the SDK version, the exact method to get operation might vary.
-            # Using client.tuned_models.get(...) assuming job_id is the model name.
-            model_info = client.tuned_models.get(model=job_id)
+            # Using client.tunings.get(...) assuming job_id is the tuning job name.
+            model_info = client.tunings.get(name=job_id)
             state = getattr(model_info, 'state', str(model_info))
             print(f"Tuning Job {job_id} status: {state}")
             
@@ -267,7 +266,7 @@ def check_tuning_status(job_id: str):
         raise HTTPException(status_code=500, detail="Gemini SDK/API Key not configured.")
     try:
         client = genai.Client(api_key=api_key)
-        model_info = client.tuned_models.get(model=job_id)
+        model_info = client.tunings.get(name=job_id)
         state = getattr(model_info, 'state', 'UNKNOWN')
         return {
             "job_id": job_id,
@@ -388,14 +387,11 @@ async def chat(request: ChatRequest):
             except Exception as te:
                 print(f"ThinkingConfig setup notice: {te}", file=sys.stderr)
 
-        generate_config_kwargs = {
-            "system_instruction": ACTIVE_SYSTEM_INSTRUCTION,
-            "tools": [search_products, get_order_status]
-        }
-        if thinking_config is not None:
-            generate_config_kwargs["thinking_config"] = thinking_config
-
-        config = types.GenerateContentConfig(**generate_config_kwargs)
+        config = types.GenerateContentConfig(
+            system_instruction=load_text_file(PROMPT_FILE, DEFAULT_PROMPT),
+            tools=[search_products, get_order_status],
+            thinking_config=thinking_config
+        )
         
         chat_session = client.chats.create(
             model=ACTIVE_MODEL,
@@ -425,7 +421,7 @@ async def chat(request: ChatRequest):
 
         if hasattr(response, 'candidates') and response.candidates:
             for candidate in response.candidates:
-                if hasattr(candidate, 'content') and candidate.content and hasattr(candidate.content, 'parts'):
+                if candidate.content and candidate.content.parts:
                     for part in candidate.content.parts:
                         if getattr(part, 'thought', False):
                             if hasattr(part, 'text') and part.text:
