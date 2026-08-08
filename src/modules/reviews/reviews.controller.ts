@@ -46,6 +46,18 @@ export class ReviewsController {
     return this.reviewsService.getProductReviews(productId);
   }
 
+  @Get('eligibility/:productId')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({ summary: 'Whether the current buyer may review this product' })
+  @ApiResponse({ status: 200, description: 'Eligibility returned' })
+  getEligibility(
+    @CurrentUser('id') userId: string,
+    @Param('productId') productId: string,
+  ) {
+    return this.reviewsService.getEligibility(userId, productId);
+  }
+
   @Get('admin')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.ADMIN)
