@@ -199,7 +199,8 @@ export class ChatbotService implements OnModuleInit, OnModuleDestroy {
     message: string,
     history: Array<{ role: string; content?: string; attachments?: any[] }>,
     attachments?: any[],
-  ): Promise<string> {
+    options?: { thinkingEnabled?: boolean; thinkingBudget?: number },
+  ): Promise<{ response: string; thoughts?: string; thinkingTimeMs?: number }> {
     const geminiApiKey = this.configService.get<string>('GEMINI_API_KEY') || '';
 
     // We rely on the external Python sidecar process.
@@ -214,13 +215,26 @@ export class ChatbotService implements OnModuleInit, OnModuleDestroy {
         message,
         history,
         attachments,
+        thinking_enabled: options?.thinkingEnabled ?? true,
+        thinking_budget: options?.thinkingBudget ?? 2048,
       });
-      return response.data.response;
+      
+      const data = response.data;
+      if (typeof data === 'string') {
+        return { response: data };
+      }
+      return {
+        response: data.response || '',
+        thoughts: data.thoughts,
+        thinkingTimeMs: data.thinking_time_ms,
+      };
     } catch (err) {
       this.logger.error(
         `Error communicating with Python chatbot sidecar: ${err.message}`,
       );
-      return `I'm sorry, I encountered an issue communicating with my AI model. Raw error: ${err.message}`;
+      return {
+        response: `I'm sorry, I encountered an issue communicating with my AI model. Raw error: ${err.message}`,
+      };
     }
   }
 }

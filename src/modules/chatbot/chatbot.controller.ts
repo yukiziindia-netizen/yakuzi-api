@@ -17,6 +17,8 @@ import {
   IsArray,
   IsOptional,
   ValidateNested,
+  IsBoolean,
+  IsNumber,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import axios from 'axios';
@@ -44,6 +46,14 @@ export class ChatMessageDto {
   @IsOptional()
   content?: string;
 
+  @IsString()
+  @IsOptional()
+  thoughts?: string;
+
+  @IsNumber()
+  @IsOptional()
+  thinkingTimeMs?: number;
+
   @IsArray()
   @IsOptional()
   @ValidateNested({ each: true })
@@ -67,6 +77,14 @@ export class ChatRequestDto {
   @ValidateNested({ each: true })
   @Type(() => AttachmentDto)
   attachments?: AttachmentDto[];
+
+  @IsBoolean()
+  @IsOptional()
+  thinkingEnabled?: boolean;
+
+  @IsNumber()
+  @IsOptional()
+  thinkingBudget?: number;
 }
 
 @ApiTags('Chatbot')
@@ -243,12 +261,16 @@ export class ChatbotController {
   @ApiOperation({ summary: 'Send message to AI chatbot' })
   @ApiResponse({ status: 200, description: 'AI response returned' })
   async chat(@Body() dto: ChatRequestDto) {
-    const response = await this.chatbotService.sendMessage(
+    const result = await this.chatbotService.sendMessage(
       dto.message || '',
       dto.history || [],
       dto.attachments || [],
+      {
+        thinkingEnabled: dto.thinkingEnabled,
+        thinkingBudget: dto.thinkingBudget,
+      },
     );
-    return { response };
+    return result;
   }
 
   @Post('train/conversation')

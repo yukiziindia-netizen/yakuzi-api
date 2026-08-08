@@ -68,7 +68,7 @@ export class InvoicePdfService {
     return done;
   }
 
-  private draw(doc: PDFKit.PDFDocument, invoice: Invoice): void {
+  private draw(doc: InstanceType<typeof PDFDocument>, invoice: Invoice): void {
     const left = doc.page.margins.left;
     const right = doc.page.width - doc.page.margins.right;
     const width = right - left;
@@ -401,7 +401,7 @@ export class InvoicePdfService {
   }
 
   private drawParty(
-    doc: PDFKit.PDFDocument,
+    doc: InstanceType<typeof PDFDocument>,
     title: string,
     party: InvoiceParty,
     x: number,

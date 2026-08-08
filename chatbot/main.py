@@ -1,5 +1,6 @@
 import os
 import sys
+import time
 import asyncio
 import traceback
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form, BackgroundTasks
@@ -48,9 +49,17 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PROMPT_FILE = os.path.join(BASE_DIR, "system_prompt.txt")
 MODEL_FILE = os.path.join(BASE_DIR, "current_model.txt")
 
-DEFAULT_PROMPT = """You are the official AI Customer Support Agent for Yukizi, a premier e-commerce platform.
-Your role is to assist customers with their shopping experience, answer questions about products, and help with order inquiries.
-You must be professional, concise, and helpful. Do not answer questions that are completely unrelated to e-commerce, shopping, or Yukizi.
+DEFAULT_PROMPT = """You are an intelligent, versatile AI Assistant integrated into the Yukizi platform powered by Gemini Thinking.
+
+CORE PRIORITIES:
+- Store & Order Inquiries: For store-related inquiries, assist customers with products, order status, and shopping using your integrated database tools (search_products, get_order_status) and learned training data.
+- General AI Knowledge: If a user asks general knowledge, scientific, technical, coding, or off-topic questions, seamlessly utilize your full general AI knowledge and reasoning to provide a helpful, accurate, and comprehensive answer.
+
+FORMATTING & STYLING RULES:
+- Do NOT output raw Markdown asterisks (like * or **) in your responses.
+- Use clean Unicode bullet dots (•) for list items and place every bullet point on its own new line.
+- Use clear spacing between paragraphs for readability.
+- Write in warm, professional, human-friendly, and beautifully formatted natural language.
 """
 
 def load_text_file(filename: str, default_val: str) -> str:
@@ -82,6 +91,8 @@ class ChatRequest(BaseModel):
     message: Optional[str] = ""
     history: Optional[List[ChatMessage]] = []
     attachments: Optional[List[Attachment]] = []
+    thinking_enabled: Optional[bool] = True
+    thinking_budget: Optional[int] = 2048
 
 class PromptRequest(BaseModel):
     prompt: str
@@ -344,8 +355,12 @@ def sync_training_memory(req: SyncTrainingRequest):
 async def chat(request: ChatRequest):
     api_key = os.environ.get("GEMINI_API_KEY")
     if not HAS_GEMINI or not api_key or api_key.strip() == "":
-        return {"response": f"[MOCK MODE] (Model: {ACTIVE_MODEL}) SDK/API key missing. You said: '{request.message}'"}
+        return {
+            "response": f"[MOCK MODE] (Model: {ACTIVE_MODEL}) SDK/API key missing. You said: '{request.message}'",
+            "thoughts": "[MOCK THINKING] Processed prompt in fallback mode without API key."
+        }
         
+    start_time = time.time()
     try:
         client = get_genai_client(api_key)
         gemini_history = []
@@ -365,12 +380,26 @@ async def chat(request: ChatRequest):
                     parts.append(types.Part.from_text(text="[Attachment only]"))
                 gemini_history.append(types.Content(role=role, parts=parts))
         
+        # Build ThinkingConfig if thinking is enabled
+        thinking_config = None
+        if request.thinking_enabled:
+            try:
+                thinking_config = types.ThinkingConfig(thinking_budget=request.thinking_budget or 2048)
+            except Exception as te:
+                print(f"ThinkingConfig setup notice: {te}", file=sys.stderr)
+
+        generate_config_kwargs = {
+            "system_instruction": ACTIVE_SYSTEM_INSTRUCTION,
+            "tools": [search_products, get_order_status]
+        }
+        if thinking_config is not None:
+            generate_config_kwargs["thinking_config"] = thinking_config
+
+        config = types.GenerateContentConfig(**generate_config_kwargs)
+        
         chat_session = client.chats.create(
             model=ACTIVE_MODEL,
-            config=types.GenerateContentConfig(
-                system_instruction=ACTIVE_SYSTEM_INSTRUCTION,
-                tools=[search_products, get_order_status]
-            ),
+            config=config,
             history=gemini_history
         )
         
@@ -388,11 +417,31 @@ async def chat(request: ChatRequest):
             current_parts = ["Hello"]
 
         response = chat_session.send_message(current_parts)
-        return {"response": response.text}
+        thinking_time_ms = int((time.time() - start_time) * 1000)
+
+        # Extract thoughts (reasoning chain) and response text
+        thoughts_list = []
+        response_texts = []
+
+        if hasattr(response, 'candidates') and response.candidates:
+            for candidate in response.candidates:
+                if hasattr(candidate, 'content') and candidate.content and hasattr(candidate.content, 'parts'):
+                    for part in candidate.content.parts:
+                        if getattr(part, 'thought', False):
+                            if hasattr(part, 'text') and part.text:
+                                thoughts_list.append(part.text)
+                        elif hasattr(part, 'text') and part.text:
+                            response_texts.append(part.text)
+
+        thoughts_str = "\n".join(thoughts_list).strip() if thoughts_list else None
+        final_text = "\n".join(response_texts).strip() if response_texts else (getattr(response, 'text', '') or "")
+
+        return {
+            "response": final_text,
+            "thoughts": thoughts_str,
+            "thinking_time_ms": thinking_time_ms
+        }
     except Exception as e:
-        # Log the full detail server-side, but never echo raw exception text to the
-        # customer -- it leaked internals like "[Errno 2] No such file or directory"
-        # straight into the chat bubble.
         print(f"Error calling Gemini API: {type(e).__name__}: {e}", file=sys.stderr)
         traceback.print_exc(file=sys.stderr)
         return {
