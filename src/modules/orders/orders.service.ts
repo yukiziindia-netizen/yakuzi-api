@@ -101,45 +101,52 @@ export class OrdersService {
       );
     }
 
-    const payload = {
-      order_id: order.id,
-      order_date: order.createdAt
-        .toISOString()
-        .replace('T', ' ')
-        .substring(0, 16),
-      pickup_location: 'Primary',
-      billing_customer_name:
-        order.address?.name ||
-        order.buyer.buyerProfile?.legalName ||
-        'Buyer',
-      billing_last_name: '',
-      billing_address: order.address?.address || 'Address',
-      billing_city: order.address?.city || 'City',
-      billing_pincode: order.address?.pincode || '110001',
-      billing_state: order.address?.state || 'State',
-      billing_country: 'India',
-      billing_email: order.buyer.email || 'no-reply@yukizi.com',
-      billing_phone:
-        order.buyer.phone || order.address?.phone || '9999999999',
-      shipping_is_billing: true,
-      order_items: order.items.map((item) => ({
-        name: item.sellerOffer.name,
-        sku: item.sellerOffer.id.substring(0, 8), // placeholder sku
-        units: item.quantity,
-        selling_price: item.unitPrice,
-        discount: 0,
-        tax: 0,
-        hsn: null,
-      })),
-      payment_method: order.paymentStatus === 'SUCCESS' ? 'Prepaid' : 'COD',
-      sub_total: order.totalAmount,
-      length: order.packageLength ?? 10,
-      breadth: order.packageBreadth ?? 10,
-      height: order.packageHeight ?? 10,
-      weight: order.packageWeight ?? 1,
-    };
-
     try {
+      // The pickup-address nickname isn't configurable in code — Shiprocket's
+      // UI only offers a fixed set of tags (Home/Work/Warehouse/Other), so a
+      // hardcoded "Primary" silently matches nothing. Resolve whatever is
+      // actually configured on the account instead.
+      const pickupLocation =
+        await this.shiprocketService.getPrimaryPickupLocation();
+
+      const payload = {
+        order_id: order.id,
+        order_date: order.createdAt
+          .toISOString()
+          .replace('T', ' ')
+          .substring(0, 16),
+        pickup_location: pickupLocation,
+        billing_customer_name:
+          order.address?.name ||
+          order.buyer.buyerProfile?.legalName ||
+          'Buyer',
+        billing_last_name: '',
+        billing_address: order.address?.address || 'Address',
+        billing_city: order.address?.city || 'City',
+        billing_pincode: order.address?.pincode || '110001',
+        billing_state: order.address?.state || 'State',
+        billing_country: 'India',
+        billing_email: order.buyer.email || 'no-reply@yukizi.com',
+        billing_phone:
+          order.buyer.phone || order.address?.phone || '9999999999',
+        shipping_is_billing: true,
+        order_items: order.items.map((item) => ({
+          name: item.sellerOffer.name,
+          sku: item.sellerOffer.id.substring(0, 8), // placeholder sku
+          units: item.quantity,
+          selling_price: item.unitPrice,
+          discount: 0,
+          tax: 0,
+          hsn: null,
+        })),
+        payment_method: order.paymentStatus === 'SUCCESS' ? 'Prepaid' : 'COD',
+        sub_total: order.totalAmount,
+        length: order.packageLength ?? 10,
+        breadth: order.packageBreadth ?? 10,
+        height: order.packageHeight ?? 10,
+        weight: order.packageWeight ?? 1,
+      };
+
       const shiprocketData = await this.shiprocketService.createOrder(
         payload,
       );

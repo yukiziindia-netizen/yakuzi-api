@@ -57,6 +57,45 @@ export class ShiprocketService {
     }
   }
 
+  /**
+   * The Shiprocket account's pickup-address nickname is not a free-text field
+   * in their current UI - it's chosen from a fixed set of tags (Home / Work /
+   * Warehouse / Other), so we can't assume it's called "Primary". Resolve the
+   * actual configured address instead of guessing a name.
+   */
+  async getPrimaryPickupLocation(): Promise<string> {
+    const token = await this.getAuthToken();
+
+    try {
+      const response = await axios.get(
+        `${this.SHIPROCKET_BASE}/settings/company/pickup`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        },
+      );
+
+      const addresses = response.data?.data?.shipping_address ?? [];
+      const active =
+        addresses.find((a: any) => a.pickup_location) ?? addresses[0];
+
+      if (!active?.pickup_location) {
+        throw new Error('No pickup address is configured in Shiprocket');
+      }
+
+      return active.pickup_location as string;
+    } catch (error: any) {
+      this.logger.error(
+        `Failed to resolve Shiprocket pickup location: ${error?.response?.data?.message || error.message}`,
+      );
+      throw new HttpException(
+        'Could not resolve a Shiprocket pickup location',
+        HttpStatus.BAD_GATEWAY,
+      );
+    }
+  }
+
   async createOrder(payload: any) {
     const token = await this.getAuthToken();
 
