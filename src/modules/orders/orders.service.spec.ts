@@ -131,8 +131,9 @@ describe('OrdersService.pushOrderToShiprocketIfNeeded', () => {
     ...over,
   });
 
-  const build = (createOrderImpl?: jest.Mock) => {
+  const build = (createOrderImpl?: jest.Mock, getPickupImpl?: jest.Mock) => {
     const shiprocketService = {
+      getPrimaryPickupLocation: getPickupImpl ?? jest.fn().mockResolvedValue('Home'),
       createOrder:
         createOrderImpl ??
         jest.fn().mockResolvedValue({
@@ -220,6 +221,31 @@ describe('OrdersService.pushOrderToShiprocketIfNeeded', () => {
       baseOrder() as never,
     );
     expect(result).toEqual({});
+  });
+
+  it('uses the pickup location resolved from Shiprocket, not a hardcoded "Primary"', async () => {
+    const { service, shiprocketService } = build(
+      undefined,
+      jest.fn().mockResolvedValue('Warehouse'),
+    );
+    await service.pushOrderToShiprocketIfNeeded(baseOrder() as never);
+    const payload = shiprocketService.createOrder.mock.calls[0][0] as Record<
+      string,
+      unknown
+    >;
+    expect(payload.pickup_location).toBe('Warehouse');
+  });
+
+  it('swallows a pickup-location lookup failure and returns {} instead of throwing', async () => {
+    const { service, shiprocketService } = build(
+      undefined,
+      jest.fn().mockRejectedValue(new Error('No pickup address configured')),
+    );
+    const result = await service.pushOrderToShiprocketIfNeeded(
+      baseOrder() as never,
+    );
+    expect(result).toEqual({});
+    expect(shiprocketService.createOrder).not.toHaveBeenCalled();
   });
 });
 
