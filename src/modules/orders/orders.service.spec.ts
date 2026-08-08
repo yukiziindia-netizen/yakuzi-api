@@ -193,6 +193,15 @@ describe('OrdersService.pushOrderToShiprocketIfNeeded', () => {
     });
   });
 
+  it('sends a numeric placeholder HSN, not null (Shiprocket 422s on null)', async () => {
+    const { service, shiprocketService } = build();
+    await service.pushOrderToShiprocketIfNeeded(baseOrder() as never);
+    const payload = shiprocketService.createOrder.mock.calls[0][0] as {
+      order_items: Array<Record<string, unknown>>;
+    };
+    expect(payload.order_items[0].hsn).toBe('9999');
+  });
+
   it('returns the Shiprocket-assigned fields to merge into the order update', async () => {
     const { service } = build(
       jest.fn().mockResolvedValue({

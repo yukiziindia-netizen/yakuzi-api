@@ -101,6 +101,17 @@ export class OrdersService {
       );
     }
 
+    // Shiprocket rejects order creation outright (422) without a numeric HSN
+    // per item, but the catalog has no HSN field on any product yet. This
+    // placeholder only unblocks the push - it is NOT a real HSN and must not
+    // be treated as tax-compliant. Real per-product HSN codes still need to
+    // be added to the catalog before invoices generated from these orders
+    // are GST-legal (see the existing GST/GSTIN invoice-legality gap).
+    const PLACEHOLDER_HSN = '9999';
+    this.logger.warn(
+      `Order ${order.id} pushed to Shiprocket with placeholder HSN ${PLACEHOLDER_HSN} on all items — no product in the catalog has a real HSN code yet; do not treat resulting documents as tax-compliant`,
+    );
+
     try {
       // The pickup-address nickname isn't configurable in code — Shiprocket's
       // UI only offers a fixed set of tags (Home/Work/Warehouse/Other), so a
@@ -137,7 +148,7 @@ export class OrdersService {
           selling_price: item.unitPrice,
           discount: 0,
           tax: 0,
-          hsn: null,
+          hsn: PLACEHOLDER_HSN,
         })),
         payment_method: order.paymentStatus === 'SUCCESS' ? 'Prepaid' : 'COD',
         sub_total: order.totalAmount,
