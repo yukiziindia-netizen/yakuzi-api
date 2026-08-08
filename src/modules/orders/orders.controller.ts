@@ -294,6 +294,10 @@ export class OrdersController {
     const data = await this.shiprocketService.trackOrder(
       order.shiprocketOrderId,
     );
+    await this.ordersService.syncTrackingFields(orderId, {
+      awb_code: data.awb_code,
+      courier: data.courier,
+    });
     return { message: 'Tracking details retrieved successfully', data };
   }
 }
