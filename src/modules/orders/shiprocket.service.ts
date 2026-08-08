@@ -36,7 +36,7 @@ export class ShiprocketService {
 
     try {
       const response = await axios.post(
-        `${this.SHIPROCKET_BASE}/auth/local/login`,
+        `${this.SHIPROCKET_BASE}/auth/login`,
         {
           email,
           password,
