@@ -22,6 +22,7 @@ const build = (pushResult: Record<string, unknown> = {}) => {
   const notificationsService = {};
   const ordersService = {
     pushOrderToShiprocketIfNeeded: jest.fn().mockResolvedValue(pushResult),
+    notifyBuyerOfStatusChange: jest.fn().mockResolvedValue(undefined),
   };
   const service = new AdminService(
     prisma as never,
@@ -74,5 +75,16 @@ describe('AdminService.adminUpdateOrderStatus — Shiprocket wiring', () => {
       status: OrderStatus.CANCELLED,
     } as never);
     expect(ordersService.pushOrderToShiprocketIfNeeded).not.toHaveBeenCalled();
+  });
+
+  it('notifies the buyer on every admin status change, not just READY_TO_SHIP', async () => {
+    const { service, ordersService } = build();
+    await service.adminUpdateOrderStatus('order-1', {
+      status: OrderStatus.SHIPPED,
+    } as never);
+    expect(ordersService.notifyBuyerOfStatusChange).toHaveBeenCalledWith(
+      { id: 'order-1', buyerId: undefined, buyer: baseOrder.buyer },
+      OrderStatus.SHIPPED,
+    );
   });
 });

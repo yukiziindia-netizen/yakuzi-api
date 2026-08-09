@@ -6,9 +6,10 @@ import { InvoiceService } from './invoice.service';
 import { InvoicePdfService } from './invoice-pdf.service';
 import { InvoiceEmailService } from './invoice-email.service';
 import { MailModule } from '../mail/mail.module';
+import { AuthModule } from '../auth/auth.module';
 
 @Module({
-  imports: [MailModule],
+  imports: [MailModule, AuthModule],
   controllers: [OrdersController],
   providers: [
     OrdersService,
