@@ -1176,6 +1176,11 @@ export class AdminService {
       },
     });
 
+    await this.ordersService.notifyBuyerOfStatusChange(
+      { id: order.id, buyerId: order.buyerId, buyer: order.buyer },
+      dto.status,
+    );
+
     // Create settlements if status is DELIVERED and payment is successful
     if (
       updated.orderStatus === OrderStatus.DELIVERED &&

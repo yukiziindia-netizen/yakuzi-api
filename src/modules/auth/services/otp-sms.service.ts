@@ -138,6 +138,69 @@ export class OtpSmsService {
   }
 
   // ==============================
+  // TRANSACTIONAL SMS (order status updates, etc.)
+  // ==============================
+  //
+  // Deliberately NOT reusing sendOtp()/templateId above: Indian carriers
+  // enforce TRAI DLT — every SMS template must be pre-registered per
+  // templateid, and the OTP template is only approved for OTP wording.
+  // Sending order-status text under the OTP template id would get silently
+  // dropped or rejected by the carrier. This ships inert (like MailService
+  // with no SMTP configured) until a real DLT-approved template exists and
+  // NIMBUS_TRANSACTIONAL_TEMPLATE_ID is set to it.
+  async sendTransactional(phone: string, message: string): Promise<OtpSendResult> {
+    const templateId = this.configService.get<string>(
+      'NIMBUS_TRANSACTIONAL_TEMPLATE_ID',
+    );
+
+    if (!templateId) {
+      this.logger.warn(
+        'NIMBUS_TRANSACTIONAL_TEMPLATE_ID is not set — transactional SMS needs its own DLT-approved template, cannot reuse the OTP one. Skipping.',
+      );
+      return { success: false, reason: 'not-configured' };
+    }
+
+    const formattedPhone = this.formatPhone(phone);
+
+    const params = {
+      user: this.user,
+      authkey: this.authkey,
+      sender: this.sender,
+      mobile: formattedPhone,
+      text: message,
+      entityid: this.entityId,
+      templateid: templateId,
+      rpt: this.rpt,
+    };
+
+    try {
+      const response = await this.retryRequest(() =>
+        axios.get(this.apiUrl, { params, timeout: 5000 }),
+      );
+
+      const data = response.data;
+      const verdict = this.interpretGatewayResponse(data);
+
+      if (!verdict.success) {
+        this.logger.error(
+          `Transactional SMS REJECTED by gateway: ${verdict.reason} | raw: ${JSON.stringify(data)}`,
+        );
+      }
+
+      return { success: verdict.success, reason: verdict.reason, raw: data };
+    } catch (error: any) {
+      const code = error?.code || error?.cause?.code;
+      this.logger.error(
+        `Transactional SMS FAILED: ${error.message} (Code: ${code || 'UNKNOWN'})`,
+      );
+      return {
+        success: false,
+        reason: `Gateway request failed: ${error.message}${code ? ` (${code})` : ''}`,
+      };
+    }
+  }
+
+  // ==============================
   // RESPONSE INTERPRETATION
   // ==============================
   //

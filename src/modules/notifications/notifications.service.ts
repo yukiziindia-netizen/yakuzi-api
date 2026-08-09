@@ -53,12 +53,32 @@ export class NotificationsService {
   }
 
   /**
+   * Notify buyer when the seller dispatches the order.
+   */
+  async notifyOrderDispatched(buyerId: string, orderId: string) {
+    return this.createNotification(
+      buyerId,
+      `Your order ${orderId.slice(0, 8)}… has been dispatched by the seller.`,
+    );
+  }
+
+  /**
    * Notify buyer when order is shipped.
    */
   async notifyOrderShipped(buyerId: string, orderId: string) {
     return this.createNotification(
       buyerId,
       `Your order ${orderId.slice(0, 8)}… has been shipped.`,
+    );
+  }
+
+  /**
+   * Notify buyer when order is out for delivery.
+   */
+  async notifyOrderOutForDelivery(buyerId: string, orderId: string) {
+    return this.createNotification(
+      buyerId,
+      `Your order ${orderId.slice(0, 8)}… is out for delivery.`,
     );
   }
 

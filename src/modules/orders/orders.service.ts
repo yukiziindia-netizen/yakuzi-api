@@ -12,6 +12,9 @@ import { UpdateShippingDetailsDto } from './dto/update-shipping-details.dto';
 import { OrderStatus, Role, PaymentStatus } from '@prisma/client';
 import { ShiprocketService } from './shiprocket.service';
 import { calculateSellerPayout, buildPayoutInputFromOrderItem } from '../settlements/payout-calculator';
+import { MailService } from '../mail/mail.service';
+import { NotificationsService } from '../notifications/notifications.service';
+import { OtpSmsService } from '../auth/services/otp-sms.service';
 
 /**
  * Fields a seller may still write once the admin has locked shipping.
@@ -33,6 +36,9 @@ export class OrdersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly shiprocketService: ShiprocketService,
+    private readonly mailService: MailService,
+    private readonly notificationsService: NotificationsService,
+    private readonly otpSmsService: OtpSmsService,
   ) {}
 
   // ──────────────────────────────────────────────
@@ -205,6 +211,89 @@ export class OrdersService {
       this.logger.warn(
         `Failed to sync tracking fields for order ${orderId}: ${error.message}`,
       );
+    }
+  }
+
+  /**
+   * Statuses the buyer actually cares about hearing of, and what to call
+   * each one — deliberately a subset of OrderStatus. PLACED/ACCEPTED/etc.
+   * already have their own notification call sites elsewhere; this map only
+   * covers the post-payment shipping journey.
+   */
+  private readonly BUYER_STATUS_UPDATES: Partial<
+    Record<OrderStatus, { label: string; notifyInApp: (buyerId: string, orderId: string) => Promise<unknown> }>
+  > = {
+    [OrderStatus.DISPATCHED_FROM_SELLER]: {
+      label: 'Dispatched',
+      notifyInApp: (b, o) => this.notificationsService.notifyOrderDispatched(b, o),
+    },
+    [OrderStatus.SHIPPED]: {
+      label: 'Shipped',
+      notifyInApp: (b, o) => this.notificationsService.notifyOrderShipped(b, o),
+    },
+    [OrderStatus.OUT_FOR_DELIVERY]: {
+      label: 'Out for Delivery',
+      notifyInApp: (b, o) => this.notificationsService.notifyOrderOutForDelivery(b, o),
+    },
+    [OrderStatus.DELIVERED]: {
+      label: 'Delivered',
+      notifyInApp: (b, o) => this.notificationsService.notifyOrderDelivered(b, o),
+    },
+  };
+
+  /**
+   * Tells the buyer their order moved — in-app notification, email, and SMS
+   * (SMS only if a DLT-approved transactional template is configured; see
+   * OtpSmsService.sendTransactional). Each channel is independent and never
+   * throws: a buyer with no email just skips that channel, a down mail
+   * server never blocks the in-app notification, etc. Order status changes
+   * must never fail because a notification channel had a bad day.
+   */
+  async notifyBuyerOfStatusChange(
+    order: {
+      id: string;
+      buyerId: string;
+      buyer: { email?: string | null; phone?: string | null };
+    },
+    status: OrderStatus,
+  ): Promise<void> {
+    const update = this.BUYER_STATUS_UPDATES[status];
+    if (!update) return;
+
+    const shortId = order.id.slice(0, 8).toUpperCase();
+
+    try {
+      await update.notifyInApp(order.buyerId, order.id);
+    } catch (error: any) {
+      this.logger.warn(
+        `In-app notification failed for order ${order.id} (${status}): ${error.message}`,
+      );
+    }
+
+    if (order.buyer.email) {
+      const result = await this.mailService.sendMail({
+        to: order.buyer.email,
+        subject: `Your Yukizi order #${shortId} is ${update.label}`,
+        text: `Hi,\n\nYour order #${shortId} is now ${update.label}.\n\nYou can track it anytime from the Orders section of your Yukizi account.\n\n— Team Yukizi`,
+        html: `<p>Hi,</p><p>Your order <strong>#${shortId}</strong> is now <strong>${update.label}</strong>.</p><p>You can track it anytime from the Orders section of your Yukizi account.</p><p>— Team Yukizi</p>`,
+      });
+      if (!result.sent) {
+        this.logger.warn(
+          `Status-update email not sent for order ${order.id} (${status}), retryable=${result.retryable}`,
+        );
+      }
+    }
+
+    if (order.buyer.phone) {
+      const result = await this.otpSmsService.sendTransactional(
+        order.buyer.phone,
+        `Your Yukizi order #${shortId} is now ${update.label}. Track it in the Yukizi app.`,
+      );
+      if (!result.success) {
+        this.logger.warn(
+          `Status-update SMS not sent for order ${order.id} (${status}): ${result.reason}`,
+        );
+      }
     }
   }
 
@@ -1078,6 +1167,11 @@ export class OrdersService {
         address: true,
       },
     });
+
+    await this.notifyBuyerOfStatusChange(
+      { id: order.id, buyerId: order.buyerId, buyer: order.buyer },
+      dto.status,
+    );
 
     // Create settlements if status is DELIVERED and payment is successful
     if (

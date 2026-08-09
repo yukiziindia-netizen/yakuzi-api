@@ -1,5 +1,6 @@
 import { OrdersService } from './orders.service';
 import type { CreateOrderDto } from './dto/create-order.dto';
+import { OrderStatus } from '@prisma/client';
 
 const dto = (over: Partial<CreateOrderDto> = {}): CreateOrderDto =>
   ({
@@ -37,7 +38,13 @@ const build = (
     },
     buyerProfile: { update: jest.fn().mockResolvedValue({}) },
   };
-  const service = new OrdersService(prisma as never, {} as never);
+  const service = new OrdersService(
+    prisma as never,
+    {} as never,
+    {} as never,
+    {} as never,
+    {} as never,
+  );
   return { service, prisma };
 };
 
@@ -143,7 +150,13 @@ describe('OrdersService.pushOrderToShiprocketIfNeeded', () => {
           courier_name: null,
         }),
     };
-    const service = new OrdersService({} as never, shiprocketService as never);
+    const service = new OrdersService(
+      {} as never,
+      shiprocketService as never,
+      {} as never,
+      {} as never,
+      {} as never,
+    );
     return { service, shiprocketService };
   };
 
@@ -261,7 +274,13 @@ describe('OrdersService.pushOrderToShiprocketIfNeeded', () => {
 describe('OrdersService.syncTrackingFields', () => {
   const build = () => {
     const prisma = { order: { update: jest.fn().mockResolvedValue({}) } };
-    const service = new OrdersService(prisma as never, {} as never);
+    const service = new OrdersService(
+    prisma as never,
+    {} as never,
+    {} as never,
+    {} as never,
+    {} as never,
+  );
     return { service, prisma };
   };
 
@@ -290,9 +309,103 @@ describe('OrdersService.syncTrackingFields', () => {
     const prisma = {
       order: { update: jest.fn().mockRejectedValue(new Error('db down')) },
     };
-    const service = new OrdersService(prisma as never, {} as never);
+    const service = new OrdersService(
+    prisma as never,
+    {} as never,
+    {} as never,
+    {} as never,
+    {} as never,
+  );
     await expect(
       service.syncTrackingFields('order-1', { awb_code: 'AWB1' }),
+    ).resolves.toBeUndefined();
+  });
+});
+
+describe('OrdersService.notifyBuyerOfStatusChange', () => {
+  const buildNotifyDeps = () => {
+    const mailService = { sendMail: jest.fn().mockResolvedValue({ sent: true, retryable: false }) };
+    const notificationsService = {
+      notifyOrderDispatched: jest.fn().mockResolvedValue(undefined),
+      notifyOrderShipped: jest.fn().mockResolvedValue(undefined),
+      notifyOrderOutForDelivery: jest.fn().mockResolvedValue(undefined),
+      notifyOrderDelivered: jest.fn().mockResolvedValue(undefined),
+    };
+    const otpSmsService = {
+      sendTransactional: jest.fn().mockResolvedValue({ success: true }),
+    };
+    const service = new OrdersService(
+      {} as never,
+      {} as never,
+      mailService as never,
+      notificationsService as never,
+      otpSmsService as never,
+    );
+    return { service, mailService, notificationsService, otpSmsService };
+  };
+
+  const order = {
+    id: 'order-abc12345',
+    buyerId: 'buyer-1',
+    buyer: { email: 'buyer@example.com', phone: '9000000000' },
+  };
+
+  it('fires in-app, email, and SMS for a status the buyer cares about', async () => {
+    const { service, mailService, notificationsService, otpSmsService } =
+      buildNotifyDeps();
+
+    await service.notifyBuyerOfStatusChange(order, OrderStatus.SHIPPED);
+
+    expect(notificationsService.notifyOrderShipped).toHaveBeenCalledWith(
+      'buyer-1',
+      'order-abc12345',
+    );
+    expect(mailService.sendMail).toHaveBeenCalledWith(
+      expect.objectContaining({ to: 'buyer@example.com' }),
+    );
+    expect(otpSmsService.sendTransactional).toHaveBeenCalledWith(
+      '9000000000',
+      expect.stringContaining('Shipped'),
+    );
+  });
+
+  it('does nothing for a status the buyer does not need notifying about', async () => {
+    const { service, mailService, notificationsService, otpSmsService } =
+      buildNotifyDeps();
+
+    await service.notifyBuyerOfStatusChange(order, OrderStatus.ACCEPTED);
+
+    expect(mailService.sendMail).not.toHaveBeenCalled();
+    expect(otpSmsService.sendTransactional).not.toHaveBeenCalled();
+    expect(notificationsService.notifyOrderShipped).not.toHaveBeenCalled();
+  });
+
+  it('skips email when the buyer has none, but still sends SMS', async () => {
+    const { service, mailService, otpSmsService } = buildNotifyDeps();
+
+    await service.notifyBuyerOfStatusChange(
+      { ...order, buyer: { email: null, phone: '9000000000' } },
+      OrderStatus.OUT_FOR_DELIVERY,
+    );
+
+    expect(mailService.sendMail).not.toHaveBeenCalled();
+    expect(otpSmsService.sendTransactional).toHaveBeenCalled();
+  });
+
+  it('never throws if a channel fails - one bad channel must not block the others', async () => {
+    const { service, mailService, notificationsService, otpSmsService } =
+      buildNotifyDeps();
+    notificationsService.notifyOrderDelivered.mockRejectedValue(
+      new Error('db down'),
+    );
+    mailService.sendMail.mockResolvedValue({ sent: false, retryable: true });
+    otpSmsService.sendTransactional.mockResolvedValue({
+      success: false,
+      reason: 'not-configured',
+    });
+
+    await expect(
+      service.notifyBuyerOfStatusChange(order, OrderStatus.DELIVERED),
     ).resolves.toBeUndefined();
   });
 });
