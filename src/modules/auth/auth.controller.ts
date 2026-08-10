@@ -3,6 +3,7 @@ import {
   Post,
   Get,
   Body,
+  Headers,
   UseGuards,
   HttpCode,
   HttpStatus,
@@ -23,13 +24,17 @@ import { RegisterBuyerDto } from './dto/register-buyer.dto';
 import { LoginPasswordDto } from './dto/login-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { GoogleLoginDto } from './dto/google-login.dto';
+import { WebAnalyticsService } from '../web-analytics/web-analytics.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 
 @ApiTags('Auth')
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(
+    private readonly authService: AuthService,
+    private readonly webAnalytics: WebAnalyticsService,
+  ) {}
 
   private sanitizeContact(phone?: string, contact?: string): string {
 
@@ -73,9 +78,20 @@ export class AuthController {
   @ApiOperation({ summary: 'Verify OTP and receive JWT tokens' })
   @ApiResponse({ status: 200, description: 'OTP verified, tokens returned' })
   @ApiResponse({ status: 401, description: 'Invalid or expired OTP' })
-  async verifyOtp(@Body() dto: VerifyOtpDto) {
+  async verifyOtp(
+    @Body() dto: VerifyOtpDto,
+    @Headers('x-visitor-id') visitorId?: string,
+  ) {
     const phoneNumber = this.sanitizeContact(dto.phone, dto.contact);
-    return this.authService.verifyOtp(phoneNumber, dto.otp, dto.role);
+    const result = await this.authService.verifyOtp(phoneNumber, dto.otp, dto.role);
+    // Analytics only — detached, never blocks or fails the login.
+    void this.webAnalytics.identify({
+      visitorId,
+      userId: result.user.id,
+      method: phoneNumber.includes('@') ? 'email-otp' : 'phone-otp',
+      isSignup: result.isNewUser,
+    });
+    return result;
   }
 
 
@@ -87,8 +103,18 @@ export class AuthController {
     status: 200,
     description: 'Registration successful, tokens returned',
   })
-  async registerBuyer(@Body() dto: RegisterBuyerDto) {
-    return this.authService.registerBuyer(dto);
+  async registerBuyer(
+    @Body() dto: RegisterBuyerDto,
+    @Headers('x-visitor-id') visitorId?: string,
+  ) {
+    const result = await this.authService.registerBuyer(dto);
+    void this.webAnalytics.identify({
+      visitorId,
+      userId: result.user.id,
+      method: 'register-form',
+      isSignup: result.isNewUser,
+    });
+    return result;
   }
 
   @Post('reset-password')
@@ -123,8 +149,18 @@ export class AuthController {
     description: 'Login successful, tokens returned',
   })
   @ApiResponse({ status: 401, description: 'Invalid credentials' })
-  async loginWithPassword(@Body() dto: LoginPasswordDto) {
-    return this.authService.loginWithPassword(dto.contact, dto.password);
+  async loginWithPassword(
+    @Body() dto: LoginPasswordDto,
+    @Headers('x-visitor-id') visitorId?: string,
+  ) {
+    const result = await this.authService.loginWithPassword(dto.contact, dto.password);
+    void this.webAnalytics.identify({
+      visitorId,
+      userId: result.user.id,
+      method: 'password',
+      isSignup: result.isNewUser,
+    });
+    return result;
   }
 
   @Post('google')
@@ -142,8 +178,18 @@ export class AuthController {
     status: 503,
     description: 'GOOGLE_CLIENT_ID is not configured on the server',
   })
-  async loginWithGoogle(@Body() dto: GoogleLoginDto) {
-    return this.authService.loginWithGoogle(dto.idToken);
+  async loginWithGoogle(
+    @Body() dto: GoogleLoginDto,
+    @Headers('x-visitor-id') visitorId?: string,
+  ) {
+    const result = await this.authService.loginWithGoogle(dto.idToken);
+    void this.webAnalytics.identify({
+      visitorId,
+      userId: result.user.id,
+      method: 'google',
+      isSignup: result.isNewUser,
+    });
+    return result;
   }
 
   @Post('refresh')

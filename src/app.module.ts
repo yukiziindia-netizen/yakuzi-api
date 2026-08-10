@@ -36,6 +36,7 @@ import { BrandsModule } from './modules/brands/brands.module';
 import { BannersModule } from './modules/banners/banners.module';
 import { MailModule } from './modules/mail/mail.module';
 import { SeoModule } from './modules/seo/seo.module';
+import { WebAnalyticsModule } from './modules/web-analytics/web-analytics.module';
 
 @Module({
   imports: [
@@ -120,6 +121,7 @@ import { SeoModule } from './modules/seo/seo.module';
     NotificationsModule,
     MailModule,
     SeoModule,
+    WebAnalyticsModule,
     AdminModule,
     StorageModule,
     SettlementsModule,
