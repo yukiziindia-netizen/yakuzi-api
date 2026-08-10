@@ -181,6 +181,13 @@ export class AdminSeoController {
     return { message: 'Keyword deleted successfully', data };
   }
 
+  @Get('keywords/:id/links')
+  @HttpCode(HttpStatus.OK)
+  async keywordLinks(@Param('id', ParseUUIDPipe) id: string) {
+    const data = await this.keywordsService.links(id);
+    return { message: 'Keyword links retrieved successfully', data };
+  }
+
   @Post('keywords/:id/links')
   @HttpCode(HttpStatus.CREATED)
   async linkKeyword(

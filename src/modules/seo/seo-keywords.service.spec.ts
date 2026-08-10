@@ -62,6 +62,20 @@ describe('SeoKeywordsService', () => {
     expect(args.update.weight).toBe(3);
   });
 
+  it('links() returns every link for a keyword, strongest first', async () => {
+    prisma.keywordEntity.findUnique.mockResolvedValue({ id: 'kw-1' });
+    prisma.keywordEntityLink.findMany.mockResolvedValue([]);
+    await service.links('kw-1');
+    const args = prisma.keywordEntityLink.findMany.mock.calls[0][0];
+    expect(args.where).toEqual({ keywordId: 'kw-1' });
+    expect(args.orderBy).toEqual({ weight: 'desc' });
+  });
+
+  it('links() 404s when the keyword does not exist', async () => {
+    prisma.keywordEntity.findUnique.mockResolvedValue(null);
+    await expect(service.links('ghost')).rejects.toThrow(NotFoundException);
+  });
+
   it('forEntity returns active keywords ordered by link weight', async () => {
     prisma.keywordEntityLink.findMany.mockResolvedValue([]);
     await service.forEntity(SeoEntityType.PRODUCT, 'prod-1');
