@@ -129,6 +129,18 @@ export class SeoKeywordsService {
     });
   }
 
+  /** All entity links for one keyword, strongest first — the admin links UI. */
+  async links(keywordId: string) {
+    const keyword = await this.prisma.keywordEntity.findUnique({
+      where: { id: keywordId },
+    });
+    if (!keyword) throw new NotFoundException('Keyword not found');
+    return this.prisma.keywordEntityLink.findMany({
+      where: { keywordId },
+      orderBy: { weight: 'desc' },
+    });
+  }
+
   /** Active keywords linked to one entity, strongest first — internal-linking input. */
   async forEntity(entityType: SeoEntityType, entityId: string) {
     return this.prisma.keywordEntityLink.findMany({
