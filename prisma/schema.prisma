@@ -160,8 +160,8 @@ model Banner {
   mobileImageUrl String?
   isActive       Boolean  @default(true)
   order          Int?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   @@map("banners")
 }
@@ -337,7 +337,7 @@ model Order {
   packedPictureUrl      String?
 
   // Shipping Lock
-  isShippingLocked      Boolean @default(false)
+  isShippingLocked Boolean @default(false)
 
   @@index([buyerId])
   @@index([orderStatus])
@@ -381,7 +381,7 @@ model OrderItem {
   packedPictureUrl      String?
 
   // Shipping Lock
-  isShippingLocked      Boolean @default(false)
+  isShippingLocked Boolean @default(false)
 
   @@index([orderId])
   @@index([sellerOfferId])
@@ -1056,8 +1056,6 @@ model ProductWaitlist {
   @@map("product_waitlists")
 }
 
-
-
 // ── SEO platform (Wave 2a) ──────────────────────────────────
 
 enum SeoEntityType {
@@ -1174,4 +1172,150 @@ model KeywordEntityLink {
   @@unique([keywordId, entityType, entityId])
   @@index([entityType, entityId])
   @@map("seo_keyword_links")
+}
+
+// ─── First-party web analytics (2026-08-10) ─────────────────────────────
+// Deliberately NO relations to User/CatalogProduct: analytics rows keep
+// plain-string ids so they survive entity deletion and add zero FK load
+// to the hot tables. "DIRECT" means "no referrer information available",
+// not "typed the URL" — never infer beyond the evidence.
+
+enum SourceCategory {
+  ORGANIC_SEARCH
+  AI
+  SOCIAL
+  VIDEO
+  REFERRAL
+  DIRECT
+  PAID
+  EMAIL
+  MESSAGING
+  UNKNOWN
+}
+
+enum AttributionLevel {
+  UTM
+  CLICK_ID
+  REFERRER
+  DIRECT
+  UNKNOWN
+}
+
+model WebVisitor {
+  id                    String           @id // client-generated UUID, never fingerprinted
+  createdAt             DateTime         @default(now())
+  lastSeenAt            DateTime         @default(now())
+  userId                String?
+  firstSource           String?
+  firstSourceCategory   SourceCategory   @default(UNKNOWN)
+  firstMedium           String?
+  firstCampaign         String?
+  firstReferrerDomain   String?
+  firstLandingPage      String?
+  firstAttributionLevel AttributionLevel @default(UNKNOWN)
+  lastSource            String?
+  lastSourceCategory    SourceCategory   @default(UNKNOWN)
+  lastCampaign          String?
+  lastReferrerDomain    String?
+  lastLandingPage       String?
+  sessionsCount         Int              @default(0)
+  pageviewsCount        Int              @default(0)
+  totalEngagedMs        Int              @default(0)
+  deviceType            String?
+  os                    String?
+  browser               String?
+  country               String?
+  region                String?
+  city                  String?
+  language              String?
+  timezone              String?
+  screenW               Int?
+  screenH               Int?
+  isBot                 Boolean          @default(false)
+
+  @@index([userId])
+  @@index([createdAt])
+  @@index([lastSeenAt])
+  @@index([firstSourceCategory])
+  @@index([country])
+  @@index([isBot])
+  @@map("analytics_visitors")
+}
+
+model WebSession {
+  id               String           @id // client-generated UUID
+  visitorId        String
+  userId           String?
+  startedAt        DateTime         @default(now())
+  lastEventAt      DateTime         @default(now())
+  durationMs       Int              @default(0)
+  entryPage        String?
+  exitPage         String?
+  pageviews        Int              @default(0)
+  productViews     Int              @default(0)
+  events           Int              @default(0)
+  engagedMs        Int              @default(0)
+  source           String?
+  sourceCategory   SourceCategory   @default(UNKNOWN)
+  medium           String?
+  campaign         String?
+  utmTerm          String?
+  utmContent       String?
+  referrerDomain   String?
+  attributionLevel AttributionLevel @default(UNKNOWN)
+  clickIds         Json?
+  deviceType       String?
+  os               String?
+  browser          String?
+  country          String?
+  region           String?
+  city             String?
+  isNewVisitor     Boolean          @default(false)
+  isBot            Boolean          @default(false)
+
+  @@index([visitorId])
+  @@index([userId])
+  @@index([startedAt])
+  @@index([sourceCategory, startedAt])
+  @@index([campaign])
+  @@index([country])
+  @@index([isBot, startedAt])
+  @@map("analytics_sessions")
+}
+
+model WebEvent {
+  id        String   @id @default(uuid())
+  visitorId String
+  sessionId String?
+  userId    String?
+  name      String
+  ts        DateTime @default(now())
+  page      String?
+  productId String?
+  props     Json?
+
+  @@index([name, ts])
+  @@index([ts])
+  @@index([visitorId, ts])
+  @@index([sessionId])
+  @@index([userId])
+  @@index([productId])
+  @@map("analytics_events")
+}
+
+model WebDailyStat {
+  date         DateTime @db.Date
+  kind         String // 'total' | 'source_category'
+  key          String // '' for total; category name for source_category
+  visitors     Int      @default(0)
+  newVisitors  Int      @default(0)
+  sessions     Int      @default(0)
+  pageviews    Int      @default(0)
+  productViews Int      @default(0)
+  signups      Int      @default(0)
+  purchases    Int      @default(0)
+  revenue      Decimal  @default(0) @db.Decimal(14, 2)
+
+  @@id([date, kind, key])
+  @@map("analytics_daily")
 }
