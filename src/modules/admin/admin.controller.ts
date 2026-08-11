@@ -40,6 +40,7 @@ import { AddMarketingProductDto } from './dto/add-marketing-product.dto';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { UploadedFile, UseInterceptors } from '@nestjs/common';
 import { AdminQuerySuggestionsDto } from './dto/query-suggestions.dto';
+import { AdminUpdateProductDto } from './dto/admin-update-product.dto';
 import { UpdateSuggestionDto } from './dto/update-suggestion.dto';
 
 @ApiTags('Admin')
@@ -190,6 +191,21 @@ export class AdminController {
   async getProductById(@Param('id', ParseUUIDPipe) id: string) {
     const data = await this.adminService.getProductById(id);
     return { message: 'Product retrieved successfully', data };
+  }
+
+  @Patch('products/:id')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Update a product (catalog fields + URL slug w/ auto-301)' })
+  @ApiResponse({ status: 200, description: 'Product updated' })
+  @ApiResponse({ status: 400, description: 'Invalid slug' })
+  @ApiResponse({ status: 404, description: 'Product not found' })
+  @ApiResponse({ status: 409, description: 'Slug already in use' })
+  async updateProduct(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: AdminUpdateProductDto,
+  ) {
+    const data = await this.adminService.adminUpdateProduct(id, dto);
+    return { message: 'Product updated successfully', data };
   }
 
   @Patch('products/:id/disable')
