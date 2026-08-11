@@ -692,6 +692,14 @@ export class AdminService {
         },
         category: { select: { id: true, name: true } },
         subCategory: { select: { id: true, name: true } },
+        // Master (catalog) product — the slug lives here, and it's what the
+        // admin edit + URL-slug features operate on.
+        variant: {
+          select: {
+            id: true,
+            catalogProduct: { select: { id: true, name: true, slug: true } },
+          },
+        },
         batches: { orderBy: { expiryDate: 'asc' } },
 
         inventoryAlerts: { orderBy: { createdAt: 'desc' }, take: 10 },
