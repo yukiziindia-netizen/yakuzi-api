@@ -658,11 +658,17 @@ export class AdminService {
       where: { id: sellerOfferId },
       select: {
         id: true,
+        // A listing's catalog product is reached either directly
+        // (catalogProductId, the common case) or via a variant — same
+        // fallback order as products.service.ts::findOne. The variant-only
+        // lookup this used to have threw "no catalog product to edit" for
+        // every direct-linked listing, which is most of them.
+        catalogProduct: { select: { id: true, slug: true } },
         variant: { select: { catalogProduct: { select: { id: true, slug: true } } } },
       },
     });
     if (!offer) throw new NotFoundException('Product not found');
-    const master = offer.variant?.catalogProduct;
+    const master = offer.catalogProduct ?? offer.variant?.catalogProduct;
     if (!master) {
       throw new NotFoundException('This listing has no catalog product to edit');
     }
