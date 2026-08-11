@@ -35,7 +35,7 @@ async function bootstrap() {
       );
       res.setHeader(
         'Access-Control-Allow-Headers',
-        'Content-Type, Accept, Authorization, X-Requested-With, Origin, Access-Control-Allow-Origin, Access-Control-Allow-Headers, Access-Control-Allow-Methods',
+        'Content-Type, Accept, Authorization, X-Requested-With, X-Visitor-Id, Origin, Access-Control-Allow-Origin, Access-Control-Allow-Headers, Access-Control-Allow-Methods',
       );
     }
 
@@ -105,6 +105,7 @@ async function bootstrap() {
       'Accept',
       'Authorization',
       'X-Requested-With',
+      'X-Visitor-Id',
       'Origin',
       'Access-Control-Allow-Origin',
       'Access-Control-Allow-Headers',
