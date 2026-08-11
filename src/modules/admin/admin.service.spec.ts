@@ -90,3 +90,59 @@ describe('AdminService.adminUpdateOrderStatus — Shiprocket wiring', () => {
     );
   });
 });
+
+describe('AdminService.adminUpdateProduct — catalog product resolution', () => {
+  const buildForProductUpdate = (offer: Record<string, unknown>) => {
+    const prisma = {
+      sellerOffer: { findUnique: jest.fn().mockResolvedValue(offer) },
+      catalogProduct: { update: jest.fn().mockResolvedValue({ id: 'catalog-1' }) },
+    };
+    const notificationsService = {};
+    const ordersService = {};
+    const sellersService = {};
+    const service = new AdminService(
+      prisma as never,
+      notificationsService as never,
+      ordersService as never,
+      sellersService as never,
+    );
+    return { service, prisma };
+  };
+
+  it('resolves a directly-linked catalog product (no variant)', async () => {
+    const { service, prisma } = buildForProductUpdate({
+      id: 'offer-1',
+      catalogProduct: { id: 'catalog-1', slug: 'old-slug' },
+      variant: null,
+    });
+    await service.adminUpdateProduct('offer-1', { name: 'New Name' } as never);
+    expect(prisma.catalogProduct.update).toHaveBeenCalledWith({
+      where: { id: 'catalog-1' },
+      data: { name: 'New Name' },
+    });
+  });
+
+  it('still resolves a variant-linked catalog product', async () => {
+    const { service, prisma } = buildForProductUpdate({
+      id: 'offer-2',
+      catalogProduct: null,
+      variant: { catalogProduct: { id: 'catalog-2', slug: 'old-slug-2' } },
+    });
+    await service.adminUpdateProduct('offer-2', { name: 'New Name 2' } as never);
+    expect(prisma.catalogProduct.update).toHaveBeenCalledWith({
+      where: { id: 'catalog-2' },
+      data: { name: 'New Name 2' },
+    });
+  });
+
+  it('throws when the listing has neither a direct nor a variant catalog product', async () => {
+    const { service } = buildForProductUpdate({
+      id: 'offer-3',
+      catalogProduct: null,
+      variant: null,
+    });
+    await expect(
+      service.adminUpdateProduct('offer-3', { name: 'New Name 3' } as never),
+    ).rejects.toThrow('This listing has no catalog product to edit');
+  });
+});
