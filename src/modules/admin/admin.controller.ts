@@ -42,6 +42,7 @@ import { UploadedFile, UseInterceptors } from '@nestjs/common';
 import { AdminQuerySuggestionsDto } from './dto/query-suggestions.dto';
 import { AdminUpdateProductDto } from './dto/admin-update-product.dto';
 import { UpdateSuggestionDto } from './dto/update-suggestion.dto';
+import { UpdateSellerProfileDto } from '../sellers/dto/update-seller-profile.dto';
 
 @ApiTags('Admin')
 @ApiBearerAuth('JWT-auth')
@@ -632,6 +633,21 @@ export class AdminController {
       dto,
     );
     return { message: 'Seller GST/PAN status updated', data };
+  }
+
+  @Patch('users/:id/seller-profile')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: "Admin: edit a seller's KYC/profile details (company, GST/PAN, address, bank account, etc)",
+  })
+  @ApiResponse({ status: 200, description: 'Seller profile updated' })
+  @ApiResponse({ status: 404, description: 'Seller not found' })
+  async updateSellerProfileAdmin(
+    @Param('id', ParseUUIDPipe) userId: string,
+    @Body() dto: UpdateSellerProfileDto,
+  ) {
+    const data = await this.adminService.updateSellerProfile(userId, dto);
+    return { message: 'Seller profile updated successfully', data };
   }
 
   // ═══════════════════════════════════════════════════

@@ -32,6 +32,8 @@ import { AdminUpdateOrderStatusDto } from './dto/admin-update-order-status.dto';
 import { AdminUpdateTicketStatusDto } from './dto/admin-update-ticket-status.dto';
 import { AdminReplyTicketDto } from './dto/admin-reply-ticket.dto';
 import { NotificationsService } from '../notifications/notifications.service';
+import { SellersService } from '../sellers/sellers.service';
+import { UpdateSellerProfileDto } from '../sellers/dto/update-seller-profile.dto';
 
 @Injectable()
 export class AdminService {
@@ -41,6 +43,7 @@ export class AdminService {
     private readonly prisma: PrismaService,
     private readonly notificationsService: NotificationsService,
     private readonly ordersService: OrdersService,
+    private readonly sellersService: SellersService,
   ) {}
 
   // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
@@ -2338,6 +2341,21 @@ export class AdminService {
     }
 
     return updated;
+  }
+
+  /**
+   * Admin-side edit of a seller KYC/profile details (company, GST/PAN,
+   * address, bank account, etc). Keyed by userId, not sellerProfile.id,
+   * to match the /admin/users/:id detail page. Delegates to the same
+   * SellersService.updateProfile the seller own onboarding form uses,
+   * so admin corrections go through identical validation/side-effects.
+   */
+  async updateSellerProfile(userId: string, dto: UpdateSellerProfileDto) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user || user.role !== 'SELLER') {
+      throw new NotFoundException('Seller not found');
+    }
+    return this.sellersService.updateProfile(userId, dto);
   }
 
   // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•

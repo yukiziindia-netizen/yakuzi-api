@@ -24,10 +24,12 @@ const build = (pushResult: Record<string, unknown> = {}) => {
     pushOrderToShiprocketIfNeeded: jest.fn().mockResolvedValue(pushResult),
     notifyBuyerOfStatusChange: jest.fn().mockResolvedValue(undefined),
   };
+  const sellersService = {};
   const service = new AdminService(
     prisma as never,
     notificationsService as never,
     ordersService as never,
+    sellersService as never,
   );
   return { service, prisma, ordersService };
 };
