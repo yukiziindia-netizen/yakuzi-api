@@ -9,6 +9,8 @@ import { Readable } from 'stream';
 import slugify from 'slugify';
 import { buildPayoutInputFromOrderItem, calculateSellerPayout } from '../settlements/payout-calculator';
 import { AdminQuerySuggestionsDto } from './dto/query-suggestions.dto';
+import { AdminUpdateProductDto } from './dto/admin-update-product.dto';
+import { applySlugChange, SlugPrisma } from './product-slug';
 import {
   UserStatus,
   OrderStatus,
@@ -641,6 +643,39 @@ export class AdminService {
     }
   }
 
+
+  /**
+   * Admin edit of a product's master (catalog) fields. The admin UI works
+   * with seller-offer ids, so the offer is resolved to its CatalogProduct
+   * first. A slug change also swaps the 301 redirects (see product-slug.ts)
+   * so the old public URL keeps working.
+   */
+  async adminUpdateProduct(sellerOfferId: string, dto: AdminUpdateProductDto) {
+    const offer = await this.prisma.sellerOffer.findUnique({
+      where: { id: sellerOfferId },
+      select: {
+        id: true,
+        variant: { select: { catalogProduct: { select: { id: true, slug: true } } } },
+      },
+    });
+    if (!offer) throw new NotFoundException('Product not found');
+    const master = offer.variant?.catalogProduct;
+    if (!master) {
+      throw new NotFoundException('This listing has no catalog product to edit');
+    }
+
+    const { slug, ...rest } = dto;
+    const fields = Object.fromEntries(
+      Object.entries(rest).filter(([, v]) => v !== undefined),
+    );
+    if (Object.keys(fields).length) {
+      await this.prisma.catalogProduct.update({ where: { id: master.id }, data: fields });
+    }
+    if (slug !== undefined) {
+      await applySlugChange(this.prisma as unknown as SlugPrisma, master, slug);
+    }
+    return this.getProductById(sellerOfferId);
+  }
 
   async getProductById(sellerOfferId: string) {
     const product = await this.prisma.sellerOffer.findUnique({
