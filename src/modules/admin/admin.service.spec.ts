@@ -146,3 +146,83 @@ describe('AdminService.adminUpdateProduct — catalog product resolution', () =>
     ).rejects.toThrow('This listing has no catalog product to edit');
   });
 });
+
+describe('AdminService.getSettlementsSummary — totals across all pages', () => {
+  const payoutInputItem = {
+    id: 'item-1',
+    sellerId: 'seller-1',
+    createdAt: new Date(),
+    sellerOffer: {
+      mrp: 100,
+      finalShippingPrice: 0,
+      shippingCharges: 0,
+      catalogProduct: { commissionPercent: 0, commissionGstPercent: 0 },
+    },
+    quantity: 1,
+    totalPrice: 100,
+  };
+
+  const buildForSummary = ({
+    pendingItems = [],
+    settledRecords = [],
+  }: {
+    pendingItems?: unknown[];
+    settledRecords?: { amount: string; payoutStatus: string }[];
+  }) => {
+    const prisma = {
+      orderItem: { findMany: jest.fn().mockResolvedValue(pendingItems) },
+      sellerSettlement: { findMany: jest.fn().mockResolvedValue(settledRecords) },
+    };
+    const service = new AdminService(
+      prisma as never,
+      {} as never,
+      {} as never,
+      {} as never,
+    );
+    return { service, prisma };
+  };
+
+  it('sums PROJECTED (not-yet-ledgered) amounts across every matching order item, not one page', async () => {
+    const { service } = buildForSummary({
+      pendingItems: [payoutInputItem, { ...payoutInputItem, id: 'item-2' }],
+    });
+    const result = await service.getSettlementsSummary({});
+    // 2 items x ₹100 gross, 0% commission/shipping => ₹200 net payout, all still pending
+    expect(result.gross).toBeCloseTo(200);
+    expect(result.pending).toBeCloseTo(200);
+    expect(result.totalSettled).toBe(0);
+  });
+
+  it('splits ledgered settlements into pending vs settled by payoutStatus, and keeps gross === pending + settled', async () => {
+    const { service } = buildForSummary({
+      settledRecords: [
+        { amount: '968', payoutStatus: 'PENDING' },
+        { amount: '5330', payoutStatus: 'PENDING' },
+        { amount: '19', payoutStatus: 'PAID' },
+      ],
+    });
+    const result = await service.getSettlementsSummary({});
+    expect(result.totalSettled).toBe(19);
+    expect(result.pending).toBe(968 + 5330);
+    expect(result.gross).toBe(result.pending + result.totalSettled);
+  });
+
+  it('combines projected and ledgered amounts into one true gross total', async () => {
+    const { service } = buildForSummary({
+      pendingItems: [payoutInputItem],
+      settledRecords: [{ amount: '50', payoutStatus: 'PAID' }],
+    });
+    const result = await service.getSettlementsSummary({});
+    expect(result.totalSettled).toBe(50);
+    expect(result.pending).toBeCloseTo(100);
+    expect(result.gross).toBeCloseTo(150);
+  });
+
+  it('skips the projected-item query entirely when filtering to a settled status', async () => {
+    const { service, prisma } = buildForSummary({
+      settledRecords: [{ amount: '50', payoutStatus: 'PAID' }],
+    });
+    await service.getSettlementsSummary({ status: 'PAID' });
+    expect(prisma.orderItem.findMany).not.toHaveBeenCalled();
+  });
+});

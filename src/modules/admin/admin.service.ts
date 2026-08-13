@@ -1475,53 +1475,65 @@ export class AdminService {
       where: { id },
     });
   }
+  // Shared by getAllSettlements (paginated list) and getSettlementsSummary
+  // (unpaginated totals) so both agree on exactly which records a given
+  // status/seller/date filter matches.
+  private buildSettlementFilters(query: {
+    status?: string;
+    sellerId?: string;
+    orderItemId?: string;
+    dateFrom?: string;
+    dateTo?: string;
+  }) {
+    const { status, sellerId, orderItemId, dateFrom, dateTo } = query;
+
+    const where: Prisma.SellerSettlementWhereInput = {};
+    if (status && status !== 'PROJECTED') where.payoutStatus = status;
+    if (sellerId) where.sellerId = sellerId;
+    if (orderItemId) where.orderItemId = orderItemId.length === 36 ? orderItemId : ({ contains: orderItemId } as any);
+
+    if (dateFrom || dateTo) {
+      where.createdAt = {};
+      if (dateFrom) {
+        const parsedFrom = new Date(dateFrom);
+        if (!isNaN(parsedFrom.getTime())) (where.createdAt as any).gte = parsedFrom;
+      }
+      if (dateTo) {
+        const parsedTo = new Date(dateTo);
+        if (!isNaN(parsedTo.getTime())) (where.createdAt as any).lte = parsedTo;
+      }
+    }
+
+    const pendingWhere: import('@prisma/client').Prisma.OrderItemWhereInput = {
+      order: { orderStatus: { not: 'CANCELLED' } },
+      settlement: null,
+    };
+    if (sellerId) pendingWhere.sellerId = sellerId;
+    if (orderItemId) pendingWhere.id = orderItemId.length === 36 ? orderItemId : ({ contains: orderItemId } as any);
+    if (dateFrom || dateTo) {
+      pendingWhere.createdAt = {};
+      if (dateFrom) {
+        const parsedFrom = new Date(dateFrom);
+        if (!isNaN(parsedFrom.getTime())) (pendingWhere.createdAt as any).gte = parsedFrom;
+      }
+      if (dateTo) {
+        const parsedTo = new Date(dateTo);
+        if (!isNaN(parsedTo.getTime())) (pendingWhere.createdAt as any).lte = parsedTo;
+      }
+    }
+
+    return { where, pendingWhere };
+  }
+
   async getAllSettlements(query: AdminQuerySettlementsDto) {
     try {
       const {
         status,
-        sellerId,
-        orderItemId,
-        dateFrom,
-        dateTo,
         page = 1,
         limit = 20,
       } = query;
       const skip = (page - 1) * limit;
-
-      const where: Prisma.SellerSettlementWhereInput = {};
-      if (status && status !== 'PROJECTED') where.payoutStatus = status;
-      if (sellerId) where.sellerId = sellerId;
-      if (orderItemId) where.orderItemId = orderItemId.length === 36 ? orderItemId : ({ contains: orderItemId } as any);
-
-      if (dateFrom || dateTo) {
-        where.createdAt = {};
-        if (dateFrom) {
-          const parsedFrom = new Date(dateFrom);
-          if (!isNaN(parsedFrom.getTime())) (where.createdAt as any).gte = parsedFrom;
-        }
-        if (dateTo) {
-          const parsedTo = new Date(dateTo);
-          if (!isNaN(parsedTo.getTime())) (where.createdAt as any).lte = parsedTo;
-        }
-      }
-
-      const pendingWhere: import('@prisma/client').Prisma.OrderItemWhereInput = {
-        order: { orderStatus: { not: 'CANCELLED' } },
-        settlement: null,
-      };
-      if (sellerId) pendingWhere.sellerId = sellerId;
-      if (orderItemId) pendingWhere.id = orderItemId.length === 36 ? orderItemId : ({ contains: orderItemId } as any);
-      if (dateFrom || dateTo) {
-        pendingWhere.createdAt = {};
-        if (dateFrom) {
-          const parsedFrom = new Date(dateFrom);
-          if (!isNaN(parsedFrom.getTime())) (pendingWhere.createdAt as any).gte = parsedFrom;
-        }
-        if (dateTo) {
-          const parsedTo = new Date(dateTo);
-          if (!isNaN(parsedTo.getTime())) (pendingWhere.createdAt as any).lte = parsedTo;
-        }
-      }
+      const { where, pendingWhere } = this.buildSettlementFilters(query);
 
       let projectedSettlements: any[] = [];
       let pendingCount = 0;
@@ -1632,6 +1644,66 @@ export class AdminService {
     }
   }
 
+  // getAllSettlements only sums the CURRENT PAGE's amounts client-side, so
+  // admin stat cards (Gross/Pending/Settled) drifted whenever there was more
+  // than one page of records. This computes true totals across every
+  // matching record (same status/seller/date filters, no pagination) so the
+  // three numbers are internally consistent: gross === pending + settled.
+  async getSettlementsSummary(query: {
+    status?: string;
+    sellerId?: string;
+    orderItemId?: string;
+    dateFrom?: string;
+    dateTo?: string;
+  }) {
+    try {
+      const { status } = query;
+      const { where, pendingWhere } = this.buildSettlementFilters(query);
+
+      let projectedAmount = 0;
+      if (!status || status === 'PROJECTED') {
+        const pendingItems = (this.prisma as any).orderItem
+          ? await this.prisma.orderItem.findMany({
+              where: pendingWhere,
+              include: {
+                sellerOffer: { include: { catalogProduct: true } },
+                seller: true,
+              },
+            })
+          : [];
+        projectedAmount = pendingItems.reduce((sum: number, item: any) => {
+          const input = buildPayoutInputFromOrderItem(item);
+          const breakdown = calculateSellerPayout(input);
+          return sum + breakdown.netPayout.toNumber();
+        }, 0);
+      }
+
+      let settledAmount = 0;
+      let paidAmount = 0;
+      if (!status || status !== 'PROJECTED') {
+        const settledRecords = (this.prisma as any).sellerSettlement
+          ? await this.prisma.sellerSettlement.findMany({
+              where,
+              select: { amount: true, payoutStatus: true },
+            })
+          : [];
+        for (const s of settledRecords) {
+          const amt = Number(s.amount) || 0;
+          settledAmount += amt;
+          if (s.payoutStatus === 'PAID') paidAmount += amt;
+        }
+      }
+
+      const gross = projectedAmount + settledAmount;
+      const totalSettled = paidAmount;
+      const pending = gross - totalSettled;
+
+      return { gross, pending, totalSettled };
+    } catch (error) {
+      this.logger.warn(`Failed to compute settlements summary: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      return { gross: 0, pending: 0, totalSettled: 0 };
+    }
+  }
 
   async markSettlementPaid(
     settlementId: string,

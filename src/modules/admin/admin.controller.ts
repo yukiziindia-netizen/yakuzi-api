@@ -379,6 +379,17 @@ export class AdminController {
     return { message: 'Settlements retrieved successfully', data };
   }
 
+  @Get('settlements/summary')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Get true gross/pending/settled totals across ALL matching settlements (not just one page)',
+  })
+  @ApiResponse({ status: 200, description: 'Settlement totals returned' })
+  async getSettlementsSummary(@Query() query: AdminQuerySettlementsDto) {
+    const data = await this.adminService.getSettlementsSummary(query);
+    return { message: 'Settlement summary retrieved successfully', data };
+  }
+
   @Post('settlements/sync')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
