@@ -101,7 +101,11 @@ export class AdminService {
         safeQuery(
           () =>
             this.prisma.order.aggregate({
-              where: dateWhere,
+              where: {
+                paymentStatus: PaymentStatus.SUCCESS,
+                orderStatus: { notIn: [OrderStatus.CANCELLED, OrderStatus.RETURNED] },
+                ...dateWhere,
+              },
               _sum: { totalAmount: true },
             }),
           { _sum: { totalAmount: null } },
