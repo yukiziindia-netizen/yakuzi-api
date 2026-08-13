@@ -146,3 +146,54 @@ describe('AdminService.adminUpdateProduct — catalog product resolution', () =>
     ).rejects.toThrow('This listing has no catalog product to edit');
   });
 });
+
+describe('AdminService.getDashboard — Platform Revenue', () => {
+  const buildForDashboard = () => {
+    const emptyResult = { _sum: { totalAmount: null }, _count: { id: 0 } };
+    const prisma = {
+      user: { count: jest.fn().mockResolvedValue(0) },
+      order: {
+        count: jest.fn().mockResolvedValue(0),
+        aggregate: jest.fn().mockResolvedValue(emptyResult),
+        findMany: jest.fn().mockResolvedValue([]),
+      },
+      payment: { count: jest.fn().mockResolvedValue(0) },
+      sellerSettlement: { count: jest.fn().mockResolvedValue(0) },
+      sellerOffer: { count: jest.fn().mockResolvedValue(0) },
+      ticket: { count: jest.fn().mockResolvedValue(0) },
+    };
+    const service = new AdminService(
+      prisma as never,
+      {} as never,
+      {} as never,
+      {} as never,
+    );
+    return { service, prisma };
+  };
+
+  it('scopes Platform Revenue to paid, non-cancelled/returned orders', async () => {
+    const { service, prisma } = buildForDashboard();
+    await service.getDashboard({});
+    const revenueCall = prisma.order.aggregate.mock.calls[0][0];
+    expect(revenueCall.where).toMatchObject({
+      paymentStatus: PaymentStatus.SUCCESS,
+      orderStatus: { notIn: [OrderStatus.CANCELLED, OrderStatus.RETURNED] },
+    });
+  });
+
+  it('still counts every order (regardless of payment) toward Total Orders', async () => {
+    const { service, prisma } = buildForDashboard();
+    await service.getDashboard({});
+    expect(prisma.order.count).toHaveBeenCalledWith({ where: {} });
+  });
+
+  it('leaves the DELIVERED-only referral revenue aggregate untouched', async () => {
+    const { service, prisma } = buildForDashboard();
+    await service.getDashboard({});
+    const referralCall = prisma.order.aggregate.mock.calls[1][0];
+    expect(referralCall.where).toMatchObject({
+      referralCodeId: { not: null },
+      orderStatus: OrderStatus.DELIVERED,
+    });
+  });
+});
