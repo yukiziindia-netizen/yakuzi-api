@@ -30,6 +30,7 @@ const build = (pushResult: Record<string, unknown> = {}) => {
     notificationsService as never,
     ordersService as never,
     sellersService as never,
+    {} as never,
   );
   return { service, prisma, ordersService };
 };
@@ -105,6 +106,7 @@ describe('AdminService.adminUpdateProduct — catalog product resolution', () =>
       notificationsService as never,
       ordersService as never,
       sellersService as never,
+      {} as never,
     );
     return { service, prisma };
   };
@@ -178,6 +180,7 @@ describe('AdminService.getSettlementsSummary — totals across all pages', () =>
       {} as never,
       {} as never,
       {} as never,
+      {} as never,
     );
     return { service, prisma };
   };
@@ -247,6 +250,7 @@ describe('AdminService.getDashboard — Platform Revenue', () => {
       {} as never,
       {} as never,
       {} as never,
+      {} as never,
     );
     return { service, prisma };
   };
@@ -275,5 +279,107 @@ describe('AdminService.getDashboard — Platform Revenue', () => {
       referralCodeId: { not: null },
       orderStatus: OrderStatus.DELIVERED,
     });
+  });
+});
+
+describe('AdminService.approveUser — seller approval email', () => {
+  const buildForApprove = (user: {
+    id: string;
+    role: string;
+    email: string | null;
+    status: string;
+    sellerProfile: { userId: string; email: string | null; companyName: string } | null;
+  }) => {
+    const prisma = {
+      user: {
+        findUnique: jest.fn().mockResolvedValue(user),
+        update: jest.fn().mockResolvedValue(user),
+      },
+      sellerProfile: { update: jest.fn().mockResolvedValue({}) },
+      buyerProfile: { findUnique: jest.fn().mockResolvedValue(null) },
+    };
+    const notificationsService = { notifyUserVerified: jest.fn().mockResolvedValue(undefined) };
+    const ordersService = {};
+    const sellersService = {};
+    const mailService = { sendMail: jest.fn().mockResolvedValue({ sent: true, retryable: false }) };
+    const service = new AdminService(
+      prisma as never,
+      notificationsService as never,
+      ordersService as never,
+      sellersService as never,
+      mailService as never,
+    );
+    return { service, mailService };
+  };
+
+  it('emails the seller profile address when the approved user is a seller', async () => {
+    const { service, mailService } = buildForApprove({
+      id: 'user-1',
+      role: 'SELLER',
+      email: 'login@example.com',
+      status: 'PENDING',
+      sellerProfile: { userId: 'user-1', email: 'company@example.com', companyName: 'Acme' },
+    });
+
+    await service.approveUser('user-1');
+
+    expect(mailService.sendMail).toHaveBeenCalledWith(
+      expect.objectContaining({ to: 'company@example.com' }),
+    );
+  });
+
+  it('falls back to the login email when the seller profile has none', async () => {
+    const { service, mailService } = buildForApprove({
+      id: 'user-1',
+      role: 'SELLER',
+      email: 'login@example.com',
+      status: 'PENDING',
+      sellerProfile: { userId: 'user-1', email: null, companyName: 'Acme' },
+    });
+
+    await service.approveUser('user-1');
+
+    expect(mailService.sendMail).toHaveBeenCalledWith(
+      expect.objectContaining({ to: 'login@example.com' }),
+    );
+  });
+
+  it('does not email, and does not throw, when a buyer is approved', async () => {
+    const { service, mailService } = buildForApprove({
+      id: 'user-2',
+      role: 'BUYER',
+      email: 'buyer@example.com',
+      status: 'PENDING',
+      sellerProfile: null,
+    });
+
+    await expect(service.approveUser('user-2')).resolves.toBeDefined();
+    expect(mailService.sendMail).not.toHaveBeenCalled();
+  });
+
+  it('does not throw when the seller has no email anywhere on file', async () => {
+    const { service, mailService } = buildForApprove({
+      id: 'user-1',
+      role: 'SELLER',
+      email: null,
+      status: 'PENDING',
+      sellerProfile: { userId: 'user-1', email: null, companyName: 'Acme' },
+    });
+
+    await expect(service.approveUser('user-1')).resolves.toBeDefined();
+    expect(mailService.sendMail).not.toHaveBeenCalled();
+  });
+
+  it('approval succeeds even when the mailer reports failure', async () => {
+    const { service, mailService } = buildForApprove({
+      id: 'user-1',
+      role: 'SELLER',
+      email: 'login@example.com',
+      status: 'PENDING',
+      sellerProfile: { userId: 'user-1', email: 'company@example.com', companyName: 'Acme' },
+    });
+    mailService.sendMail.mockResolvedValue({ sent: false, retryable: true });
+
+    await expect(service.approveUser('user-1')).resolves.toBeDefined();
   });
 });

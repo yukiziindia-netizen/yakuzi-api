@@ -34,6 +34,7 @@ import { AdminReplyTicketDto } from './dto/admin-reply-ticket.dto';
 import { NotificationsService } from '../notifications/notifications.service';
 import { SellersService } from '../sellers/sellers.service';
 import { UpdateSellerProfileDto } from '../sellers/dto/update-seller-profile.dto';
+import { MailService } from '../mail/mail.service';
 
 @Injectable()
 export class AdminService {
@@ -44,6 +45,7 @@ export class AdminService {
     private readonly notificationsService: NotificationsService,
     private readonly ordersService: OrdersService,
     private readonly sellersService: SellersService,
+    private readonly mailService: MailService,
   ) {}
 
   // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
@@ -439,7 +441,45 @@ export class AdminService {
 
     this.logger.log(`User ${userId} approved by admin`);
     await this.notificationsService.notifyUserVerified(userId, user.role);
+
+    if (user.sellerProfile) {
+      await this.emailSellerApproved(user.sellerProfile, userId, updatedUser.email);
+    }
+
     return updatedUser;
+  }
+
+  /**
+   * Best-effort — approval has already succeeded and been persisted by the
+   * time this runs, so a mail failure here must never surface to the caller.
+   */
+  private async emailSellerApproved(
+    sellerProfile: { email: string | null; companyName: string },
+    userId: string,
+    loginEmail: string | null,
+  ): Promise<void> {
+    const to = sellerProfile.email?.trim() || loginEmail?.trim();
+    if (!to) return;
+
+    const result = await this.mailService.sendMail({
+      to,
+      subject: 'Your Yukizi seller account has been approved!',
+      text: `Hello ${sellerProfile.companyName},\n\nYour Yukizi seller account has been approved. You can now log in to your seller dashboard and start listing products.\n\nYukizi`,
+      html: `<p>Hello ${this.escape(sellerProfile.companyName)},</p><p>Your Yukizi seller account has been approved. You can now log in to your seller dashboard and start listing products.</p><p>Yukizi</p>`,
+    });
+    if (!result.sent) {
+      this.logger.warn(
+        `Could not email seller ${userId} about their approval (retryable=${result.retryable})`,
+      );
+    }
+  }
+
+  private escape(value: string): string {
+    return String(value ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
   }
 
   async rejectUser(userId: string) {
