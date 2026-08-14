@@ -64,6 +64,11 @@ export class QueryProductDto {
   @IsOptional()
   isNew?: boolean;
 
+  @ApiPropertyOptional({ example: true, description: 'Filter to products admin has flagged as Yukizi Choice' })
+  @IsBoolean()
+  @IsOptional()
+  isYukiziChoice?: boolean;
+
   @ApiPropertyOptional({ example: true })
   @IsBoolean()
   @IsOptional()

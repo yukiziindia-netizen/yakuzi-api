@@ -976,6 +976,12 @@ export class ProductsService {
       });
     }
 
+    // Yukizi Choice is a curated admin flag on the product itself, distinct
+    // from isNew above — same field the "Yukizi Choice" badge reads elsewhere.
+    if (query.isYukiziChoice) {
+      andConditions.push({ isYukiziChoice: true });
+    }
+
     // Combine filters that target the underlying seller products
     const productConditions: Prisma.SellerOfferWhereInput[] = [
       { isActive: true, deletedAt: null },
@@ -985,8 +991,11 @@ export class ProductsService {
       productConditions.push({ discountType: { not: null } });
     }
 
+    // Best Selling is the curated isBestSeller flag on the product (matches
+    // the badge shown elsewhere), not "has ever had an order" — that's a much
+    // looser condition every product with a single sale would pass.
     if (query.isBestSelling) {
-      productConditions.push({ analytics: { orders: { gt: 0 } } });
+      andConditions.push({ isBestSeller: true });
     }
 
     if (query.minPrice !== undefined || query.maxPrice !== undefined) {
@@ -1677,6 +1686,19 @@ export class ProductsService {
       include: { subCategories: true },
       orderBy: { name: 'asc' },
     });
+  }
+
+  // Real manufacturer names for the buyer Filters panel's Manufacturer/Publisher
+  // section — only from products a buyer could actually see, so no option
+  // filters to zero results.
+  async getManufacturers() {
+    const rows = await this.prisma.catalogProduct.findMany({
+      where: { isActive: true, deletedAt: null, manufacturer: { not: '' } },
+      select: { manufacturer: true },
+      distinct: ['manufacturer'],
+      orderBy: { manufacturer: 'asc' },
+    });
+    return rows.map((r) => ({ id: r.manufacturer, name: r.manufacturer }));
   }
 
   async getFeatured(slot: any) {
