@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { Prisma, Role } from '@prisma/client';
 import { PrismaService } from '../../database/prisma.service';
 
 /**
@@ -104,7 +104,10 @@ export class InvoiceService {
   constructor(private readonly prisma: PrismaService) {}
 
   /**
-   * Invoices for an order, for the buyer who owns it.
+   * Invoices for an order, for whoever is allowed to see them — the owning
+   * buyer or an admin get every invoice on the order, a seller gets only
+   * the invoice(s) for items they themselves supplied. See
+   * authorizeAndScope for the authorization/scoping logic.
    *
    * The ownership guard lives here, on the path a request can reach. The
    * system path below deliberately has no user to check.
@@ -113,12 +116,49 @@ export class InvoiceService {
     const order = await this.loadOrder(orderId);
     if (!order) throw new NotFoundException('Order not found');
 
-    // A buyer may only see their own invoices.
-    if (order.buyerId !== userId) {
+    const scoped = await this.authorizeAndScope(userId, order);
+    if (!scoped) {
       throw new ForbiddenException('This order belongs to another account');
     }
 
-    return this.build(order);
+    return this.build(scoped);
+  }
+
+  /**
+   * Who may see this order's invoices, and what they may see of it.
+   *
+   * The buyer who placed the order and any admin see every invoice on it.
+   * A seller sees only invoices for items they themselves supplied — the
+   * same multi-seller isolation OrdersService.getOrderDetail already
+   * applies, needed here too because build() otherwise produces one
+   * invoice per seller present on the order. Keep this filter in sync with
+   * that one if the definition of "which items belong to a seller" ever
+   * changes.
+   *
+   * Returns null when the caller may not see this order at all.
+   */
+  private async authorizeAndScope(
+    userId: string,
+    order: LoadedOrder,
+  ): Promise<LoadedOrder | null> {
+    if (order.buyerId === userId) return order;
+
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { role: true, sellerProfile: { select: { id: true } } },
+    });
+    if (!user) return null;
+
+    if (user.role === Role.ADMIN) return order;
+
+    if (user.role === Role.SELLER && user.sellerProfile) {
+      const sellerId = user.sellerProfile.id;
+      const items = order.items.filter((item) => item.sellerId === sellerId);
+      if (items.length === 0) return null;
+      return { ...order, items };
+    }
+
+    return null;
   }
 
   /**

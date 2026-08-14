@@ -1,4 +1,5 @@
 import { ForbiddenException, NotFoundException } from '@nestjs/common';
+import { Role } from '@prisma/client';
 import { InvoiceService } from './invoice.service';
 
 const order = {
@@ -38,13 +39,16 @@ const order = {
   ],
 };
 
-const prismaWith = (found: unknown) =>
-  ({ order: { findUnique: jest.fn().mockResolvedValue(found) } }) as never;
+const prismaWith = (found: unknown, user: unknown = null) =>
+  ({
+    order: { findUnique: jest.fn().mockResolvedValue(found) },
+    user: { findUnique: jest.fn().mockResolvedValue(user) },
+  }) as never;
 
 describe('InvoiceService', () => {
   describe('getInvoicesForOrder (guarded)', () => {
-    it('refuses an order belonging to another account', async () => {
-      const service = new InvoiceService(prismaWith(order));
+    it('refuses an order belonging to another account with no matching role', async () => {
+      const service = new InvoiceService(prismaWith(order, null));
       await expect(
         service.getInvoicesForOrder('someone-else', order.id),
       ).rejects.toBeInstanceOf(ForbiddenException);
@@ -57,18 +61,125 @@ describe('InvoiceService', () => {
       ).rejects.toBeInstanceOf(NotFoundException);
     });
 
-    it('returns invoices to the owner', async () => {
+    it('returns invoices to the owning buyer', async () => {
       const service = new InvoiceService(prismaWith(order));
       const invoices = await service.getInvoicesForOrder('buyer-1', order.id);
       expect(invoices).toHaveLength(1);
       expect(invoices[0].totalAmount).toBe(185.58);
-      // Pinned against the real order this was verified on: 185.58 = 168.71 +
-      // 8.44 + 8.43. totalAmount alone does not exercise round() — it is
-      // algebraically taxableValue + (stored - taxableValue), which cancels
-      // back to `stored` regardless of rounding. These do.
       expect(invoices[0].subtotal).toBe(168.71);
       expect(invoices[0].cgst).toBe(8.44);
       expect(invoices[0].sgst).toBe(8.43);
+    });
+
+    it('returns the invoice to the seller who supplied the items on this order', async () => {
+      const service = new InvoiceService(
+        prismaWith(order, {
+          role: Role.SELLER,
+          sellerProfile: { id: 'seller-1' },
+        }),
+      );
+      const invoices = await service.getInvoicesForOrder(
+        'seller-user-1',
+        order.id,
+      );
+      expect(invoices).toHaveLength(1);
+      expect(invoices[0].seller.name).toBe('Galazy Enterprises');
+    });
+
+    it('refuses a seller who has no items on this order', async () => {
+      const service = new InvoiceService(
+        prismaWith(order, {
+          role: Role.SELLER,
+          sellerProfile: { id: 'some-other-seller' },
+        }),
+      );
+      await expect(
+        service.getInvoicesForOrder('seller-user-2', order.id),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+    });
+
+    it('returns the invoice to an admin', async () => {
+      const service = new InvoiceService(
+        prismaWith(order, { role: Role.ADMIN, sellerProfile: null }),
+      );
+      const invoices = await service.getInvoicesForOrder('admin-1', order.id);
+      expect(invoices).toHaveLength(1);
+    });
+
+    it('returns every invoice on a multi-seller order to an admin, unfiltered', async () => {
+      const multiSellerOrder = {
+        ...order,
+        items: [
+          ...order.items,
+          {
+            sellerId: 'seller-2',
+            quantity: 1,
+            totalPrice: 50,
+            seller: {
+              companyName: 'Other Seller',
+              gstNumber: null,
+              address: 'X',
+              city: 'Kolkata',
+              state: 'West Bengal',
+              pincode: '700001',
+              email: null,
+            },
+            sellerOffer: {
+              name: 'Other Item',
+              gstPercent: 10,
+              isTaxIncluded: true,
+            },
+          },
+        ],
+      };
+      const service = new InvoiceService(
+        prismaWith(multiSellerOrder, { role: Role.ADMIN, sellerProfile: null }),
+      );
+      const invoices = await service.getInvoicesForOrder(
+        'admin-1',
+        multiSellerOrder.id,
+      );
+      expect(invoices).toHaveLength(2);
+    });
+
+    it('only shows a seller their own items on a multi-seller order', async () => {
+      const multiSellerOrder = {
+        ...order,
+        items: [
+          ...order.items,
+          {
+            sellerId: 'seller-2',
+            quantity: 1,
+            totalPrice: 50,
+            seller: {
+              companyName: 'Other Seller',
+              gstNumber: null,
+              address: 'X',
+              city: 'Kolkata',
+              state: 'West Bengal',
+              pincode: '700001',
+              email: null,
+            },
+            sellerOffer: {
+              name: 'Other Item',
+              gstPercent: 10,
+              isTaxIncluded: true,
+            },
+          },
+        ],
+      };
+      const service = new InvoiceService(
+        prismaWith(multiSellerOrder, {
+          role: Role.SELLER,
+          sellerProfile: { id: 'seller-1' },
+        }),
+      );
+      const invoices = await service.getInvoicesForOrder(
+        'seller-user-1',
+        multiSellerOrder.id,
+      );
+      expect(invoices).toHaveLength(1);
+      expect(invoices[0].seller.name).toBe('Galazy Enterprises');
     });
   });
 
