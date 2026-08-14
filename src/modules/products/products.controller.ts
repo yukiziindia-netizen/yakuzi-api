@@ -150,6 +150,15 @@ export class ProductsController {
     return { message: 'Categories retrieved successfully', data };
   }
 
+  @Get('manufacturers')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'List real manufacturer names for the buyer Filters panel' })
+  @ApiResponse({ status: 200, description: 'Manufacturer list returned' })
+  async getManufacturers() {
+    const data = await this.productsService.getManufacturers();
+    return { message: 'Manufacturers retrieved successfully', data };
+  }
+
   @Throttle({ default: { limit: 100, ttl: 60000 } })
   @Get('suggestions')
   @HttpCode(HttpStatus.OK)
