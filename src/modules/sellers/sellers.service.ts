@@ -9,6 +9,7 @@ import { PrismaService } from '../../database/prisma.service';
 import { IdfyService } from '../verification/idfy.service';
 import { CreateSellerProfileDto } from './dto/create-seller-profile.dto';
 import { UpdateSellerProfileDto } from './dto/update-seller-profile.dto';
+import { MailService } from '../mail/mail.service';
 
 @Injectable()
 export class SellersService {
@@ -17,6 +18,7 @@ export class SellersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly idfyService: IdfyService,
+    private readonly mailService: MailService,
   ) {}
 
   /**
@@ -82,7 +84,46 @@ export class SellersService {
     });
 
     this.logger.log(`Seller profile created for user ${userId}`);
+    await this.emailAdminNewSeller(userId, profile.companyName);
     return profile;
+  }
+
+  /**
+   * Best-effort — the seller profile has already been created by the time
+   * this runs, so a mail failure here must never fail the signup.
+   */
+  private async emailAdminNewSeller(userId: string, companyName: string): Promise<void> {
+    const to = process.env.ADMIN_NOTIFICATION_EMAIL?.trim();
+    if (!to) return;
+
+    const adminAppUrl = process.env.ADMIN_APP_URL?.trim() || 'https://admin.yukizi.com';
+    const reviewUrl = `${adminAppUrl}/users/${userId}`;
+
+    const result = await this.mailService.sendMail({
+      to,
+      subject: `New seller application: ${companyName}`,
+      text: `A new seller has applied for verification.\n\nCompany: ${companyName}\n\nReview: ${reviewUrl}`,
+      html: `<p>A new seller has applied for verification.</p><p>Company: <strong>${this.escape(companyName)}</strong></p><p><a href="${reviewUrl}">Review this seller</a></p>`,
+    });
+    if (!result.sent) {
+      this.logger.warn(
+        `Could not email admin about new seller signup for user ${userId} (retryable=${result.retryable})`,
+      );
+    }
+  }
+
+  /**
+   * HTML-escapes free text before it goes into an email's html field.
+   * `companyName` is seller-supplied and unsanitized — same convention as
+   * InvoiceEmailService.escape() (src/modules/orders/invoice-email.service.ts)
+   * and AdminService.escape() (src/modules/admin/admin.service.ts).
+   */
+  private escape(value: string): string {
+    return String(value ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
   }
 
   /**
