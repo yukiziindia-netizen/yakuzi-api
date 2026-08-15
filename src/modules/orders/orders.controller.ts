@@ -114,7 +114,7 @@ export class OrdersController {
   }
 
   @Get(':id/invoices')
-  @Roles(Role.BUYER, Role.ADMIN)
+  @Roles(Role.BUYER, Role.SELLER, Role.ADMIN)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary:
@@ -131,6 +131,10 @@ export class OrdersController {
     return { message: 'Invoices retrieved successfully', data };
   }
 
+  // SELLER intentionally excluded: resendForOrder always emails the order's
+  // BUYER — opening this to sellers would let a seller trigger an email to
+  // a buyer they don't control, with no server-side check that they have
+  // any legitimate reason to.
   @Post(':id/invoice/email')
   @Roles(Role.BUYER, Role.ADMIN)
   @Throttle({ default: { limit: 3, ttl: 60000 } })
