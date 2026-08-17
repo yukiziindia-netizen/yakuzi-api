@@ -88,14 +88,23 @@ export class ShiprocketSyncService {
     }
 
     try {
-      await this.prisma.order.update({
-        where: { id: order.id },
-        data: { orderStatus: mapped },
-      });
-
+      // Order matters here: syncTrackingFields self-protects (it catches
+      // and logs its own DB errors, never throwing), so this try/catch is
+      // really only guarding order.update. Writing tracking fields first
+      // means a silent syncTrackingFields failure leaves orderStatus
+      // un-flipped, so the order stays out of the terminal-state filter and
+      // gets retried next poll. If we flipped the status first instead, a
+      // terminal mapped status (DELIVERED/RETURNED/CANCELLED) would drop
+      // the order out of future polls, stranding the awb/courier write with
+      // no retry. Don't swap these back without re-reading this comment.
       await this.ordersService.syncTrackingFields(order.id, {
         awb_code: tracking.awb_code,
         courier: tracking.courier,
+      });
+
+      await this.prisma.order.update({
+        where: { id: order.id },
+        data: { orderStatus: mapped },
       });
     } catch (error: any) {
       this.logger.warn(
