@@ -32,19 +32,19 @@ describe('ShiprocketSyncService.syncInFlightOrders', () => {
     expect(prisma.order.findMany).toHaveBeenCalledWith({
       where: {
         shiprocketOrderId: { not: null },
-        status: {
+        orderStatus: {
           notIn: [OrderStatus.DELIVERED, OrderStatus.RETURNED, OrderStatus.CANCELLED],
         },
       },
-      select: { id: true, shiprocketOrderId: true, status: true },
+      select: { id: true, shiprocketOrderId: true, orderStatus: true },
     });
   });
 
   it('continues processing remaining orders when one order fails', async () => {
     const { service, prisma, shiprocketService } = build();
     prisma.order.findMany.mockResolvedValue([
-      { id: 'order-1', shiprocketOrderId: 'sr-1', status: OrderStatus.SHIPPED },
-      { id: 'order-2', shiprocketOrderId: 'sr-2', status: OrderStatus.SHIPPED },
+      { id: 'order-1', shiprocketOrderId: 'sr-1', orderStatus: OrderStatus.SHIPPED },
+      { id: 'order-2', shiprocketOrderId: 'sr-2', orderStatus: OrderStatus.SHIPPED },
     ]);
     shiprocketService.trackOrder
       .mockRejectedValueOnce(new Error('Shiprocket down'))
@@ -60,15 +60,15 @@ describe('ShiprocketSyncService.syncInFlightOrders', () => {
     expect(prisma.order.update).toHaveBeenCalledTimes(1);
     expect(prisma.order.update).toHaveBeenCalledWith({
       where: { id: 'order-2' },
-      data: { status: OrderStatus.DELIVERED },
+      data: { orderStatus: OrderStatus.DELIVERED },
     });
   });
 
   it('continues processing remaining orders when one order\'s DB write fails', async () => {
     const { service, prisma, shiprocketService } = build();
     prisma.order.findMany.mockResolvedValue([
-      { id: 'order-1', shiprocketOrderId: 'sr-1', status: OrderStatus.SHIPPED },
-      { id: 'order-2', shiprocketOrderId: 'sr-2', status: OrderStatus.SHIPPED },
+      { id: 'order-1', shiprocketOrderId: 'sr-1', orderStatus: OrderStatus.SHIPPED },
+      { id: 'order-2', shiprocketOrderId: 'sr-2', orderStatus: OrderStatus.SHIPPED },
     ]);
     shiprocketService.trackOrder.mockResolvedValue({
       current_status: 'Delivered',
@@ -98,12 +98,12 @@ describe('ShiprocketSyncService.syncOneOrder', () => {
     await service.syncOneOrder({
       id: 'order-1',
       shiprocketOrderId: 'sr-1',
-      status: OrderStatus.SHIPPED,
+      orderStatus: OrderStatus.SHIPPED,
     });
 
     expect(prisma.order.update).toHaveBeenCalledWith({
       where: { id: 'order-1' },
-      data: { status: OrderStatus.OUT_FOR_DELIVERY },
+      data: { orderStatus: OrderStatus.OUT_FOR_DELIVERY },
     });
     expect(ordersService.syncTrackingFields).toHaveBeenCalledWith('order-1', {
       awb_code: 'AWB123',
@@ -122,7 +122,7 @@ describe('ShiprocketSyncService.syncOneOrder', () => {
     await service.syncOneOrder({
       id: 'order-1',
       shiprocketOrderId: 'sr-1',
-      status: OrderStatus.OUT_FOR_DELIVERY,
+      orderStatus: OrderStatus.OUT_FOR_DELIVERY,
     });
 
     expect(prisma.order.update).not.toHaveBeenCalled();
@@ -138,7 +138,7 @@ describe('ShiprocketSyncService.syncOneOrder', () => {
     await service.syncOneOrder({
       id: 'order-1',
       shiprocketOrderId: 'sr-1',
-      status: OrderStatus.SHIPPED,
+      orderStatus: OrderStatus.SHIPPED,
     });
 
     expect(prisma.order.update).not.toHaveBeenCalled();
@@ -150,7 +150,7 @@ describe('ShiprocketSyncService.syncOneOrder', () => {
     await service.syncOneOrder({
       id: 'order-1',
       shiprocketOrderId: null,
-      status: OrderStatus.SHIPPED,
+      orderStatus: OrderStatus.SHIPPED,
     });
 
     expect(shiprocketService.trackOrder).not.toHaveBeenCalled();

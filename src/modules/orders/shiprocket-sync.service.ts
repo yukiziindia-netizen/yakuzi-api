@@ -9,11 +9,11 @@ import { mapShiprocketStatus, isForwardStatusMove } from './shiprocket-status-ma
 interface PollableOrder {
   id: string;
   shiprocketOrderId: string | null;
-  status: OrderStatus;
+  orderStatus: OrderStatus;
 }
 
 /**
- * Keeps Order.status in sync with Shiprocket's own tracking status for every
+ * Keeps Order.orderStatus in sync with Shiprocket's own tracking status for every
  * order that's been pushed to Shiprocket (shiprocketOrderId set) and isn't
  * yet in a terminal state. Runs every 30 minutes — order volume on this
  * project is low enough that polling stays well under Shiprocket's rate
@@ -39,7 +39,7 @@ export class ShiprocketSyncService {
     const orders = await this.prisma.order.findMany({
       where: {
         shiprocketOrderId: { not: null },
-        status: {
+        orderStatus: {
           notIn: [
             OrderStatus.DELIVERED,
             OrderStatus.RETURNED,
@@ -47,7 +47,7 @@ export class ShiprocketSyncService {
           ],
         },
       },
-      select: { id: true, shiprocketOrderId: true, status: true },
+      select: { id: true, shiprocketOrderId: true, orderStatus: true },
     });
 
     // Intentionally sequential (not Promise.all) — avoids tripping
@@ -83,14 +83,14 @@ export class ShiprocketSyncService {
       return;
     }
 
-    if (!isForwardStatusMove(order.status, mapped)) {
+    if (!isForwardStatusMove(order.orderStatus, mapped)) {
       return;
     }
 
     try {
       await this.prisma.order.update({
         where: { id: order.id },
-        data: { status: mapped },
+        data: { orderStatus: mapped },
       });
 
       await this.ordersService.syncTrackingFields(order.id, {
