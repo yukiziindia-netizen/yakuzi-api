@@ -50,6 +50,9 @@ export class ShiprocketSyncService {
       select: { id: true, shiprocketOrderId: true, status: true },
     });
 
+    // Intentionally sequential (not Promise.all) — avoids tripping
+    // Shiprocket's rate limits by hammering their API with concurrent
+    // requests.
     for (const order of orders) {
       await this.syncOneOrder(order);
     }
@@ -58,11 +61,7 @@ export class ShiprocketSyncService {
   async syncOneOrder(order: PollableOrder): Promise<void> {
     if (!order.shiprocketOrderId) return;
 
-    let tracking: {
-      current_status?: string;
-      awb_code?: string;
-      courier?: string;
-    };
+    let tracking: Awaited<ReturnType<ShiprocketService['trackOrder']>>;
     try {
       tracking = await this.shiprocketService.trackOrder(
         order.shiprocketOrderId,
@@ -88,14 +87,20 @@ export class ShiprocketSyncService {
       return;
     }
 
-    await this.prisma.order.update({
-      where: { id: order.id },
-      data: { status: mapped },
-    });
+    try {
+      await this.prisma.order.update({
+        where: { id: order.id },
+        data: { status: mapped },
+      });
 
-    await this.ordersService.syncTrackingFields(order.id, {
-      awb_code: tracking.awb_code,
-      courier: tracking.courier,
-    });
+      await this.ordersService.syncTrackingFields(order.id, {
+        awb_code: tracking.awb_code,
+        courier: tracking.courier,
+      });
+    } catch (error: any) {
+      this.logger.warn(
+        `Failed to apply Shiprocket status update for order ${order.id}: ${error?.message}`,
+      );
+    }
   }
 }

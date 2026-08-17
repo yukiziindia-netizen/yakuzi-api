@@ -63,6 +63,27 @@ describe('ShiprocketSyncService.syncInFlightOrders', () => {
       data: { status: OrderStatus.DELIVERED },
     });
   });
+
+  it('continues processing remaining orders when one order\'s DB write fails', async () => {
+    const { service, prisma, shiprocketService } = build();
+    prisma.order.findMany.mockResolvedValue([
+      { id: 'order-1', shiprocketOrderId: 'sr-1', status: OrderStatus.SHIPPED },
+      { id: 'order-2', shiprocketOrderId: 'sr-2', status: OrderStatus.SHIPPED },
+    ]);
+    shiprocketService.trackOrder.mockResolvedValue({
+      current_status: 'Delivered',
+      awb_code: 'AWB',
+      courier: 'DTDC',
+    });
+    prisma.order.update
+      .mockRejectedValueOnce(new Error('DB connection lost'))
+      .mockResolvedValueOnce({});
+
+    await service.syncInFlightOrders();
+
+    expect(shiprocketService.trackOrder).toHaveBeenCalledTimes(2);
+    expect(prisma.order.update).toHaveBeenCalledTimes(2);
+  });
 });
 
 describe('ShiprocketSyncService.syncOneOrder', () => {
