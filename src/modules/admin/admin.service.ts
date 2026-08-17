@@ -1092,6 +1092,7 @@ export class AdminService {
                     commissionPercent: true,
                     commissionGstPercent: true,
                     images: {
+                      orderBy: { order: 'asc' },
                       select: { url: true },
                     },
                     category: {
@@ -1115,6 +1116,7 @@ export class AdminService {
                         commissionPercent: true,
                         commissionGstPercent: true,
                         images: {
+                          orderBy: { order: 'asc' },
                           select: { url: true },
                         },
                         category: {
@@ -2530,7 +2532,7 @@ export class AdminService {
           subCategory: { select: { id: true, name: true } },
           extraCategories: { select: { id: true, name: true, slug: true } },
           extraSubCategories: { select: { id: true, name: true, slug: true, categoryId: true } },
-          images: { select: { id: true, url: true } },
+          images: { select: { id: true, url: true }, orderBy: { order: 'asc' } },
           productVariants: true,
         },
         orderBy: { name: 'asc' },
@@ -2812,7 +2814,7 @@ export class AdminService {
           : undefined,
         images: dto.images?.length
           ? {
-              create: dto.images.map((url) => ({ url })),
+              create: dto.images.map((url, order) => ({ url, order })),
             }
           : undefined,
       },
@@ -3152,10 +3154,15 @@ export class AdminService {
       });
 
       if (dto.images.length > 0) {
+        // order preserves the position the admin arranged in the Media
+        // grid - the array arrives in that order from the frontend, and
+        // there is nothing else on this row (createMany gives every row in
+        // one save the same createdAt) that could stand in for it.
         await this.prisma.catalogProductImage.createMany({
-          data: dto.images.map((url) => ({
+          data: dto.images.map((url, order) => ({
             masterProductId: id,
             url,
+            order,
           })),
         });
       }

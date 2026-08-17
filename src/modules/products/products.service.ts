@@ -855,7 +855,7 @@ export class ProductsService {
     return {
           category: true,
           subCategory: true,
-          images: { take: 1 },
+          images: { orderBy: { order: 'asc' }, take: 1 },
           sellerOffers: {
             where: { isActive: true, deletedAt: null },
             select: {
@@ -1187,7 +1187,7 @@ export class ProductsService {
           include: {
             category: true,
             subCategory: true,
-            images: true,
+            images: { orderBy: { order: 'asc' } },
             sellerOffers: {
               where: { deletedAt: null },
               include: {
@@ -1236,7 +1236,7 @@ export class ProductsService {
       if (!masterProductId) {
         catalogMatch = await this.prisma.catalogProduct.findFirst({
           where: { name: listing.name, deletedAt: null },
-          include: { images: true }
+          include: { images: { orderBy: { order: 'asc' } } }
         });
       }
 
@@ -1252,7 +1252,7 @@ export class ProductsService {
       include: {
         category: true,
         subCategory: true,
-        images: true,
+        images: { orderBy: { order: 'asc' } },
 
         sellerOffers: {
           where: { deletedAt: null },
@@ -1622,7 +1622,7 @@ export class ProductsService {
           shippingGstPercent: true,
           shippingCharges: true,
           finalShippingPrice: true,
-          images: { select: { url: true }, take: 1 },
+          images: { select: { url: true }, orderBy: { order: 'asc' }, take: 1 },
         },
         take: 10,
         orderBy: { name: 'asc' },
@@ -2038,7 +2038,7 @@ export class ProductsService {
       include: {
         catalogProduct: {
           include: {
-            images: true,
+            images: { orderBy: { order: 'asc' } },
           },
         },
       },
