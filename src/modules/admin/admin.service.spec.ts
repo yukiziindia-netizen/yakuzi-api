@@ -31,6 +31,7 @@ const build = (pushResult: Record<string, unknown> = {}) => {
     ordersService as never,
     sellersService as never,
     {} as never,
+    {} as never,
   );
   return { service, prisma, ordersService };
 };
@@ -107,6 +108,7 @@ describe('AdminService.adminUpdateProduct — catalog product resolution', () =>
       ordersService as never,
       sellersService as never,
       {} as never,
+      {} as never,
     );
     return { service, prisma };
   };
@@ -181,6 +183,7 @@ describe('AdminService.getSettlementsSummary — totals across all pages', () =>
       {} as never,
       {} as never,
       {} as never,
+      {} as never,
     );
     return { service, prisma };
   };
@@ -251,6 +254,7 @@ describe('AdminService.getDashboard — Platform Revenue', () => {
       {} as never,
       {} as never,
       {} as never,
+      {} as never,
     );
     return { service, prisma };
   };
@@ -308,6 +312,7 @@ describe('AdminService.approveUser — seller approval email', () => {
       ordersService as never,
       sellersService as never,
       mailService as never,
+      {} as never,
     );
     return { service, mailService };
   };
