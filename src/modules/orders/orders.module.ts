@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { OrdersService } from './orders.service';
 import { OrdersController } from './orders.controller';
 import { ShiprocketService } from './shiprocket.service';
+import { ShiprocketSyncService } from './shiprocket-sync.service';
 import { InvoiceService } from './invoice.service';
 import { InvoicePdfService } from './invoice-pdf.service';
 import { InvoiceEmailService } from './invoice-email.service';
@@ -14,6 +15,7 @@ import { AuthModule } from '../auth/auth.module';
   providers: [
     OrdersService,
     ShiprocketService,
+    ShiprocketSyncService,
     InvoiceService,
     InvoicePdfService,
     InvoiceEmailService,

@@ -9,7 +9,7 @@ import { PrismaService } from '../../database/prisma.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
 import { UpdateShippingDetailsDto } from './dto/update-shipping-details.dto';
-import { OrderStatus, Role, PaymentStatus } from '@prisma/client';
+import { OrderStatus, Role, PaymentStatus, Prisma } from '@prisma/client';
 import { ShiprocketService } from './shiprocket.service';
 import { calculateSellerPayout, buildPayoutInputFromOrderItem } from '../settlements/payout-calculator';
 import { MailService } from '../mail/mail.service';
@@ -1302,60 +1302,92 @@ export class OrdersService {
       dto.status,
     );
 
-    // Create settlements if status is DELIVERED and payment is successful
-    if (
-      updated.orderStatus === OrderStatus.DELIVERED &&
-      updated.paymentStatus === PaymentStatus.SUCCESS
-    ) {
-      await this.prisma.$transaction(async (tx) => {
-        for (const item of updated.items) {
-          const existing = await tx.sellerSettlement.findUnique({
-            where: { orderItemId: item.id },
-          });
-          if (!existing) {
-            const sellerOffer = item.sellerOffer;
-            const catalogProduct = sellerOffer?.variant?.catalogProduct;
-            
-            const baseSellingPrice = Number(item.unitPrice);
-            const quantity = item.quantity;
-            const finalShippingPrice = item.sellerOffer?.finalShippingPrice ? Number(item.sellerOffer.finalShippingPrice) : (item.sellerOffer?.shippingCharges ? Number(item.sellerOffer.shippingCharges) : 0);
-            
-            const commissionPercent = catalogProduct?.commissionPercent ? Number(catalogProduct.commissionPercent) : 0;
-            const commissionGstPercent = catalogProduct?.commissionGstPercent ? Number(catalogProduct.commissionGstPercent) : 18;
-
-            const breakdown = calculateSellerPayout({
-              baseSellingPrice,
-              quantity,
-              finalShippingPrice,
-              commissionPercent,
-              commissionGstPercent,
-            });
-
-            await tx.sellerSettlement.create({
-              data: {
-                sellerId: item.sellerId,
-                orderItemId: item.id,
-                amount: breakdown.netPayout.toDecimalPlaces(2).toString(),
-                grossAmount: breakdown.grossAmount.toString(),
-                commission: breakdown.commission.toString(),
-                commissionGst: breakdown.commissionGst.toString(),
-                fixedFee: '0',
-                fixedFeeGst: '0',
-                withholdingTax: '0',
-                netPayout: breakdown.netPayout.toString(),
-                payoutStatus: breakdown.status,
-              },
-            });
-          }
-        }
-      });
-    }
+    await this.createSettlementsForDeliveredOrder(updated);
 
     this.logger.log(
       `Order ${orderId} status updated to ${dto.status} by seller ${seller.id}`,
     );
 
     return updated;
+  }
+
+  async createSettlementsForDeliveredOrder(order: {
+    orderStatus: OrderStatus;
+    paymentStatus: PaymentStatus;
+    items: Array<{
+      id: string;
+      sellerId: string;
+      unitPrice: Prisma.Decimal | number;
+      quantity: number;
+      sellerOffer?: {
+        finalShippingPrice?: Prisma.Decimal | number | null;
+        shippingCharges?: Prisma.Decimal | number | null;
+        variant?: {
+          catalogProduct?: {
+            commissionPercent?: Prisma.Decimal | number | null;
+            commissionGstPercent?: Prisma.Decimal | number | null;
+          } | null;
+        } | null;
+      } | null;
+    }>;
+  }): Promise<void> {
+    if (
+      order.orderStatus !== OrderStatus.DELIVERED ||
+      order.paymentStatus !== PaymentStatus.SUCCESS
+    ) {
+      return;
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      for (const item of order.items) {
+        const existing = await tx.sellerSettlement.findUnique({
+          where: { orderItemId: item.id },
+        });
+        if (!existing) {
+          const sellerOffer = item.sellerOffer;
+          const catalogProduct = sellerOffer?.variant?.catalogProduct;
+
+          const baseSellingPrice = Number(item.unitPrice);
+          const quantity = item.quantity;
+          const finalShippingPrice = item.sellerOffer?.finalShippingPrice
+            ? Number(item.sellerOffer.finalShippingPrice)
+            : item.sellerOffer?.shippingCharges
+              ? Number(item.sellerOffer.shippingCharges)
+              : 0;
+
+          const commissionPercent = catalogProduct?.commissionPercent
+            ? Number(catalogProduct.commissionPercent)
+            : 0;
+          const commissionGstPercent = catalogProduct?.commissionGstPercent
+            ? Number(catalogProduct.commissionGstPercent)
+            : 18;
+
+          const breakdown = calculateSellerPayout({
+            baseSellingPrice,
+            quantity,
+            finalShippingPrice,
+            commissionPercent,
+            commissionGstPercent,
+          });
+
+          await tx.sellerSettlement.create({
+            data: {
+              sellerId: item.sellerId,
+              orderItemId: item.id,
+              amount: breakdown.netPayout.toDecimalPlaces(2).toString(),
+              grossAmount: breakdown.grossAmount.toString(),
+              commission: breakdown.commission.toString(),
+              commissionGst: breakdown.commissionGst.toString(),
+              fixedFee: '0',
+              fixedFeeGst: '0',
+              withholdingTax: '0',
+              netPayout: breakdown.netPayout.toString(),
+              payoutStatus: breakdown.status,
+            },
+          });
+        }
+      }
+    });
   }
 
   // ──────────────────────────────────────────────
