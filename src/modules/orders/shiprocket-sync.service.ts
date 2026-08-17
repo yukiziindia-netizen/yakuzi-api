@@ -120,25 +120,39 @@ export class ShiprocketSyncService {
       // do the same or sellers silently never get paid for auto-synced
       // deliveries.
       if (mapped === OrderStatus.DELIVERED) {
-        const delivered = await this.prisma.order.findUnique({
-          where: { id: order.id },
-          include: {
-            items: {
-              include: {
-                sellerOffer: {
-                  select: {
-                    finalShippingPrice: true,
-                    shippingCharges: true,
-                    variant: { include: { catalogProduct: true } },
+        try {
+          const delivered = await this.prisma.order.findUnique({
+            where: { id: order.id },
+            include: {
+              items: {
+                include: {
+                  sellerOffer: {
+                    select: {
+                      finalShippingPrice: true,
+                      shippingCharges: true,
+                      variant: { include: { catalogProduct: true } },
+                    },
                   },
                 },
               },
             },
-          },
-        });
-        if (delivered) {
-          await this.ordersService.createSettlementsForDeliveredOrder(
-            delivered,
+          });
+          if (delivered) {
+            await this.ordersService.createSettlementsForDeliveredOrder(
+              delivered,
+            );
+          }
+        } catch (error: any) {
+          // Unlike every other failure in this method, this one is NOT
+          // retryable: the updateMany above already flipped orderStatus to
+          // DELIVERED, so this order permanently drops out of
+          // syncInFlightOrders's batch query (the notIn filter excludes
+          // DELIVERED orders) and will never be re-evaluated. Logged at
+          // error level — not warn — so it's distinguishable from routine,
+          // self-healing warnings and someone watching logs/alerts notices
+          // it needs a manual reconciliation.
+          this.logger.error(
+            `Order ${order.id} was marked DELIVERED but settlement creation failed — sellers may not be paid for this order until manually reconciled: ${error?.message}`,
           );
         }
       }

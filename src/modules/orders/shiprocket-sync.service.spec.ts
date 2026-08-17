@@ -200,9 +200,22 @@ describe('ShiprocketSyncService.syncOneOrder', () => {
       orderStatus: OrderStatus.OUT_FOR_DELIVERY,
     });
 
-    expect(prisma.order.findUnique).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { id: 'order-1' } }),
-    );
+    expect(prisma.order.findUnique).toHaveBeenCalledWith({
+      where: { id: 'order-1' },
+      include: {
+        items: {
+          include: {
+            sellerOffer: {
+              select: {
+                finalShippingPrice: true,
+                shippingCharges: true,
+                variant: { include: { catalogProduct: true } },
+              },
+            },
+          },
+        },
+      },
+    });
     expect(ordersService.createSettlementsForDeliveredOrder).toHaveBeenCalledWith(deliveredOrder);
   });
 
