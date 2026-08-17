@@ -189,7 +189,9 @@ export class AdminController {
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: "Create a product listing on behalf of a selected seller" })
   @ApiResponse({ status: 201, description: 'Product created for the selected seller' })
+  @ApiResponse({ status: 400, description: 'Invalid product fields' })
   @ApiResponse({ status: 403, description: 'Selected seller has no seller profile' })
+  @ApiResponse({ status: 404, description: 'Category or sub-category not found' })
   async createProductForSeller(
     @CurrentUser('id') adminUserId: string,
     @Body() dto: AdminCreateProductDto,
