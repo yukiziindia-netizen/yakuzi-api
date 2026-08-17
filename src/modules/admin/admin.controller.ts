@@ -41,6 +41,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { UploadedFile, UseInterceptors } from '@nestjs/common';
 import { AdminQuerySuggestionsDto } from './dto/query-suggestions.dto';
 import { AdminUpdateProductDto } from './dto/admin-update-product.dto';
+import { AdminCreateProductDto } from './dto/admin-create-product.dto';
 import { UpdateSuggestionDto } from './dto/update-suggestion.dto';
 import { UpdateSellerProfileDto } from '../sellers/dto/update-seller-profile.dto';
 
@@ -182,6 +183,19 @@ export class AdminController {
   async getAllProducts(@Query() query: AdminQueryProductsDto) {
     const data = await this.adminService.getAllProducts(query);
     return { message: 'Products retrieved successfully', data };
+  }
+
+  @Post('products')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({ summary: "Create a product listing on behalf of a selected seller" })
+  @ApiResponse({ status: 201, description: 'Product created for the selected seller' })
+  @ApiResponse({ status: 403, description: 'Selected seller has no seller profile' })
+  async createProductForSeller(
+    @CurrentUser('id') adminUserId: string,
+    @Body() dto: AdminCreateProductDto,
+  ) {
+    const data = await this.adminService.adminCreateProductForSeller(adminUserId, dto);
+    return { message: 'Product created successfully', data };
   }
 
   @Get('products/:id')
