@@ -507,3 +507,82 @@ describe('OrdersService.notifySellersOfNewOrder', () => {
     expect(prisma.sellerProfile.findMany).not.toHaveBeenCalled();
   });
 });
+
+describe('OrdersService.createSettlementsForDeliveredOrder', () => {
+  const buildForSettlements = () => {
+    const prisma = {
+      sellerSettlement: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({}),
+      },
+      $transaction: jest.fn(async (fn: any) => fn(prisma)),
+    };
+    const service = new OrdersService(
+      prisma as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+    );
+    return { service, prisma };
+  };
+
+  const item = (over: Record<string, unknown> = {}) => ({
+    id: 'item-1',
+    sellerId: 'seller-1',
+    unitPrice: { toNumber: () => 100 } as never,
+    quantity: 2,
+    sellerOffer: {
+      finalShippingPrice: null,
+      shippingCharges: null,
+      variant: { catalogProduct: { commissionPercent: 10, commissionGstPercent: 18 } },
+    },
+    ...over,
+  });
+
+  it('does nothing if the order is not DELIVERED', async () => {
+    const { service, prisma } = buildForSettlements();
+    await service.createSettlementsForDeliveredOrder({
+      orderStatus: OrderStatus.SHIPPED,
+      paymentStatus: 'SUCCESS' as never,
+      items: [item()],
+    });
+    expect(prisma.sellerSettlement.create).not.toHaveBeenCalled();
+  });
+
+  it('does nothing if payment is not SUCCESS', async () => {
+    const { service, prisma } = buildForSettlements();
+    await service.createSettlementsForDeliveredOrder({
+      orderStatus: OrderStatus.DELIVERED,
+      paymentStatus: 'PENDING' as never,
+      items: [item()],
+    });
+    expect(prisma.sellerSettlement.create).not.toHaveBeenCalled();
+  });
+
+  it('creates a settlement per item when DELIVERED and paid', async () => {
+    const { service, prisma } = buildForSettlements();
+    await service.createSettlementsForDeliveredOrder({
+      orderStatus: OrderStatus.DELIVERED,
+      paymentStatus: 'SUCCESS' as never,
+      items: [item()],
+    });
+    expect(prisma.sellerSettlement.create).toHaveBeenCalledTimes(1);
+    expect(prisma.sellerSettlement.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ sellerId: 'seller-1', orderItemId: 'item-1' }),
+      }),
+    );
+  });
+
+  it('skips an item that already has a settlement (idempotent)', async () => {
+    const { service, prisma } = buildForSettlements();
+    prisma.sellerSettlement.findUnique.mockResolvedValue({ id: 'existing' });
+    await service.createSettlementsForDeliveredOrder({
+      orderStatus: OrderStatus.DELIVERED,
+      paymentStatus: 'SUCCESS' as never,
+      items: [item()],
+    });
+    expect(prisma.sellerSettlement.create).not.toHaveBeenCalled();
+  });
+});
