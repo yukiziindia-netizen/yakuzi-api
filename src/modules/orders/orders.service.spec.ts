@@ -530,7 +530,7 @@ describe('OrdersService.createSettlementsForDeliveredOrder', () => {
   const item = (over: Record<string, unknown> = {}) => ({
     id: 'item-1',
     sellerId: 'seller-1',
-    unitPrice: { toNumber: () => 100 } as never,
+    unitPrice: 100,
     quantity: 2,
     sellerOffer: {
       finalShippingPrice: null,
@@ -568,9 +568,18 @@ describe('OrdersService.createSettlementsForDeliveredOrder', () => {
       items: [item()],
     });
     expect(prisma.sellerSettlement.create).toHaveBeenCalledTimes(1);
+    // unitPrice 100 * qty 2 = gross 200; commission 10% = 20; commissionGst 18% of 20 = 3.6;
+    // netPayout = 200 - 20 - 3.6 - 0(shipping) = 176.4
     expect(prisma.sellerSettlement.create).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({ sellerId: 'seller-1', orderItemId: 'item-1' }),
+        data: expect.objectContaining({
+          sellerId: 'seller-1',
+          orderItemId: 'item-1',
+          grossAmount: '200',
+          commission: '20',
+          commissionGst: '3.6',
+          netPayout: '176.4',
+        }),
       }),
     );
   });
