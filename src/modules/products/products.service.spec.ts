@@ -91,3 +91,28 @@ describe('ProductsService.create — createdByAdminId', () => {
     });
   });
 });
+
+describe('ProductsService — createdByAdminId is never exposed on read', () => {
+  it('flattenProduct strips createdByAdminId from the response shape', () => {
+    const service = new ProductsService(
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+    );
+    const raw = {
+      id: 'offer-1',
+      name: 'Test',
+      createdByAdminId: 'admin-user-1',
+      batches: [],
+      images: [],
+      category: { name: 'Figurines' },
+      subCategory: { name: 'Funko Pop' },
+    };
+    const flattened = (service as unknown as {
+      flattenProduct(p: Record<string, any>): Record<string, any>;
+    }).flattenProduct(raw);
+    expect(flattened).not.toHaveProperty('createdByAdminId');
+    expect(flattened).not.toHaveProperty('createdByAdmin');
+  });
+});

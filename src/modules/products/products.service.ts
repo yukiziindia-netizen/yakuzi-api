@@ -1834,6 +1834,8 @@ export class ProductsService {
       images: _images,
       category: _category,
       subCategory: _subCategory,
+      createdByAdminId: _createdByAdminId,
+      createdByAdmin: _createdByAdmin,
       ...rest
     } = product;
 
