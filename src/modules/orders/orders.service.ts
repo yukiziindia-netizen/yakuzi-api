@@ -662,7 +662,13 @@ export class OrdersService {
 
     const sellers = await this.prisma.sellerProfile.findMany({
       where: { id: { in: Array.from(new Set(pairs.map((p) => p.sellerId))) } },
-      select: { id: true, userId: true, email: true, companyName: true },
+      select: {
+        id: true,
+        userId: true,
+        email: true,
+        companyName: true,
+        user: { select: { email: true } },
+      },
     });
     const sellerById = new Map(sellers.map((s) => [s.id, s]));
 
@@ -687,7 +693,13 @@ export class OrdersService {
     { orderId, sellerId }: { orderId: string; sellerId: string },
     sellerById: Map<
       string,
-      { id: string; userId: string; email: string | null; companyName: string }
+      {
+        id: string;
+        userId: string;
+        email: string | null;
+        companyName: string;
+        user: { email: string | null };
+      }
     >,
   ): Promise<void> {
     const seller = sellerById.get(sellerId);
@@ -708,8 +720,18 @@ export class OrdersService {
         );
       });
 
-    const to = seller.email?.trim();
-    if (!to) return;
+    // SellerProfile.email is the business contact sellers fill in during
+    // onboarding and can be blank (e.g. accounts created before it was a
+    // required field); User.email is the separate login address shown in
+    // their own dashboard, which is usually present. Fall back to it so a
+    // seller with no business email on file still gets order emails.
+    const to = seller.email?.trim() || seller.user?.email?.trim();
+    if (!to) {
+      this.logger.warn(
+        `new-order-email skipped: seller ${seller.userId} has no email on file (order ${orderId})`,
+      );
+      return;
+    }
 
     const orderRef = orderId.slice(0, 8).toUpperCase();
     const safeCompanyName = this.escape(seller.companyName);

@@ -424,7 +424,13 @@ describe('OrdersService.notifySellersOfNewOrder', () => {
     ).notifySellersOfNewOrder(pairs);
 
   const buildForNotify = (
-    sellers: { id: string; userId: string; email: string | null; companyName: string }[],
+    sellers: {
+      id: string;
+      userId: string;
+      email: string | null;
+      companyName: string;
+      user?: { email: string | null };
+    }[],
   ) => {
     const prisma = {
       sellerProfile: {
@@ -466,9 +472,27 @@ describe('OrdersService.notifySellersOfNewOrder', () => {
     );
   });
 
-  it('skips the email but still creates the in-app notification when the seller has no address on file', async () => {
+  it('falls back to the login email when SellerProfile.email is blank', async () => {
+    const { service, mailService } = buildForNotify([
+      {
+        id: 'seller-1',
+        userId: 'user-1',
+        email: null,
+        companyName: 'Acme',
+        user: { email: 'login@example.com' },
+      },
+    ]);
+
+    await call(service, [{ orderId: 'order-1', sellerId: 'seller-1' }]);
+
+    expect(mailService.sendMail).toHaveBeenCalledWith(
+      expect.objectContaining({ to: 'login@example.com' }),
+    );
+  });
+
+  it('skips the email but still creates the in-app notification when neither the business nor login email is on file', async () => {
     const { service, notificationsService, mailService } = buildForNotify([
-      { id: 'seller-1', userId: 'user-1', email: null, companyName: 'Acme' },
+      { id: 'seller-1', userId: 'user-1', email: null, companyName: 'Acme', user: { email: null } },
     ]);
 
     await call(service, [{ orderId: 'order-1', sellerId: 'seller-1' }]);
