@@ -1,11 +1,12 @@
-import { OrderStatus } from '@prisma/client';
+import { OrderStatus, PaymentStatus } from '@prisma/client';
 import { ShiprocketSyncService } from './shiprocket-sync.service';
 
 const build = () => {
   const prisma = {
     order: {
       findMany: jest.fn(),
-      update: jest.fn().mockResolvedValue({}),
+      updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+      findUnique: jest.fn(),
     },
   };
   const shiprocketService = {
@@ -13,6 +14,7 @@ const build = () => {
   };
   const ordersService = {
     syncTrackingFields: jest.fn().mockResolvedValue(undefined),
+    createSettlementsForDeliveredOrder: jest.fn().mockResolvedValue(undefined),
   };
   const service = new ShiprocketSyncService(
     prisma as never,
@@ -49,7 +51,7 @@ describe('ShiprocketSyncService.syncInFlightOrders', () => {
     shiprocketService.trackOrder
       .mockRejectedValueOnce(new Error('Shiprocket down'))
       .mockResolvedValueOnce({
-        current_status: 'Delivered',
+        current_status: 'Out For Delivery',
         awb_code: 'AWB2',
         courier: 'DTDC',
       });
@@ -57,32 +59,32 @@ describe('ShiprocketSyncService.syncInFlightOrders', () => {
     await service.syncInFlightOrders();
 
     expect(shiprocketService.trackOrder).toHaveBeenCalledTimes(2);
-    expect(prisma.order.update).toHaveBeenCalledTimes(1);
-    expect(prisma.order.update).toHaveBeenCalledWith({
-      where: { id: 'order-2' },
-      data: { orderStatus: OrderStatus.DELIVERED },
+    expect(prisma.order.updateMany).toHaveBeenCalledTimes(1);
+    expect(prisma.order.updateMany).toHaveBeenCalledWith({
+      where: { id: 'order-2', orderStatus: OrderStatus.SHIPPED },
+      data: { orderStatus: OrderStatus.OUT_FOR_DELIVERY },
     });
   });
 
-  it('continues processing remaining orders when one order\'s DB write fails', async () => {
+  it("continues processing remaining orders when one order's DB write fails", async () => {
     const { service, prisma, shiprocketService } = build();
     prisma.order.findMany.mockResolvedValue([
       { id: 'order-1', shiprocketOrderId: 'sr-1', orderStatus: OrderStatus.SHIPPED },
       { id: 'order-2', shiprocketOrderId: 'sr-2', orderStatus: OrderStatus.SHIPPED },
     ]);
     shiprocketService.trackOrder.mockResolvedValue({
-      current_status: 'Delivered',
+      current_status: 'Out For Delivery',
       awb_code: 'AWB',
       courier: 'DTDC',
     });
-    prisma.order.update
+    prisma.order.updateMany
       .mockRejectedValueOnce(new Error('DB connection lost'))
-      .mockResolvedValueOnce({});
+      .mockResolvedValueOnce({ count: 1 });
 
     await service.syncInFlightOrders();
 
     expect(shiprocketService.trackOrder).toHaveBeenCalledTimes(2);
-    expect(prisma.order.update).toHaveBeenCalledTimes(2);
+    expect(prisma.order.updateMany).toHaveBeenCalledTimes(2);
   });
 });
 
@@ -101,13 +103,13 @@ describe('ShiprocketSyncService.syncOneOrder', () => {
       orderStatus: OrderStatus.SHIPPED,
     });
 
-    expect(prisma.order.update).toHaveBeenCalledWith({
-      where: { id: 'order-1' },
-      data: { orderStatus: OrderStatus.OUT_FOR_DELIVERY },
-    });
     expect(ordersService.syncTrackingFields).toHaveBeenCalledWith('order-1', {
       awb_code: 'AWB123',
       courier: 'Delhivery',
+    });
+    expect(prisma.order.updateMany).toHaveBeenCalledWith({
+      where: { id: 'order-1', orderStatus: OrderStatus.SHIPPED },
+      data: { orderStatus: OrderStatus.OUT_FOR_DELIVERY },
     });
   });
 
@@ -125,7 +127,7 @@ describe('ShiprocketSyncService.syncOneOrder', () => {
       orderStatus: OrderStatus.OUT_FOR_DELIVERY,
     });
 
-    expect(prisma.order.update).not.toHaveBeenCalled();
+    expect(prisma.order.updateMany).not.toHaveBeenCalled();
     expect(ordersService.syncTrackingFields).not.toHaveBeenCalled();
   });
 
@@ -141,7 +143,7 @@ describe('ShiprocketSyncService.syncOneOrder', () => {
       orderStatus: OrderStatus.SHIPPED,
     });
 
-    expect(prisma.order.update).not.toHaveBeenCalled();
+    expect(prisma.order.updateMany).not.toHaveBeenCalled();
   });
 
   it('skips an order with no shiprocketOrderId without calling Shiprocket', async () => {
@@ -154,6 +156,72 @@ describe('ShiprocketSyncService.syncOneOrder', () => {
     });
 
     expect(shiprocketService.trackOrder).not.toHaveBeenCalled();
-    expect(prisma.order.update).not.toHaveBeenCalled();
+    expect(prisma.order.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('backs off without creating settlements when the status changed concurrently (updateMany count 0)', async () => {
+    const { service, prisma, shiprocketService, ordersService } = build();
+    shiprocketService.trackOrder.mockResolvedValue({
+      current_status: 'Delivered',
+      awb_code: 'AWB123',
+      courier: 'Delhivery',
+    });
+    prisma.order.updateMany.mockResolvedValue({ count: 0 });
+
+    await service.syncOneOrder({
+      id: 'order-1',
+      shiprocketOrderId: 'sr-1',
+      orderStatus: OrderStatus.OUT_FOR_DELIVERY,
+    });
+
+    expect(prisma.order.findUnique).not.toHaveBeenCalled();
+    expect(ordersService.createSettlementsForDeliveredOrder).not.toHaveBeenCalled();
+  });
+
+  it('creates settlements when the status moves to DELIVERED', async () => {
+    const { service, prisma, shiprocketService, ordersService } = build();
+    shiprocketService.trackOrder.mockResolvedValue({
+      current_status: 'Delivered',
+      awb_code: 'AWB123',
+      courier: 'Delhivery',
+    });
+    prisma.order.updateMany.mockResolvedValue({ count: 1 });
+    const deliveredOrder = {
+      id: 'order-1',
+      orderStatus: OrderStatus.DELIVERED,
+      paymentStatus: PaymentStatus.SUCCESS,
+      items: [],
+    };
+    prisma.order.findUnique.mockResolvedValue(deliveredOrder);
+
+    await service.syncOneOrder({
+      id: 'order-1',
+      shiprocketOrderId: 'sr-1',
+      orderStatus: OrderStatus.OUT_FOR_DELIVERY,
+    });
+
+    expect(prisma.order.findUnique).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'order-1' } }),
+    );
+    expect(ordersService.createSettlementsForDeliveredOrder).toHaveBeenCalledWith(deliveredOrder);
+  });
+
+  it('does not create settlements when the mapped status is not DELIVERED', async () => {
+    const { service, prisma, shiprocketService, ordersService } = build();
+    shiprocketService.trackOrder.mockResolvedValue({
+      current_status: 'Out For Delivery',
+      awb_code: 'AWB123',
+      courier: 'Delhivery',
+    });
+    prisma.order.updateMany.mockResolvedValue({ count: 1 });
+
+    await service.syncOneOrder({
+      id: 'order-1',
+      shiprocketOrderId: 'sr-1',
+      orderStatus: OrderStatus.SHIPPED,
+    });
+
+    expect(prisma.order.findUnique).not.toHaveBeenCalled();
+    expect(ordersService.createSettlementsForDeliveredOrder).not.toHaveBeenCalled();
   });
 });

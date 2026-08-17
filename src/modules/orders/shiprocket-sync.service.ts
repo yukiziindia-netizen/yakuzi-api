@@ -13,11 +13,11 @@ interface PollableOrder {
 }
 
 /**
- * Keeps Order.orderStatus in sync with Shiprocket's own tracking status for every
- * order that's been pushed to Shiprocket (shiprocketOrderId set) and isn't
- * yet in a terminal state. Runs every 30 minutes — order volume on this
- * project is low enough that polling stays well under Shiprocket's rate
- * limits without needing a webhook. See
+ * Keeps Order.orderStatus in sync with Shiprocket's own tracking status for
+ * every order that's been pushed to Shiprocket (shiprocketOrderId set) and
+ * isn't yet in a terminal state. Runs every 30 minutes — order volume on
+ * this project is low enough that polling stays well under Shiprocket's
+ * rate limits without needing a webhook. See
  * docs/superpowers/specs/2026-08-17-shiprocket-status-sync-design.md.
  */
 @Injectable()
@@ -88,24 +88,60 @@ export class ShiprocketSyncService {
     }
 
     try {
-      // Order matters here: syncTrackingFields self-protects (it catches
-      // and logs its own DB errors, never throwing), so this try/catch is
-      // really only guarding order.update. Writing tracking fields first
-      // means a silent syncTrackingFields failure leaves orderStatus
-      // un-flipped, so the order stays out of the terminal-state filter and
-      // gets retried next poll. If we flipped the status first instead, a
-      // terminal mapped status (DELIVERED/RETURNED/CANCELLED) would drop
-      // the order out of future polls, stranding the awb/courier write with
-      // no retry. Don't swap these back without re-reading this comment.
+      // Order matters: syncTrackingFields self-protects (it catches and
+      // logs its own DB errors, never throwing), so writing it first means
+      // a silent failure there leaves orderStatus un-flipped and the order
+      // gets retried next poll instead of being stranded.
       await this.ordersService.syncTrackingFields(order.id, {
         awb_code: tracking.awb_code,
         courier: tracking.courier,
       });
 
-      await this.prisma.order.update({
-        where: { id: order.id },
+      // Conditional write guarded on the orderStatus snapshot read at the
+      // start of this batch. If an admin manually changed this order's
+      // status in the window between the batch query and this write (e.g.
+      // cancelled it), `count` comes back 0 and we back off rather than
+      // clobbering their change — the order gets re-evaluated fresh next
+      // poll cycle instead.
+      const result = await this.prisma.order.updateMany({
+        where: { id: order.id, orderStatus: order.orderStatus },
         data: { orderStatus: mapped },
       });
+
+      if (result.count === 0) {
+        this.logger.warn(
+          `Order ${order.id} status changed concurrently — skipping this cycle's Shiprocket sync update`,
+        );
+        return;
+      }
+
+      // Every other path that sets an order to DELIVERED (admin/seller
+      // manual updates) also creates seller settlements — this poller must
+      // do the same or sellers silently never get paid for auto-synced
+      // deliveries.
+      if (mapped === OrderStatus.DELIVERED) {
+        const delivered = await this.prisma.order.findUnique({
+          where: { id: order.id },
+          include: {
+            items: {
+              include: {
+                sellerOffer: {
+                  select: {
+                    finalShippingPrice: true,
+                    shippingCharges: true,
+                    variant: { include: { catalogProduct: true } },
+                  },
+                },
+              },
+            },
+          },
+        });
+        if (delivered) {
+          await this.ordersService.createSettlementsForDeliveredOrder(
+            delivered,
+          );
+        }
+      }
     } catch (error: any) {
       this.logger.warn(
         `Failed to apply Shiprocket status update for order ${order.id}: ${error?.message}`,
