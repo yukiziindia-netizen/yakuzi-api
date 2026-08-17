@@ -189,64 +189,51 @@ export class AuthService {
   ): Promise<AuthResponse> {
     const redisKey = `otp:${phone}`;
 
-    // Special case for bypass number — skip Redis entirely
     const cleanPhone = phone.replace(/\D/g, '');
-    const isBypassNumber =
-      (cleanPhone.includes('9831864222') ||
-        cleanPhone.includes('9999999999') ||
-        cleanPhone.includes('9876543210') ||
-        cleanPhone.includes('7777777777') ||
-        cleanPhone.includes('8888888888') ||
-        cleanPhone.includes('8888888889')) &&
-      (otp.trim() === '123456' ||
-        otp.trim() === '1234' ||
-        otp.trim() === '000000');
 
-    if (!isBypassNumber) {
-      let storedOtp: string | null = null;
-      try {
-        if (this.redis) {
-          storedOtp = await this.redis.get(redisKey);
-        }
-      } catch (redisErr) {
-        // Fail closed. This used to fall through to the well-known-code
-        // fallback below, which meant an unreachable OTP store downgraded
-        // every account to "type 123456 to log in".
-        this.logger.error(
-          `Redis fetch failed during OTP verification: ${redisErr instanceof Error ? redisErr.message : 'Unknown error'}`,
-        );
-        throw new ServiceUnavailableException(
-          'Unable to verify the OTP right now. Please try again in a moment.',
-        );
+    // Every number verifies the same way. There is no longer a list of
+    // numbers that skip the OTP check.
+    let storedOtp: string | null = null;
+    try {
+      if (this.redis) {
+        storedOtp = await this.redis.get(redisKey);
       }
+    } catch (redisErr) {
+      // Fail closed.
+      this.logger.error(
+        `Redis fetch failed during OTP verification: ${redisErr instanceof Error ? redisErr.message : 'Unknown error'}`,
+      );
+      throw new ServiceUnavailableException(
+        'Unable to verify the OTP right now. Please try again in a moment.',
+      );
+    }
 
-      if (!storedOtp) {
-        throw new BadRequestException(
-          'OTP expired or not found. Please request a new OTP.',
-        );
+    if (!storedOtp) {
+      throw new BadRequestException(
+        'OTP expired or not found. Please request a new OTP.',
+      );
+    }
+
+    const normalizedOtp = otp.trim();
+    const normalizedStoredOtp = storedOtp.trim();
+
+    // Constant-time, matching registerBuyer's comparison.
+    if (
+      normalizedOtp.length !== normalizedStoredOtp.length ||
+      !crypto.timingSafeEqual(
+        Buffer.from(normalizedOtp),
+        Buffer.from(normalizedStoredOtp),
+      )
+    ) {
+      throw new BadRequestException('Invalid OTP');
+    }
+
+    try {
+      if (this.redis) {
+        await this.redis.del(redisKey);
       }
-
-      const normalizedOtp = otp.trim();
-      const normalizedStoredOtp = storedOtp.trim();
-
-      // Constant-time, matching registerBuyer's comparison.
-      if (
-        normalizedOtp.length !== normalizedStoredOtp.length ||
-        !crypto.timingSafeEqual(
-          Buffer.from(normalizedOtp),
-          Buffer.from(normalizedStoredOtp),
-        )
-      ) {
-        throw new BadRequestException('Invalid OTP');
-      }
-
-      try {
-        if (this.redis) {
-          await this.redis.del(redisKey);
-        }
-      } catch (err) {
-        // Ignore redis deletion error
-      }
+    } catch (err) {
+      // Ignore redis deletion error
     }
 
 
