@@ -778,6 +778,11 @@ model CatalogProductImage {
   id              String         @id @default(uuid())
   masterProductId String
   url             String
+  // Position within the product's gallery, lowest first. Nothing else on this
+  // row is ordered - a bulk save (createMany) can give every row in one save
+  // the exact same createdAt, so that column was never a valid fallback for
+  // "which image is first".
+  order           Int            @default(0)
   createdAt       DateTime       @default(now())
   catalogProduct  CatalogProduct @relation(fields: [masterProductId], references: [id], onDelete: Cascade)
 
