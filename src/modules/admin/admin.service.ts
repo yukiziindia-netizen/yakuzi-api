@@ -35,6 +35,8 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { SellersService } from '../sellers/sellers.service';
 import { UpdateSellerProfileDto } from '../sellers/dto/update-seller-profile.dto';
 import { MailService } from '../mail/mail.service';
+import { ProductsService } from '../products/products.service';
+import { AdminCreateProductDto } from './dto/admin-create-product.dto';
 
 @Injectable()
 export class AdminService {
@@ -46,6 +48,7 @@ export class AdminService {
     private readonly ordersService: OrdersService,
     private readonly sellersService: SellersService,
     private readonly mailService: MailService,
+    private readonly productsService: ProductsService,
   ) {}
 
   // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
@@ -935,6 +938,14 @@ export class AdminService {
       `Product ${sellerOfferId} rejected by admin${reason ? `: ${reason}` : ''}`,
     );
     return updated;
+  }
+
+  async adminCreateProductForSeller(
+    adminUserId: string,
+    dto: AdminCreateProductDto,
+  ) {
+    const { sellerId, ...productDto } = dto;
+    return this.productsService.create(sellerId, productDto, adminUserId);
   }
 
   // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
