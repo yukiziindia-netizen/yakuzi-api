@@ -167,18 +167,31 @@ model Banner {
   @@map("banners")
 }
 
+/// Exactly one of categoryId/subCategoryId is ever non-null, enforced by a
+/// Postgres CHECK constraint this DSL can't express directly — see
+/// prisma/migrations/20260818110000_homepage_sections_subcategory. Don't
+/// "clean up" categoryId/subCategoryId back to required-with-a-default; a
+/// future `prisma migrate dev` on this table can silently drop that CHECK if
+/// nothing here explains why it exists.
 model HomepageSection {
-  id           String   @id @default(uuid())
-  categoryId   String
-  category     Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
-  title        String?
-  productLimit Int      @default(16)
-  order        Int      @default(0)
-  isActive     Boolean  @default(true)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id            String       @id @default(uuid())
+  categoryId    String?
+  // Cascade (not SetNull) is required, not just copied from categoryId's
+  // pre-existing behavior: if a delete ever set both categoryId AND
+  // subCategoryId to null on the same row, the exactly-one-source CHECK
+  // constraint would reject the delete with a raw Postgres error.
+  category      Category?    @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  subCategoryId String?
+  subCategory   SubCategory? @relation(fields: [subCategoryId], references: [id], onDelete: Cascade)
+  title         String?
+  productLimit  Int          @default(16)
+  order         Int          @default(0)
+  isActive      Boolean      @default(true)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
 
   @@index([categoryId])
+  @@index([subCategoryId])
   @@map("homepage_sections")
 }
 
@@ -216,6 +229,7 @@ model SubCategory {
   commissionGstPercent Decimal?         @db.Decimal(10, 2)
   category             Category         @relation(fields: [categoryId], references: [id], onDelete: Cascade)
   thirdCategories      ThirdCategory[]
+  homepageSections     HomepageSection[]
 
   @@unique([slug, categoryId])
   @@index([categoryId])
