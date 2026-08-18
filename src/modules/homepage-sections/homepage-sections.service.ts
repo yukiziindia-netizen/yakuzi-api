@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { IsString, IsOptional, IsBoolean, IsInt, Min, Max, IsArray, ArrayNotEmpty, ArrayUnique } from 'class-validator';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../database/prisma.service';
 import { ProductsService } from '../products/products.service';
 
@@ -146,10 +147,26 @@ export class HomepageSectionsService {
       throw new BadRequestException('orderedIds must contain exactly the current set of homepage section ids, each exactly once');
     }
 
-    await this.prisma.$transaction(
-      orderedIds.map((id, index) => this.prisma.homepageSection.update({ where: { id }, data: { order: index } })),
-    );
+    try {
+      await this.prisma.$transaction(
+        orderedIds.map((id, index) => this.prisma.homepageSection.update({ where: { id }, data: { order: index } })),
+      );
+    } catch (error) {
+      // A section deleted by another admin between the validation read above
+      // and this write hits P2025 ("record to update not found"). Surface it
+      // as a clean 400 (matches categories.service.ts's PrismaClientKnownRequestError
+      // handling), not a raw 500 with an internal error leaking through.
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
+        throw new BadRequestException('Homepage sections changed since this reorder was requested — please retry');
+      }
+      throw error;
+    }
 
+    // A section created by another admin between the validation read above and
+    // this write isn't part of either id set, so it keeps whatever `order` it
+    // was created with (default 0) — it can end up tied with a section this
+    // reorder just assigned order 0. Accepted trade-off for a low-traffic,
+    // effectively single-admin config panel; a later reorder/edit self-heals it.
     return this.findAllAdmin();
   }
 
