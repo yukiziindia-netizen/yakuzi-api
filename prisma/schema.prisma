@@ -167,21 +167,37 @@ model Banner {
   @@map("banners")
 }
 
+model HomepageSection {
+  id           String   @id @default(uuid())
+  categoryId   String
+  category     Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  title        String?
+  productLimit Int      @default(16)
+  order        Int      @default(0)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([categoryId])
+  @@map("homepage_sections")
+}
+
 model Category {
-  id                   String           @id @default(uuid())
-  name                 String           @unique
-  slug                 String           @unique
+  id                   String            @id @default(uuid())
+  name                 String            @unique
+  slug                 String            @unique
   image                String?
   /// Optional portrait-friendly banner for phones. Null means "use image".
   mobileImage          String?
-  createdAt            DateTime         @default(now())
+  createdAt            DateTime          @default(now())
   masterProducts       CatalogProduct[]
-  extraOfProducts      CatalogProduct[] @relation("ProductExtraCategories")
+  extraOfProducts      CatalogProduct[]  @relation("ProductExtraCategories")
   sellerOffers         SellerOffer[]
   subCategories        SubCategory[]
-  commissionPercent    Decimal?         @db.Decimal(10, 2)
-  fixedFee             Decimal?         @db.Decimal(10, 2)
-  commissionGstPercent Decimal?         @db.Decimal(10, 2)
+  homepageSections     HomepageSection[]
+  commissionPercent    Decimal?          @db.Decimal(10, 2)
+  fixedFee             Decimal?          @db.Decimal(10, 2)
+  commissionGstPercent Decimal?          @db.Decimal(10, 2)
 
   @@map("categories")
 }
