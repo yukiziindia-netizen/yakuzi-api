@@ -168,17 +168,20 @@ model Banner {
 }
 
 model HomepageSection {
-  id           String   @id @default(uuid())
-  categoryId   String
-  category     Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
-  title        String?
-  productLimit Int      @default(16)
-  order        Int      @default(0)
-  isActive     Boolean  @default(true)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id            String       @id @default(uuid())
+  categoryId    String?
+  category      Category?    @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  subCategoryId String?
+  subCategory   SubCategory? @relation(fields: [subCategoryId], references: [id], onDelete: Cascade)
+  title         String?
+  productLimit  Int          @default(16)
+  order         Int          @default(0)
+  isActive      Boolean      @default(true)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
 
   @@index([categoryId])
+  @@index([subCategoryId])
   @@map("homepage_sections")
 }
 
@@ -216,6 +219,7 @@ model SubCategory {
   commissionGstPercent Decimal?         @db.Decimal(10, 2)
   category             Category         @relation(fields: [categoryId], references: [id], onDelete: Cascade)
   thirdCategories      ThirdCategory[]
+  homepageSections     HomepageSection[]
 
   @@unique([slug, categoryId])
   @@index([categoryId])
