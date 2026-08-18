@@ -1,12 +1,16 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
-import { IsString, IsOptional, IsBoolean, IsInt, IsNotEmpty, Min, Max } from 'class-validator';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { IsString, IsOptional, IsBoolean, IsInt, Min, Max } from 'class-validator';
 import { PrismaService } from '../../database/prisma.service';
 import { ProductsService } from '../products/products.service';
 
 export class CreateHomepageSectionDto {
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
-  categoryId!: string;
+  categoryId?: string;
+
+  @IsOptional()
+  @IsString()
+  subCategoryId?: string;
 
   @IsOptional()
   @IsString()
@@ -30,6 +34,10 @@ export class UpdateHomepageSectionDto {
 
   @IsOptional()
   @IsString()
+  subCategoryId?: string;
+
+  @IsOptional()
+  @IsString()
   title?: string;
 
   @IsOptional()
@@ -47,6 +55,8 @@ export class UpdateHomepageSectionDto {
   isActive?: boolean;
 }
 
+const SECTION_INCLUDE = { category: true, subCategory: { include: { category: true } } } as const;
+
 @Injectable()
 export class HomepageSectionsService {
   constructor(
@@ -54,34 +64,52 @@ export class HomepageSectionsService {
     private readonly productsService: ProductsService,
   ) {}
 
-  async create(data: { categoryId: string; title?: string; productLimit?: number; order?: number }) {
+  async create(data: { categoryId?: string; subCategoryId?: string; title?: string; productLimit?: number; order?: number }) {
+    const hasCategory = !!data.categoryId;
+    const hasSubCategory = !!data.subCategoryId;
+    if (hasCategory === hasSubCategory) {
+      throw new BadRequestException('Provide exactly one of categoryId or subCategoryId');
+    }
+
     return this.prisma.homepageSection.create({
       data: {
-        categoryId: data.categoryId,
+        categoryId: data.categoryId ?? null,
+        subCategoryId: data.subCategoryId ?? null,
         title: data.title,
         productLimit: data.productLimit ?? 16,
         order: data.order ?? 0,
       },
-      include: { category: true },
+      include: SECTION_INCLUDE,
     });
   }
 
   async findAllAdmin() {
     return this.prisma.homepageSection.findMany({
       orderBy: { order: 'asc' },
-      include: { category: true },
+      include: SECTION_INCLUDE,
     });
   }
 
   async update(
     id: string,
-    data: { categoryId?: string; title?: string; productLimit?: number; order?: number; isActive?: boolean },
+    data: { categoryId?: string; subCategoryId?: string; title?: string; productLimit?: number; order?: number; isActive?: boolean },
   ) {
+    if (data.categoryId !== undefined && data.subCategoryId !== undefined) {
+      throw new BadRequestException('Provide exactly one of categoryId or subCategoryId, not both');
+    }
+
     const existing = await this.prisma.homepageSection.findUnique({ where: { id } });
     if (!existing) throw new NotFoundException('Homepage section not found');
 
     const updateData: any = {};
-    if (data.categoryId !== undefined) updateData.categoryId = data.categoryId;
+    if (data.categoryId !== undefined) {
+      updateData.categoryId = data.categoryId;
+      updateData.subCategoryId = null;
+    }
+    if (data.subCategoryId !== undefined) {
+      updateData.subCategoryId = data.subCategoryId;
+      updateData.categoryId = null;
+    }
     if (data.title !== undefined) updateData.title = data.title;
     if (data.productLimit !== undefined) updateData.productLimit = data.productLimit;
     if (data.order !== undefined) updateData.order = data.order;
@@ -90,7 +118,7 @@ export class HomepageSectionsService {
     return this.prisma.homepageSection.update({
       where: { id },
       data: updateData,
-      include: { category: true },
+      include: SECTION_INCLUDE,
     });
   }
 
@@ -104,26 +132,28 @@ export class HomepageSectionsService {
     const sections = await this.prisma.homepageSection.findMany({
       where: { isActive: true },
       orderBy: { order: 'asc' },
-      include: { category: true },
+      include: SECTION_INCLUDE,
     });
 
     const withProducts = await Promise.all(
       sections.map(async (section) => {
         const { products } = await this.productsService.findAll({
-          categoryId: section.categoryId,
+          categoryId: section.categoryId ?? undefined,
           limit: section.productLimit,
           sortBy: 'newest',
           sortOrder: 'desc',
         });
         return {
           id: section.id,
-          title: section.title || section.category.name,
+          title: section.title || section.category?.name || '',
           order: section.order,
-          category: {
-            id: section.category.id,
-            name: section.category.name,
-            slug: section.category.slug,
-          },
+          category: section.category
+            ? { id: section.category.id, name: section.category.name, slug: section.category.slug }
+            : null,
+          // Sub-collection-sourced rows fall out of findAllPublic entirely for now
+          // (see the categoryId-only query above), so this is always null here.
+          // Real subCategory branching is a separate later task.
+          subCategory: null,
           products,
         };
       }),
