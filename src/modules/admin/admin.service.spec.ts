@@ -31,6 +31,7 @@ const build = (pushResult: Record<string, unknown> = {}) => {
     ordersService as never,
     sellersService as never,
     {} as never,
+    {} as never,
   );
   return { service, prisma, ordersService };
 };
@@ -107,6 +108,7 @@ describe('AdminService.adminUpdateProduct — catalog product resolution', () =>
       ordersService as never,
       sellersService as never,
       {} as never,
+      {} as never,
     );
     return { service, prisma };
   };
@@ -181,6 +183,7 @@ describe('AdminService.getSettlementsSummary — totals across all pages', () =>
       {} as never,
       {} as never,
       {} as never,
+      {} as never,
     );
     return { service, prisma };
   };
@@ -251,6 +254,7 @@ describe('AdminService.getDashboard — Platform Revenue', () => {
       {} as never,
       {} as never,
       {} as never,
+      {} as never,
     );
     return { service, prisma };
   };
@@ -308,6 +312,7 @@ describe('AdminService.approveUser — seller approval email', () => {
       ordersService as never,
       sellersService as never,
       mailService as never,
+      {} as never,
     );
     return { service, mailService };
   };
@@ -381,5 +386,43 @@ describe('AdminService.approveUser — seller approval email', () => {
     mailService.sendMail.mockResolvedValue({ sent: false, retryable: true });
 
     await expect(service.approveUser('user-1')).resolves.toBeDefined();
+  });
+});
+
+describe('AdminService.adminCreateProductForSeller', () => {
+  it('calls ProductsService.create with the selected seller id, the product fields, and the admin id', async () => {
+    const productsService = {
+      create: jest.fn().mockResolvedValue({ id: 'offer-1' }),
+    };
+    const service = new AdminService(
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      productsService as never,
+    );
+
+    const dto = {
+      sellerId: 'seller-user-1',
+      name: 'Test Figurine',
+      categoryId: 'cat-1',
+      subCategoryId: 'subcat-1',
+      manufacturer: 'Test Co',
+      mrp: 100,
+      gstPercent: 12,
+      stock: 10,
+      expiryDate: '2099-12-31',
+    } as never;
+
+    await service.adminCreateProductForSeller('admin-user-1', dto);
+
+    expect(productsService.create).toHaveBeenCalledWith(
+      'seller-user-1',
+      expect.objectContaining({ name: 'Test Figurine' }),
+      'admin-user-1',
+    );
+    const passedDto = productsService.create.mock.calls[0][1];
+    expect(passedDto.sellerId).toBeUndefined();
   });
 });

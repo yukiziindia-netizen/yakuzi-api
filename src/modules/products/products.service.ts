@@ -73,7 +73,7 @@ export class ProductsService {
    * Create a product with default batch, search index, and analytics.
    * Supports images, discount fields, externalId (idempotent upsert), and migration mode.
    */
-  async create(userId: string, dto: CreateProductDto) {
+  async create(userId: string, dto: CreateProductDto, createdByAdminId?: string) {
     if (dto.variants && dto.variants.length > 1) {
       const names = dto.variants.map((v: any) => v.name?.trim().toLowerCase()).filter(Boolean);
       const uniqueNames = new Set(names);
@@ -273,6 +273,9 @@ export class ProductsService {
         } else {
           const productData: Prisma.SellerOfferCreateInput = {
             seller: { connect: { id: seller.id } },
+            createdByAdmin: createdByAdminId
+              ? { connect: { id: createdByAdminId } }
+              : undefined,
             category: { connect: { id: normalized.categoryId } },
             subCategory: { connect: { id: normalized.subCategoryId } },
             catalogProduct: catalogProduct
@@ -403,6 +406,9 @@ export class ProductsService {
     } else {
       const productData: Prisma.SellerOfferCreateInput = {
         seller: { connect: { id: seller.id } },
+        createdByAdmin: createdByAdminId
+          ? { connect: { id: createdByAdminId } }
+          : undefined,
         category: { connect: { id: normalized.categoryId } },
         subCategory: { connect: { id: normalized.subCategoryId } },
         variant: variantId ? { connect: { id: variantId } } : undefined,
@@ -1828,6 +1834,8 @@ export class ProductsService {
       images: _images,
       category: _category,
       subCategory: _subCategory,
+      createdByAdminId: _createdByAdminId,
+      createdByAdmin: _createdByAdmin,
       ...rest
     } = product;
 
