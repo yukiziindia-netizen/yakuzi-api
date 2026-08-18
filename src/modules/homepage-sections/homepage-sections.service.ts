@@ -137,23 +137,30 @@ export class HomepageSectionsService {
 
     const withProducts = await Promise.all(
       sections.map(async (section) => {
+        const productFilter = section.categoryId
+          ? { categoryId: section.categoryId }
+          : { subCategoryId: section.subCategoryId! };
         const { products } = await this.productsService.findAll({
-          categoryId: section.categoryId ?? undefined,
+          ...productFilter,
           limit: section.productLimit,
           sortBy: 'newest',
           sortOrder: 'desc',
         });
         return {
           id: section.id,
-          title: section.title || section.category?.name || '',
+          title: section.title || section.category?.name || section.subCategory?.name || '',
           order: section.order,
           category: section.category
             ? { id: section.category.id, name: section.category.name, slug: section.category.slug }
             : null,
-          // Sub-collection-sourced rows fall out of findAllPublic entirely for now
-          // (see the categoryId-only query above), so this is always null here.
-          // Real subCategory branching is a separate later task.
-          subCategory: null,
+          subCategory: section.subCategory
+            ? {
+                id: section.subCategory.id,
+                name: section.subCategory.name,
+                slug: section.subCategory.slug,
+                categorySlug: section.subCategory.category.slug,
+              }
+            : null,
           products,
         };
       }),

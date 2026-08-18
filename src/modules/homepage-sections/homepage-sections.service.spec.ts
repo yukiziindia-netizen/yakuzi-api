@@ -257,4 +257,50 @@ describe('HomepageSectionsService.findAllPublic', () => {
       products: [{ id: 'p1' }],
     });
   });
+
+  it('queries by subCategoryId and falls back the title to the sub-collection name when sub-collection-sourced', async () => {
+    const { service, prisma, productsService } = build();
+    prisma.homepageSection.findMany.mockResolvedValue([
+      buildSection({
+        categoryId: null,
+        subCategoryId: 'sub-1',
+        title: null,
+        category: null,
+        subCategory: { id: 'sub-1', name: 'Chibi Figures', slug: 'chibi-figures', category: { id: 'cat-1', name: 'Figurines', slug: 'figurines' } },
+      }),
+    ]);
+    productsService.findAll.mockResolvedValue({ products: [{ id: 'p1' }], meta: {} });
+
+    const result = await service.findAllPublic();
+
+    expect(productsService.findAll).toHaveBeenCalledWith({
+      subCategoryId: 'sub-1',
+      limit: 16,
+      sortBy: 'newest',
+      sortOrder: 'desc',
+    });
+    expect(result[0]).toMatchObject({
+      title: 'Chibi Figures',
+      category: null,
+      subCategory: { id: 'sub-1', name: 'Chibi Figures', slug: 'chibi-figures', categorySlug: 'figurines' },
+    });
+  });
+
+  it('uses the admin title override over the sub-collection name when both are set', async () => {
+    const { service, prisma, productsService } = build();
+    prisma.homepageSection.findMany.mockResolvedValue([
+      buildSection({
+        categoryId: null,
+        subCategoryId: 'sub-1',
+        title: 'Fan Favorites',
+        category: null,
+        subCategory: { id: 'sub-1', name: 'Chibi Figures', slug: 'chibi-figures', category: { id: 'cat-1', name: 'Figurines', slug: 'figurines' } },
+      }),
+    ]);
+    productsService.findAll.mockResolvedValue({ products: [{ id: 'p1' }], meta: {} });
+
+    const result = await service.findAllPublic();
+
+    expect(result[0].title).toBe('Fan Favorites');
+  });
 });
