@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
-import { IsString, IsOptional, IsBoolean, IsInt, Min, Max } from 'class-validator';
+import { IsString, IsOptional, IsBoolean, IsInt, Min, Max, IsArray, ArrayNotEmpty, ArrayUnique } from 'class-validator';
 import { PrismaService } from '../../database/prisma.service';
 import { ProductsService } from '../products/products.service';
 
@@ -53,6 +53,14 @@ export class UpdateHomepageSectionDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+}
+
+export class ReorderHomepageSectionsDto {
+  @IsArray()
+  @ArrayNotEmpty()
+  @ArrayUnique()
+  @IsString({ each: true })
+  orderedIds!: string[];
 }
 
 const SECTION_INCLUDE = { category: true, subCategory: { include: { category: true } } } as const;
@@ -126,6 +134,23 @@ export class HomepageSectionsService {
     const existing = await this.prisma.homepageSection.findUnique({ where: { id } });
     if (!existing) throw new NotFoundException('Homepage section not found');
     return this.prisma.homepageSection.delete({ where: { id } });
+  }
+
+  async reorder(orderedIds: string[]) {
+    const existing = await this.prisma.homepageSection.findMany({ select: { id: true } });
+    const existingIds = existing.map((s) => s.id).sort();
+    const givenIds = [...orderedIds].sort();
+
+    const isValid = givenIds.length === existingIds.length && givenIds.every((id, i) => id === existingIds[i]);
+    if (!isValid) {
+      throw new BadRequestException('orderedIds must contain exactly the current set of homepage section ids, each exactly once');
+    }
+
+    await this.prisma.$transaction(
+      orderedIds.map((id, index) => this.prisma.homepageSection.update({ where: { id }, data: { order: index } })),
+    );
+
+    return this.findAllAdmin();
   }
 
   async findAllPublic() {

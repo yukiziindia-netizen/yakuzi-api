@@ -15,6 +15,7 @@ import {
   HomepageSectionsService,
   CreateHomepageSectionDto,
   UpdateHomepageSectionDto,
+  ReorderHomepageSectionsDto,
 } from './homepage-sections.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
@@ -51,6 +52,13 @@ export class AdminHomepageSectionsController {
   async findAll() {
     const data = await this.homepageSectionsService.findAllAdmin();
     return { message: 'Homepage sections retrieved successfully', data };
+  }
+
+  @Patch('reorder')
+  @HttpCode(HttpStatus.OK)
+  async reorder(@Body() dto: ReorderHomepageSectionsDto) {
+    const data = await this.homepageSectionsService.reorder(dto.orderedIds);
+    return { message: 'Homepage sections reordered successfully', data };
   }
 
   @Patch(':id')

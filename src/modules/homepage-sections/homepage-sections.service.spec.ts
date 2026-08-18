@@ -182,6 +182,47 @@ describe('HomepageSectionsService — admin CRUD', () => {
   });
 });
 
+describe('HomepageSectionsService.reorder', () => {
+  it('rejects when the given ids are not exactly the current set of section ids', async () => {
+    const { service, prisma } = build();
+    prisma.homepageSection.findMany.mockResolvedValue([{ id: 'a' }, { id: 'b' }, { id: 'c' }]);
+
+    await expect(service.reorder(['a', 'b'])).rejects.toBeInstanceOf(BadRequestException);
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('rejects a duplicate id even if the array length matches', async () => {
+    const { service, prisma } = build();
+    prisma.homepageSection.findMany.mockResolvedValue([{ id: 'a' }, { id: 'b' }, { id: 'c' }]);
+
+    await expect(service.reorder(['a', 'a', 'c'])).rejects.toBeInstanceOf(BadRequestException);
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('sets each section order to its index in the given array, in one transaction', async () => {
+    const { service, prisma } = build();
+    prisma.homepageSection.findMany.mockResolvedValueOnce([{ id: 'a' }, { id: 'b' }, { id: 'c' }]);
+    prisma.homepageSection.findMany.mockResolvedValueOnce([]);
+
+    await service.reorder(['b', 'c', 'a']);
+
+    expect(prisma.homepageSection.update).toHaveBeenNthCalledWith(1, { where: { id: 'b' }, data: { order: 0 } });
+    expect(prisma.homepageSection.update).toHaveBeenNthCalledWith(2, { where: { id: 'c' }, data: { order: 1 } });
+    expect(prisma.homepageSection.update).toHaveBeenNthCalledWith(3, { where: { id: 'a' }, data: { order: 2 } });
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns the freshly reordered list of sections', async () => {
+    const { service, prisma } = build();
+    prisma.homepageSection.findMany.mockResolvedValueOnce([{ id: 'a' }]);
+    prisma.homepageSection.findMany.mockResolvedValueOnce([buildSection({ id: 'a', order: 0 })]);
+
+    const result = await service.reorder(['a']);
+
+    expect(result).toEqual([buildSection({ id: 'a', order: 0 })]);
+  });
+});
+
 describe('HomepageSectionsService.findAllPublic', () => {
   it('only queries active sections, ordered ascending', async () => {
     const { service, prisma, productsService } = build();
