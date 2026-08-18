@@ -112,3 +112,79 @@ describe('HomepageSectionsService — admin CRUD', () => {
     });
   });
 });
+
+describe('HomepageSectionsService.findAllPublic', () => {
+  it('only queries active sections, ordered ascending', async () => {
+    const { service, prisma, productsService } = build();
+    prisma.homepageSection.findMany.mockResolvedValue([]);
+    productsService.findAll.mockResolvedValue({ products: [], meta: {} });
+
+    await service.findAllPublic();
+
+    expect(prisma.homepageSection.findMany).toHaveBeenCalledWith({
+      where: { isActive: true },
+      orderBy: { order: 'asc' },
+      include: { category: true },
+    });
+  });
+
+  it('falls back the row title to the category name when no override is set', async () => {
+    const { service, prisma, productsService } = build();
+    prisma.homepageSection.findMany.mockResolvedValue([buildSection({ title: null })]);
+    productsService.findAll.mockResolvedValue({ products: [{ id: 'p1' }], meta: {} });
+
+    const result = await service.findAllPublic();
+
+    expect(result[0].title).toBe('Manga');
+  });
+
+  it('uses the admin title override when one is set', async () => {
+    const { service, prisma, productsService } = build();
+    prisma.homepageSection.findMany.mockResolvedValue([buildSection({ title: 'Trending in Manga' })]);
+    productsService.findAll.mockResolvedValue({ products: [{ id: 'p1' }], meta: {} });
+
+    const result = await service.findAllPublic();
+
+    expect(result[0].title).toBe('Trending in Manga');
+  });
+
+  it('queries products newest-first, capped at the section productLimit', async () => {
+    const { service, prisma, productsService } = build();
+    prisma.homepageSection.findMany.mockResolvedValue([buildSection({ productLimit: 8 })]);
+    productsService.findAll.mockResolvedValue({ products: [{ id: 'p1' }], meta: {} });
+
+    await service.findAllPublic();
+
+    expect(productsService.findAll).toHaveBeenCalledWith({
+      categoryId: 'cat-1',
+      limit: 8,
+      sortBy: 'newest',
+      sortOrder: 'desc',
+    });
+  });
+
+  it('omits a section whose category currently has zero matching products', async () => {
+    const { service, prisma, productsService } = build();
+    prisma.homepageSection.findMany.mockResolvedValue([buildSection()]);
+    productsService.findAll.mockResolvedValue({ products: [], meta: {} });
+
+    const result = await service.findAllPublic();
+
+    expect(result).toEqual([]);
+  });
+
+  it('includes the section id, order, and category slug in the response shape', async () => {
+    const { service, prisma, productsService } = build();
+    prisma.homepageSection.findMany.mockResolvedValue([buildSection({ id: 'section-9', order: 4 })]);
+    productsService.findAll.mockResolvedValue({ products: [{ id: 'p1' }], meta: {} });
+
+    const result = await service.findAllPublic();
+
+    expect(result[0]).toMatchObject({
+      id: 'section-9',
+      order: 4,
+      category: { id: 'cat-1', name: 'Manga', slug: 'manga' },
+      products: [{ id: 'p1' }],
+    });
+  });
+});

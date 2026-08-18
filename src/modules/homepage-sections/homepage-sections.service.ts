@@ -99,4 +99,39 @@ export class HomepageSectionsService {
     if (!existing) throw new NotFoundException('Homepage section not found');
     return this.prisma.homepageSection.delete({ where: { id } });
   }
+
+  async findAllPublic() {
+    const sections = await this.prisma.homepageSection.findMany({
+      where: { isActive: true },
+      orderBy: { order: 'asc' },
+      include: { category: true },
+    });
+
+    const withProducts = await Promise.all(
+      sections.map(async (section) => {
+        const { products } = await this.productsService.findAll({
+          categoryId: section.categoryId,
+          limit: section.productLimit,
+          sortBy: 'newest',
+          sortOrder: 'desc',
+        });
+        return {
+          id: section.id,
+          title: section.title || section.category.name,
+          order: section.order,
+          category: {
+            id: section.category.id,
+            name: section.category.name,
+            slug: section.category.slug,
+          },
+          products,
+        };
+      }),
+    );
+
+    // A section for a category with nothing in it yet is not shown at all —
+    // there's no useful "empty row" state, and the admin may be staging a
+    // section ahead of adding products to that category.
+    return withProducts.filter((section) => section.products.length > 0);
+  }
 }
