@@ -35,6 +35,7 @@ import { CustomOrdersModule } from './modules/custom-orders/custom-orders.module
 import { ChatbotModule } from './modules/chatbot/chatbot.module';
 import { BrandsModule } from './modules/brands/brands.module';
 import { BannersModule } from './modules/banners/banners.module';
+import { HomepageSectionsModule } from './modules/homepage-sections/homepage-sections.module';
 import { LocationsModule } from './modules/locations/locations.module';
 import { MailModule } from './modules/mail/mail.module';
 import { SeoModule } from './modules/seo/seo.module';
@@ -141,6 +142,7 @@ import { WebAnalyticsModule } from './modules/web-analytics/web-analytics.module
     ChatbotModule,
     BrandsModule,
     BannersModule,
+    HomepageSectionsModule,
     LocationsModule,
   ],
   providers: [
