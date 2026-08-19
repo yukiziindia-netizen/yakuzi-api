@@ -833,7 +833,8 @@ export class ProductsService {
   }
 
   /**
-   * Validate a list of product IDs, returning only the active and non-deleted ones.
+   * Validate a list of product IDs, returning current price/mrp/stock for
+   * whichever ones are still active, non-deleted, and in stock.
    */
   async validateIds(ids: string[]) {
     if (!ids || ids.length === 0) return [];
