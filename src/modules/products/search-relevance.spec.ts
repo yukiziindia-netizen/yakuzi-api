@@ -13,6 +13,7 @@ describe('ProductsService.findAll ranked search', () => {
     {} as never,
     {} as never,
     {} as never,
+    {} as never,
   );
 
   beforeEach(() => {

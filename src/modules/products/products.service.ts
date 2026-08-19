@@ -3,6 +3,7 @@ import {
   NotFoundException,
   ForbiddenException,
   BadRequestException,
+  ConflictException,
   Logger,
 } from '@nestjs/common';
 import { Prisma, ProductApprovalStatus } from '@prisma/client';
@@ -15,6 +16,7 @@ import { UpdateProductDto } from './dto/update-product.dto';
 import { QueryProductDto } from './dto/query-product.dto';
 import { CreateProductRequestDto } from './dto/create-product-request.dto';
 import { BulkCreateProductDto } from './dto/bulk-create-product.dto';
+import { MailService } from '../mail/mail.service';
 
 @Injectable()
 export class ProductsService {
@@ -25,6 +27,7 @@ export class ProductsService {
     private readonly inventoryService: InventoryService,
     private readonly searchIndexService: SearchIndexService,
     private readonly analyticsService: AnalyticsService,
+    private readonly mailService: MailService,
   ) {}
 
   // ──────────────────────────────────────────────
@@ -1988,12 +1991,47 @@ export class ProductsService {
 
   // WAITLIST FEATURE
 
-  async addToWaitlist(userId: string, catalogProductId: string) {
+  async addToWaitlist(userId: string, catalogProductId: string, email?: string) {
     const product = await this.prisma.catalogProduct.findUnique({
       where: { id: catalogProductId },
     });
     if (!product) {
       throw new NotFoundException('Product not found');
+    }
+
+    // This project logs in by phone/OTP, so a buyer can reach checkout with
+    // no email on file at all - and the back-in-stock notification below has
+    // nowhere to go without one. Claim the submitted email onto the account
+    // only when it doesn't already have one; an account that already has an
+    // email keeps it, the submitted value is just ignored.
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { email: true },
+    });
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+    if (!user.email && email) {
+      try {
+        await this.prisma.user.update({
+          where: { id: userId },
+          data: { email },
+        });
+      } catch (error) {
+        if (
+          error instanceof Prisma.PrismaClientKnownRequestError &&
+          error.code === 'P2002'
+        ) {
+          throw new ConflictException(
+            'This email is already used by another account.',
+          );
+        }
+        throw error;
+      }
+    } else if (!user.email && !email) {
+      throw new BadRequestException(
+        'An email address is required so we can notify you when this item is back in stock.',
+      );
     }
 
     const existing = await this.prisma.productWaitlist.findUnique({
@@ -2057,7 +2095,10 @@ export class ProductsService {
   async notifyWaitlistedUsers(catalogProductId: string) {
     const waitlisted = await this.prisma.productWaitlist.findMany({
       where: { catalogProductId, isNotified: false },
-      include: { catalogProduct: true },
+      include: {
+        catalogProduct: true,
+        user: { select: { email: true } },
+      },
     });
 
     if (waitlisted.length === 0) return;
@@ -2071,9 +2112,64 @@ export class ProductsService {
       data: notifications,
     });
 
+    // Email, best-effort per recipient: addToWaitlist() requires an email up
+    // front for exactly this reason, but an older waitlist row from before
+    // that requirement existed can still have none - skip those rather than
+    // failing the whole batch. One bad send must not block the others, same
+    // reasoning as SellerOrderNotifierService.
+    await Promise.allSettled(
+      waitlisted.map((w) => this.sendBackInStockEmail(w)),
+    );
+
     await this.prisma.productWaitlist.updateMany({
       where: { id: { in: waitlisted.map((w) => w.id) } },
       data: { isNotified: true },
     });
+  }
+
+  private async sendBackInStockEmail(waitlistEntry: {
+    userId: string;
+    catalogProductId: string;
+    catalogProduct: { name: string; slug: string | null };
+    user: { email: string | null };
+  }): Promise<void> {
+    const to = waitlistEntry.user.email?.trim();
+    if (!to) {
+      this.logger.warn(
+        `back-in-stock email skipped: user ${waitlistEntry.userId} has no email on file (product ${waitlistEntry.catalogProductId})`,
+      );
+      return;
+    }
+
+    const { name } = waitlistEntry.catalogProduct;
+    const safeName = this.escape(name);
+    const productUrl = waitlistEntry.catalogProduct.slug
+      ? `https://yukizi.com/products/${waitlistEntry.catalogProduct.slug}`
+      : 'https://yukizi.com/';
+
+    const result = await this.mailService.sendMail({
+      to,
+      subject: `${name} is back in stock!`,
+      text: `Good news - ${name}, which you asked to be notified about, is back in stock.\n\n${productUrl}\n\nYukizi`,
+      html: `<p>Good news - <strong>${safeName}</strong>, which you asked to be notified about, is back in stock.</p><p><a href="${productUrl}">View product</a></p><p>Yukizi</p>`,
+    });
+    if (!result.sent) {
+      this.logger.warn(
+        `Could not email user ${waitlistEntry.userId} about ${waitlistEntry.catalogProductId} being back in stock (retryable=${result.retryable})`,
+      );
+    }
+  }
+
+  /**
+   * Escapes text for safe interpolation into an HTML email body. Same
+   * approach as InvoiceEmailService.escape() - product names are free text
+   * and must not be spliced into HTML unescaped.
+   */
+  private escape(value: string): string {
+    return String(value ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
   }
 }

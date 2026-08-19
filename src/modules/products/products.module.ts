@@ -4,8 +4,10 @@ import { ProductsService } from './products.service';
 import { InventoryService } from './services/inventory.service';
 import { SearchIndexService } from './services/search-index.service';
 import { AnalyticsService } from './services/analytics.service';
+import { MailModule } from '../mail/mail.module';
 
 @Module({
+  imports: [MailModule],
   controllers: [ProductsController],
   providers: [
     ProductsService,
