@@ -1103,7 +1103,7 @@ export class AdminService {
                     commissionPercent: true,
                     commissionGstPercent: true,
                     images: {
-                      orderBy: { order: 'asc' },
+                      orderBy: [{ order: 'asc' }, { id: 'asc' }],
                       select: { url: true },
                     },
                     category: {
@@ -1127,7 +1127,7 @@ export class AdminService {
                         commissionPercent: true,
                         commissionGstPercent: true,
                         images: {
-                          orderBy: { order: 'asc' },
+                          orderBy: [{ order: 'asc' }, { id: 'asc' }],
                           select: { url: true },
                         },
                         category: {
@@ -2543,7 +2543,7 @@ export class AdminService {
           subCategory: { select: { id: true, name: true } },
           extraCategories: { select: { id: true, name: true, slug: true } },
           extraSubCategories: { select: { id: true, name: true, slug: true, categoryId: true } },
-          images: { select: { id: true, url: true }, orderBy: { order: 'asc' } },
+          images: { select: { id: true, url: true }, orderBy: [{ order: 'asc' }, { id: 'asc' }] },
           productVariants: true,
         },
         orderBy: { name: 'asc' },
