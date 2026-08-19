@@ -15,6 +15,7 @@ import {
 } from '@prisma/client';
 import { calculateSellerPayout } from '../settlements/payout-calculator';
 import { InvoiceEmailService } from '../orders/invoice-email.service';
+import { SellerOrderNotifierService } from '../orders/seller-order-notifier.service';
 import { WebAnalyticsService } from '../web-analytics/web-analytics.service';
 
 @Injectable()
@@ -27,6 +28,7 @@ export class PaymentsService {
     private readonly config: ConfigService,
     private readonly invoiceEmailService: InvoiceEmailService,
     private readonly webAnalytics: WebAnalyticsService,
+    private readonly sellerOrderNotifier: SellerOrderNotifierService,
   ) {
     this.commissionRate = parseFloat(
       this.config.get<string>('PLATFORM_COMMISSION_RATE', '0.05'),
@@ -363,6 +365,29 @@ export class PaymentsService {
     // just confirmed goes out as a single email.
     this.invoiceEmailService.dispatchForOrders(relatedOrders.map((o) => o.id));
 
+    // A Razorpay-intent checkout (see CreateOrderDto.deferSellerNotification)
+    // left sellersNotifiedAt null and skipped telling sellers about the
+    // order at all - this is where that deferred notification actually
+    // fires, now that the order is genuinely paid for. Detached like the
+    // invoice email: never blocks a confirmation.
+    //
+    // This runs on every confirmPayment() call - browser verify, webhook,
+    // AND admin manual confirm - so it must not double-notify an order that
+    // was already notified immediately at checkout (every non-Razorpay
+    // order). The atomic updateMany claim below is what makes that safe:
+    // whichever caller's update actually flips a row from null is the only
+    // one that goes on to notify, even if the browser's /verify and the
+    // webhook both land for the same payment.
+    void this.notifyDeferredSellers(relatedOrders.map((o) => o.id)).catch(
+      (err) => {
+        this.logger.warn(
+          `Deferred seller notification failed for payment ${paymentId}: ${
+            err instanceof Error ? err.message : 'Unknown error'
+          }`,
+        );
+      },
+    );
+
     // Server-side conversion truth for analytics (covers webhook + admin
     // confirm). Detached like the invoice email: never blocks a confirmation.
     void this.webAnalytics.track({
@@ -385,6 +410,49 @@ export class PaymentsService {
       totalPaid: result.confirmedTotalPaid,
       totalAmount: payment.order.totalAmount.toNumber(),
     };
+  }
+
+  /**
+   * Fires the seller-new-order notification for any order in the group that
+   * was deferred at checkout (Order.sellersNotifiedAt still null) and has
+   * now actually been paid for.
+   *
+   * The updateMany claim is the concurrency guard: it only affects rows that
+   * are still null, and only the caller whose update actually matched a row
+   * (count > 0) goes on to notify. That makes this safe to call from every
+   * confirmPayment() path without a separate lock - a non-Razorpay order was
+   * already stamped at checkout, so it never matches here at all; a
+   * Razorpay-intent order matches at most once, no matter how many callers
+   * (browser verify, webhook, admin) race to confirm the same payment.
+   */
+  private async notifyDeferredSellers(orderIds: string[]): Promise<void> {
+    if (orderIds.length === 0) return;
+
+    const candidates = await this.prisma.order.findMany({
+      where: {
+        id: { in: orderIds },
+        sellersNotifiedAt: null,
+        paymentStatus: PaymentStatus.SUCCESS,
+      },
+      select: {
+        id: true,
+        items: { select: { sellerId: true }, distinct: ['sellerId'] },
+      },
+    });
+
+    for (const order of candidates) {
+      const claimed = await this.prisma.order.updateMany({
+        where: { id: order.id, sellersNotifiedAt: null },
+        data: { sellersNotifiedAt: new Date() },
+      });
+      if (claimed.count === 0) continue;
+
+      const pairs = order.items.map((item) => ({
+        orderId: order.id,
+        sellerId: item.sellerId,
+      }));
+      await this.sellerOrderNotifier.notifySellersOfNewOrder(pairs);
+    }
   }
 
   // ──────────────────────────────────────────────

@@ -155,6 +155,7 @@ export class CartService {
                   select: {
                     images: {
                       select: { url: true },
+                      orderBy: [{ order: 'asc' }, { id: 'asc' }],
                     },
                   },
                 },
@@ -214,6 +215,7 @@ export class CartService {
                       select: {
                         images: {
                           select: { url: true },
+                          orderBy: [{ order: 'asc' }, { id: 'asc' }],
                         },
                       },
                     },
@@ -358,6 +360,7 @@ minimumOrderQuantity: true,
                   select: {
                     images: {
                       select: { url: true },
+                      orderBy: [{ order: 'asc' }, { id: 'asc' }],
                     },
                   },
                 },
@@ -448,6 +451,7 @@ minimumOrderQuantity: true,
         include: {
           images: {
             select: { url: true },
+            orderBy: [{ order: 'asc' }, { id: 'asc' }],
           },
         },
       });

@@ -44,6 +44,7 @@ const build = (
     {} as never,
     {} as never,
     {} as never,
+    {} as never,
   );
   return { service, prisma };
 };
@@ -153,6 +154,7 @@ describe('OrdersService.pushOrderToShiprocketIfNeeded', () => {
     const service = new OrdersService(
       {} as never,
       shiprocketService as never,
+      {} as never,
       {} as never,
       {} as never,
       {} as never,
@@ -280,6 +282,7 @@ describe('OrdersService.syncTrackingFields', () => {
     {} as never,
     {} as never,
     {} as never,
+    {} as never,
   );
     return { service, prisma };
   };
@@ -315,6 +318,7 @@ describe('OrdersService.syncTrackingFields', () => {
     {} as never,
     {} as never,
     {} as never,
+    {} as never,
   );
     await expect(
       service.syncTrackingFields('order-1', { awb_code: 'AWB1' }),
@@ -340,6 +344,7 @@ describe('OrdersService.notifyBuyerOfStatusChange', () => {
       mailService as never,
       notificationsService as never,
       otpSmsService as never,
+      {} as never,
     );
     return { service, mailService, notificationsService, otpSmsService };
   };
@@ -410,128 +415,6 @@ describe('OrdersService.notifyBuyerOfStatusChange', () => {
   });
 });
 
-describe('OrdersService.notifySellersOfNewOrder', () => {
-  const call = (
-    service: OrdersService,
-    pairs: { orderId: string; sellerId: string }[],
-  ) =>
-    (
-      service as unknown as {
-        notifySellersOfNewOrder(
-          pairs: { orderId: string; sellerId: string }[],
-        ): Promise<void>;
-      }
-    ).notifySellersOfNewOrder(pairs);
-
-  const buildForNotify = (
-    sellers: {
-      id: string;
-      userId: string;
-      email: string | null;
-      companyName: string;
-      user?: { email: string | null };
-    }[],
-  ) => {
-    const prisma = {
-      sellerProfile: {
-        findMany: jest.fn().mockResolvedValue(sellers),
-      },
-    };
-    const notificationsService = {
-      notifySellerNewOrder: jest.fn().mockResolvedValue(undefined),
-    };
-    const mailService = {
-      sendMail: jest.fn().mockResolvedValue({ sent: true, retryable: false }),
-    };
-    const service = new OrdersService(
-      prisma as never,
-      {} as never,
-      mailService as never,
-      notificationsService as never,
-      {} as never,
-    );
-    return { service, prisma, notificationsService, mailService };
-  };
-
-  it('creates an in-app notification and emails each seller with an address', async () => {
-    const { service, notificationsService, mailService } = buildForNotify([
-      { id: 'seller-1', userId: 'user-1', email: 's1@example.com', companyName: 'Acme' },
-      { id: 'seller-2', userId: 'user-2', email: 's2@example.com', companyName: 'Beta' },
-    ]);
-
-    await call(service, [
-      { orderId: 'order-1', sellerId: 'seller-1' },
-      { orderId: 'order-2', sellerId: 'seller-2' },
-    ]);
-
-    expect(notificationsService.notifySellerNewOrder).toHaveBeenCalledWith('user-1', 'order-1');
-    expect(notificationsService.notifySellerNewOrder).toHaveBeenCalledWith('user-2', 'order-2');
-    expect(mailService.sendMail).toHaveBeenCalledTimes(2);
-    expect(mailService.sendMail).toHaveBeenCalledWith(
-      expect.objectContaining({ to: 's1@example.com' }),
-    );
-  });
-
-  it('falls back to the login email when SellerProfile.email is blank', async () => {
-    const { service, mailService } = buildForNotify([
-      {
-        id: 'seller-1',
-        userId: 'user-1',
-        email: null,
-        companyName: 'Acme',
-        user: { email: 'login@example.com' },
-      },
-    ]);
-
-    await call(service, [{ orderId: 'order-1', sellerId: 'seller-1' }]);
-
-    expect(mailService.sendMail).toHaveBeenCalledWith(
-      expect.objectContaining({ to: 'login@example.com' }),
-    );
-  });
-
-  it('skips the email but still creates the in-app notification when neither the business nor login email is on file', async () => {
-    const { service, notificationsService, mailService } = buildForNotify([
-      { id: 'seller-1', userId: 'user-1', email: null, companyName: 'Acme', user: { email: null } },
-    ]);
-
-    await call(service, [{ orderId: 'order-1', sellerId: 'seller-1' }]);
-
-    expect(notificationsService.notifySellerNewOrder).toHaveBeenCalledWith('user-1', 'order-1');
-    expect(mailService.sendMail).not.toHaveBeenCalled();
-  });
-
-  it('does not throw when the in-app notification write fails', async () => {
-    const { service, notificationsService } = buildForNotify([
-      { id: 'seller-1', userId: 'user-1', email: 's1@example.com', companyName: 'Acme' },
-    ]);
-    notificationsService.notifySellerNewOrder.mockRejectedValue(new Error('db down'));
-
-    await expect(
-      call(service, [{ orderId: 'order-1', sellerId: 'seller-1' }]),
-    ).resolves.toBeUndefined();
-  });
-
-  it('does not throw when the mailer reports failure', async () => {
-    const { service, mailService } = buildForNotify([
-      { id: 'seller-1', userId: 'user-1', email: 's1@example.com', companyName: 'Acme' },
-    ]);
-    mailService.sendMail.mockResolvedValue({ sent: false, retryable: true });
-
-    await expect(
-      call(service, [{ orderId: 'order-1', sellerId: 'seller-1' }]),
-    ).resolves.toBeUndefined();
-  });
-
-  it('does nothing for an empty list, without querying sellers', async () => {
-    const { service, prisma } = buildForNotify([]);
-
-    await call(service, []);
-
-    expect(prisma.sellerProfile.findMany).not.toHaveBeenCalled();
-  });
-});
-
 describe('OrdersService.createSettlementsForDeliveredOrder', () => {
   const buildForSettlements = () => {
     const prisma = {
@@ -543,6 +426,7 @@ describe('OrdersService.createSettlementsForDeliveredOrder', () => {
     };
     const service = new OrdersService(
       prisma as never,
+      {} as never,
       {} as never,
       {} as never,
       {} as never,

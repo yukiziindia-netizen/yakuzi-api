@@ -363,11 +363,17 @@ export class SellersService {
         (this.prisma as any).sellerOffer ? this.prisma.sellerOffer.count({
           where: { sellerId: seller.id, isActive: true, deletedAt: null },
         }) : Promise.resolve(0),
-        (this.prisma as any).orderItem ? this.prisma.orderItem.count({ where: { sellerId: seller.id } }) : Promise.resolve(0),
+        // sellersNotifiedAt: { not: null } excludes a Razorpay-intent order
+        // nobody has paid for yet - same gate as getSellerOrders(), so the
+        // dashboard's own counts never disagree with the order list it links to.
+        (this.prisma as any).orderItem ? this.prisma.orderItem.count({
+          where: { sellerId: seller.id, order: { sellersNotifiedAt: { not: null } } },
+        }) : Promise.resolve(0),
         (this.prisma as any).orderItem ? this.prisma.orderItem.count({
           where: {
             sellerId: seller.id,
             order: {
+              sellersNotifiedAt: { not: null },
               orderStatus: {
                 in: ['PLACED', 'ACCEPTED', 'SHIPPED', 'OUT_FOR_DELIVERY'],
               },
@@ -377,7 +383,7 @@ export class SellersService {
         (this.prisma as any).orderItem ? this.prisma.orderItem.aggregate({
           where: {
             sellerId: seller.id,
-            order: { orderStatus: 'DELIVERED' },
+            order: { sellersNotifiedAt: { not: null }, orderStatus: 'DELIVERED' },
           },
           _sum: { totalPrice: true },
         }) : Promise.resolve({ _sum: { totalPrice: 0 } }),
@@ -391,7 +397,7 @@ export class SellersService {
       ]);
 
       const orders = (this.prisma as any).orderItem ? await this.prisma.orderItem.findMany({
-        where: { sellerId: seller.id },
+        where: { sellerId: seller.id, order: { sellersNotifiedAt: { not: null } } },
         take: 5,
         orderBy: { createdAt: 'desc' },
         select: {
