@@ -246,8 +246,32 @@ export class CartService {
       };
     }
 
+    // Silently drop items whose listing is no longer purchasable (deactivated,
+    // soft-deleted, or fully out of stock) instead of returning them as if
+    // nothing changed — and delete the stale rows so they can't resurface via
+    // the pre-checkout local-cart sync (useSyncCart on the buyer app), which
+    // checks "does this item already exist in the backend cart" by id.
+    const staleItemIds: string[] = [];
+    const liveCartItems = cart.items.filter((item) => {
+      const stock = item.sellerOffer.batches.reduce((sum, b) => sum + b.stock, 0);
+      const isStale = !item.sellerOffer.isActive || !!item.sellerOffer.deletedAt || stock <= 0;
+      if (isStale) staleItemIds.push(item.id);
+      return !isStale;
+    });
+    if (staleItemIds.length > 0) {
+      await this.prisma.cartItem.deleteMany({ where: { id: { in: staleItemIds } } });
+    }
+
+    if (liveCartItems.length === 0) {
+      return {
+        cartId: cart.id,
+        items: [],
+        totalAmount: 0,
+      };
+    }
+
     const items = await Promise.all(
-      cart.items.map(async (item) => ({
+      liveCartItems.map(async (item) => ({
         id: item.id,
         sellerOffer: await this.formatCartItemOffer(item.sellerOffer),
         quantity: item.quantity,
