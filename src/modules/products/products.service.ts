@@ -837,15 +837,27 @@ export class ProductsService {
    */
   async validateIds(ids: string[]) {
     if (!ids || ids.length === 0) return [];
-    const activeProducts = await this.prisma.sellerOffer.findMany({
+    const offers = await this.prisma.sellerOffer.findMany({
       where: {
         id: { in: ids },
         isActive: true,
         deletedAt: null,
       },
-      select: { id: true },
+      select: {
+        id: true,
+        mrp: true,
+        finalCustomerPayable: true,
+        batches: { where: { stock: { gt: 0 } }, select: { stock: true } },
+      },
     });
-    return activeProducts.map((p) => p.id);
+    return offers
+      .map((o) => ({
+        id: o.id,
+        price: o.finalCustomerPayable ?? o.mrp,
+        mrp: o.mrp,
+        stock: o.batches.reduce((sum, b) => sum + b.stock, 0),
+      }))
+      .filter((o) => o.stock > 0);
   }
 
   // ──────────────────────────────────────────────

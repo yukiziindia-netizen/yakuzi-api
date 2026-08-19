@@ -134,7 +134,7 @@ export class ProductsController {
 
   @Post('validate-ids')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Validate if product IDs are active and not deleted' })
+  @ApiOperation({ summary: 'Validate product IDs are active, not deleted, and in stock — returns current price/mrp/stock for each' })
   @ApiResponse({ status: 200, description: 'List of active product IDs' })
   async validateIds(@Body() dto: { ids: string[] }) {
     const data = await this.productsService.validateIds(dto.ids);
