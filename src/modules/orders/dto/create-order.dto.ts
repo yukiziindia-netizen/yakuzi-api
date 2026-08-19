@@ -1,4 +1,5 @@
 import {
+  IsBoolean,
   IsEmail,
   IsNotEmpty,
   IsOptional,
@@ -48,4 +49,18 @@ export class CreateOrderDto {
   @IsOptional()
   @IsEmail({}, { message: 'Enter a valid email address' })
   email?: string;
+
+  @ApiProperty({
+    example: false,
+    required: false,
+    description:
+      'Set when the buyer is about to pay online (Razorpay). Holds off ' +
+      'notifying sellers and showing this order on their dashboard until ' +
+      'the payment actually succeeds, instead of the moment the order ' +
+      'record is created. Omit/false for COD, bank transfer or credit ' +
+      'orders, which are correctly visible to sellers immediately.',
+  })
+  @IsOptional()
+  @IsBoolean()
+  deferSellerNotification?: boolean;
 }

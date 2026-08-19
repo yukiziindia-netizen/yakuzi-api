@@ -6,6 +6,7 @@ import { ShiprocketSyncService } from './shiprocket-sync.service';
 import { InvoiceService } from './invoice.service';
 import { InvoicePdfService } from './invoice-pdf.service';
 import { InvoiceEmailService } from './invoice-email.service';
+import { SellerOrderNotifierService } from './seller-order-notifier.service';
 import { MailModule } from '../mail/mail.module';
 import { AuthModule } from '../auth/auth.module';
 
@@ -19,6 +20,7 @@ import { AuthModule } from '../auth/auth.module';
     InvoiceService,
     InvoicePdfService,
     InvoiceEmailService,
+    SellerOrderNotifierService,
   ],
   exports: [
     OrdersService,
@@ -26,6 +28,7 @@ import { AuthModule } from '../auth/auth.module';
     InvoiceService,
     InvoicePdfService,
     InvoiceEmailService,
+    SellerOrderNotifierService,
   ],
 })
 export class OrdersModule {}

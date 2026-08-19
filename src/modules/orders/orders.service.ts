@@ -15,6 +15,7 @@ import { calculateSellerPayout, buildPayoutInputFromOrderItem } from '../settlem
 import { MailService } from '../mail/mail.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { OtpSmsService } from '../auth/services/otp-sms.service';
+import { SellerOrderNotifierService } from './seller-order-notifier.service';
 
 /**
  * Fields a seller may still write once the admin has locked shipping.
@@ -39,6 +40,7 @@ export class OrdersService {
     private readonly mailService: MailService,
     private readonly notificationsService: NotificationsService,
     private readonly otpSmsService: OtpSmsService,
+    private readonly sellerOrderNotifier: SellerOrderNotifierService,
   ) {}
 
   // ──────────────────────────────────────────────
@@ -490,6 +492,11 @@ export class OrdersService {
             totalAmount: sellerTotalAmount,
             orderStatus: OrderStatus.PLACED,
             referralCodeId: buyerProfile?.referralCodeId || null,
+            // Razorpay-intent checkouts ask to hold off telling sellers until
+            // the payment actually succeeds (see Order.sellersNotifiedAt) -
+            // stamped now for every other method, matching today's behavior
+            // of notifying immediately at checkout.
+            sellersNotifiedAt: dto.deferSellerNotification ? null : new Date(),
           },
         });
 
@@ -549,13 +556,22 @@ export class OrdersService {
     // file, an email. Deliberately outside the transaction and never
     // rethrown: a notification failing must never roll back or fail an
     // order the buyer has already placed.
-    await this.notifySellersOfNewOrder(sellerOrderPairs).catch((err) => {
-      this.logger.warn(
-        `Could not notify sellers of new order(s) for checkout by user ${userId}: ${
-          err instanceof Error ? err.message : 'Unknown error'
-        }`,
-      );
-    });
+    //
+    // Skipped entirely for a deferred (Razorpay-intent) checkout - nothing
+    // to tell a seller about an order nobody has paid for yet.
+    // PaymentsService.confirmPayment() sends this same notification once the
+    // payment actually succeeds.
+    if (!dto.deferSellerNotification) {
+      await this.sellerOrderNotifier
+        .notifySellersOfNewOrder(sellerOrderPairs)
+        .catch((err) => {
+          this.logger.warn(
+            `Could not notify sellers of new order(s) for checkout by user ${userId}: ${
+              err instanceof Error ? err.message : 'Unknown error'
+            }`,
+          );
+        });
+    }
 
     // 4g. Carry the checkout details onto the buyer's profile.
     // The buyer types a phone number and address at checkout, but nothing ever
@@ -590,6 +606,7 @@ export class OrdersService {
                       select: {
                         images: {
                           select: { url: true },
+                          orderBy: [{ order: 'asc' }, { id: 'asc' }],
                         },
                       },
                     },
@@ -626,6 +643,7 @@ export class OrdersService {
             include: {
               images: {
                 select: { url: true },
+                orderBy: [{ order: 'asc' }, { id: 'asc' }],
               },
             },
           });
@@ -645,120 +663,6 @@ export class OrdersService {
     );
 
     return fullOrder;
-  }
-
-  /**
-   * Notifies the sellers who just received an order from this checkout.
-   *
-   * Two channels, both best-effort: the in-app bell (NotificationsService,
-   * already the pattern buyers get order-placed notifications through) and
-   * an email when the seller has an address on file. Neither failing may
-   * surface to the caller — checkout has already committed the order.
-   */
-  private async notifySellersOfNewOrder(
-    pairs: { orderId: string; sellerId: string }[],
-  ): Promise<void> {
-    if (pairs.length === 0) return;
-
-    const sellers = await this.prisma.sellerProfile.findMany({
-      where: { id: { in: Array.from(new Set(pairs.map((p) => p.sellerId))) } },
-      select: {
-        id: true,
-        userId: true,
-        email: true,
-        companyName: true,
-        user: { select: { email: true } },
-      },
-    });
-    const sellerById = new Map(sellers.map((s) => [s.id, s]));
-
-    // Notify all sellers concurrently. checkout() awaits this whole method
-    // before the buyer gets a response, so a multi-seller cart — the normal
-    // case, not an edge case — must not pay N sequential rounds of DB writes
-    // and live SMTP sends. Promise.allSettled means one seller's total
-    // failure can't stop the others from being notified.
-    await Promise.allSettled(
-      pairs.map((pair) => this.notifyOneSeller(pair, sellerById)),
-    );
-  }
-
-  /**
-   * Per-seller body of {@link notifySellersOfNewOrder}, split out so the
-   * caller can fan these out concurrently with Promise.allSettled. Each
-   * failure path here (missing seller row, in-app notification write,
-   * mail-send result) is logged and swallowed on its own — nothing here may
-   * throw out to the caller.
-   */
-  private async notifyOneSeller(
-    { orderId, sellerId }: { orderId: string; sellerId: string },
-    sellerById: Map<
-      string,
-      {
-        id: string;
-        userId: string;
-        email: string | null;
-        companyName: string;
-        user: { email: string | null };
-      }
-    >,
-  ): Promise<void> {
-    const seller = sellerById.get(sellerId);
-    if (!seller) {
-      this.logger.warn(
-        `Could not find seller profile ${sellerId} while notifying about order ${orderId}`,
-      );
-      return;
-    }
-
-    await this.notificationsService
-      .notifySellerNewOrder(seller.userId, orderId)
-      .catch((err) => {
-        this.logger.warn(
-          `Could not create the in-app new-order notification for seller ${seller.userId}: ${
-            err instanceof Error ? err.message : 'Unknown error'
-          }`,
-        );
-      });
-
-    // SellerProfile.email is the business contact sellers fill in during
-    // onboarding and can be blank (e.g. accounts created before it was a
-    // required field); User.email is the separate login address shown in
-    // their own dashboard, which is usually present. Fall back to it so a
-    // seller with no business email on file still gets order emails.
-    const to = seller.email?.trim() || seller.user?.email?.trim();
-    if (!to) {
-      this.logger.warn(
-        `new-order-email skipped: seller ${seller.userId} has no email on file (order ${orderId})`,
-      );
-      return;
-    }
-
-    const orderRef = orderId.slice(0, 8).toUpperCase();
-    const safeCompanyName = this.escape(seller.companyName);
-    const result = await this.mailService.sendMail({
-      to,
-      subject: `New Yukizi order ${orderRef}`,
-      text: `Hello ${seller.companyName},\n\nYou have a new order (${orderRef}) to process. Log in to your seller dashboard to view and accept it.\n\nYukizi`,
-      html: `<p>Hello ${safeCompanyName},</p><p>You have a new order (<strong>${orderRef}</strong>) to process. Log in to your seller dashboard to view and accept it.</p><p>Yukizi</p>`,
-    });
-    if (!result.sent) {
-      this.logger.warn(
-        `Could not email seller ${seller.userId} about new order ${orderId} (retryable=${result.retryable})`,
-      );
-    }
-  }
-
-  /**
-   * Escapes text for safe interpolation into an HTML email body. Same
-   * approach as InvoiceEmailService.escape() — company names and buyer
-   * names are free text and must not be spliced into HTML unescaped.
-   */
-  private escape(value: string): string {
-    return String(value ?? '')
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;');
   }
 
   // ──────────────────────────────────────────────
@@ -783,6 +687,7 @@ export class OrdersService {
                       select: {
                         images: {
                           select: { url: true },
+                          orderBy: [{ order: 'asc' }, { id: 'asc' }],
                         },
                       },
                     },
@@ -818,6 +723,7 @@ export class OrdersService {
             include: {
               images: {
                 select: { url: true },
+                orderBy: [{ order: 'asc' }, { id: 'asc' }],
               },
             },
           });
@@ -874,6 +780,7 @@ export class OrdersService {
                     commissionGstPercent: true,
                     images: {
                       select: { url: true },
+                      orderBy: [{ order: 'asc' }, { id: 'asc' }],
                     },
                     category: {
                       select: {
@@ -899,6 +806,7 @@ export class OrdersService {
                         commissionGstPercent: true,
                         images: {
                           select: { url: true },
+                          orderBy: [{ order: 'asc' }, { id: 'asc' }],
                         },
                         category: {
                           select: {
@@ -961,6 +869,7 @@ export class OrdersService {
           include: {
             images: {
               select: { url: true },
+              orderBy: [{ order: 'asc' }, { id: 'asc' }],
             },
           },
         });
@@ -1095,12 +1004,16 @@ export class OrdersService {
       throw new NotFoundException('Seller profile not found');
     }
 
-    const where: any = { sellerId: seller.id };
+    const where: any = {
+      sellerId: seller.id,
+      // A Razorpay-intent order that hasn't been paid for yet has no row
+      // here to notify the seller with - it must stay invisible on their
+      // dashboard too, or hiding the notification achieves nothing.
+      order: { sellersNotifiedAt: { not: null } },
+    };
 
     if (dateFrom || dateTo) {
-      where.order = {
-        createdAt: {},
-      };
+      where.order.createdAt = {};
       if (dateFrom) where.order.createdAt.gte = new Date(dateFrom);
       if (dateTo) where.order.createdAt.lte = new Date(dateTo);
     }
@@ -1121,6 +1034,7 @@ export class OrdersService {
                   select: {
                     images: {
                       select: { url: true },
+                      orderBy: [{ order: 'asc' }, { id: 'asc' }],
                     },
                   },
                 },

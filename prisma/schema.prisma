@@ -336,6 +336,12 @@ model Order {
   totalAmount       Decimal       @db.Decimal(10, 2)
   orderStatus       OrderStatus   @default(PLACED)
   paymentStatus     PaymentStatus @default(PENDING)
+  // Null until sellers have actually been told about this order (in-app +
+  // email) and it's safe to show on their dashboard. Set immediately at
+  // checkout for orders that don't need upfront payment; left null for a
+  // Razorpay-intent order until its payment is confirmed, so a seller never
+  // sees - or gets asked to fulfill - an order nobody has paid for yet.
+  sellersNotifiedAt DateTime?
   createdAt         DateTime      @default(now())
   updatedAt         DateTime      @updatedAt
   legacyId          String?       @unique
@@ -376,6 +382,7 @@ model Order {
   @@index([orderStatus])
   @@index([paymentStatus])
   @@index([createdAt])
+  @@index([sellersNotifiedAt])
   @@map("orders")
 }
 
