@@ -94,7 +94,15 @@ export class SellersService {
    */
   private async emailAdminNewSeller(userId: string, companyName: string): Promise<void> {
     const to = process.env.ADMIN_NOTIFICATION_EMAIL?.trim();
-    if (!to) return;
+    if (!to) {
+      // Silent no-op here means every new-seller signup goes completely
+      // unnoticed with zero trace in the logs - this is the one config gap
+      // that made this whole feature look like it was never built.
+      this.logger.warn(
+        `new-seller-signup admin email skipped: ADMIN_NOTIFICATION_EMAIL is not set (user ${userId}, company "${companyName}")`,
+      );
+      return;
+    }
 
     const adminAppUrl = process.env.ADMIN_APP_URL?.trim() || 'https://admin.yukizi.com';
     const reviewUrl = `${adminAppUrl}/users/${userId}`;
