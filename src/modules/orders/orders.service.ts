@@ -456,6 +456,11 @@ export class OrdersService {
           `Insufficient stock for "${product.name}". Only ${totalStock} units available.`,
         );
       }
+
+      // Charge the seller's CURRENT price, not whatever was snapshotted into
+      // the cart item when it was added — a stale snapshot would let a buyer
+      // complete checkout at a price the seller no longer offers.
+      item.unitPrice = product.finalCustomerPayable ?? product.mrp;
     }
 
     // 3. Group cart items by seller
