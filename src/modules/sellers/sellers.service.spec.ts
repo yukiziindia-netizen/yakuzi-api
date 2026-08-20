@@ -125,7 +125,13 @@ describe('SellersService.getWaitlist', () => {
     await service.getWaitlist('user-1');
 
     expect(prisma.sellerOffer.findMany).toHaveBeenCalledWith({
-      where: { sellerId: 'profile-1', isActive: true, deletedAt: null, catalogProductId: { not: null } },
+      where: {
+        sellerId: 'profile-1',
+        isActive: true,
+        deletedAt: null,
+        approvalStatus: 'APPROVED',
+        catalogProductId: { not: null },
+      },
       select: { catalogProductId: true },
       distinct: ['catalogProductId'],
     });

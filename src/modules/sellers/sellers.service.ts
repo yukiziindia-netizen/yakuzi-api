@@ -477,6 +477,7 @@ export class SellersService {
         sellerId: seller.id,
         isActive: true,
         deletedAt: null,
+        approvalStatus: 'APPROVED',
         catalogProductId: { not: null },
       },
       select: { catalogProductId: true },
