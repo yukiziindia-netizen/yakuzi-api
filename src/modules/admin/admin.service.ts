@@ -3700,6 +3700,7 @@ export class AdminService {
       otpExpiry: 120,
       fraudAlertEmail: '',
       adminAlertEmail: '',
+      mailFromAddress: '',
       allowSellerRegistration: true,
       expressLogin: true,
       creditLineOrders: true,

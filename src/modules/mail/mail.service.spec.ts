@@ -266,4 +266,62 @@ describe('MailService', () => {
     expect(() => new MailService().onModuleDestroy()).not.toThrow();
     expect(closeMock).not.toHaveBeenCalled();
   });
+
+  describe('admin-configurable sender address', () => {
+    const buildWithSetting = (value: string | null) => {
+      const prisma = {
+        systemSetting: {
+          findUnique: jest.fn().mockResolvedValue(value === null ? null : { key: 'mailFromAddress', value }),
+        },
+      };
+      return { service: new MailService(prisma as never), prisma };
+    };
+
+    it('sends from the DB-configured address when one is set, keeping the authenticated account as the actual SMTP login', async () => {
+      configure();
+      sendMailMock.mockResolvedValue({ messageId: '<1@gmail.com>' });
+      const { service, prisma } = buildWithSetting('orders@yukizi.com');
+
+      await service.sendMail({ to: 'buyer@example.com', subject: 's', text: 't', html: '<p>t</p>' });
+
+      expect(prisma.systemSetting.findUnique).toHaveBeenCalledWith({ where: { key: 'mailFromAddress' } });
+      const sentMessage = sendMailMock.mock.calls[0][0];
+      expect(sentMessage.from).toBe('"Yukizi" <orders@yukizi.com>');
+    });
+
+    it('falls back to the authenticated SMTP account when no setting is configured', async () => {
+      configure();
+      sendMailMock.mockResolvedValue({ messageId: '<1@gmail.com>' });
+      const { service } = buildWithSetting(null);
+
+      await service.sendMail({ to: 'buyer@example.com', subject: 's', text: 't', html: '<p>t</p>' });
+
+      const sentMessage = sendMailMock.mock.calls[0][0];
+      expect(sentMessage.from).toBe('"Yukizi" <yukizi@gmail.com>');
+    });
+
+    it('falls back to the authenticated SMTP account when the setting exists but is blank', async () => {
+      configure();
+      sendMailMock.mockResolvedValue({ messageId: '<1@gmail.com>' });
+      const { service } = buildWithSetting('   ');
+
+      await service.sendMail({ to: 'buyer@example.com', subject: 's', text: 't', html: '<p>t</p>' });
+
+      const sentMessage = sendMailMock.mock.calls[0][0];
+      expect(sentMessage.from).toBe('"Yukizi" <yukizi@gmail.com>');
+    });
+
+    it('falls back to the authenticated SMTP account, without throwing, if the settings lookup itself fails', async () => {
+      configure();
+      sendMailMock.mockResolvedValue({ messageId: '<1@gmail.com>' });
+      const prisma = { systemSetting: { findUnique: jest.fn().mockRejectedValue(new Error('DB down')) } };
+      const service = new MailService(prisma as never);
+
+      const result = await service.sendMail({ to: 'buyer@example.com', subject: 's', text: 't', html: '<p>t</p>' });
+
+      expect(result).toEqual({ sent: true, retryable: false });
+      const sentMessage = sendMailMock.mock.calls[0][0];
+      expect(sentMessage.from).toBe('"Yukizi" <yukizi@gmail.com>');
+    });
+  });
 });
