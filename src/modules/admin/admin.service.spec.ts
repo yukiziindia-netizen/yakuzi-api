@@ -426,3 +426,105 @@ describe('AdminService.adminCreateProductForSeller', () => {
     expect(passedDto.sellerId).toBeUndefined();
   });
 });
+
+describe('AdminService.getAllProducts — other-sellers aggregation', () => {
+  const buildForProducts = () => {
+    const prisma = {
+      sellerOffer: {
+        findMany: jest.fn(),
+        count: jest.fn().mockResolvedValue(0),
+      },
+    };
+    const service = new AdminService(
+      prisma as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+    );
+    return { service, prisma };
+  };
+
+  it('reports sellerCount 1 and no sellers list for an offer with no catalog product link', async () => {
+    const { service, prisma } = buildForProducts();
+    prisma.sellerOffer.findMany.mockResolvedValueOnce([
+      { id: 'offer-1', catalogProductId: null, variant: null },
+    ]);
+
+    const result = await service.getAllProducts({ page: 1, limit: 20 } as never);
+
+    expect(result.data).toEqual([
+      { id: 'offer-1', catalogProductId: null, variant: null, sellerCount: 1, sellers: [] },
+    ]);
+    expect(prisma.sellerOffer.findMany).toHaveBeenCalledTimes(1);
+  });
+
+  it('resolves siblings through the direct catalogProductId path and lists every carrying seller once each', async () => {
+    const { service, prisma } = buildForProducts();
+    prisma.sellerOffer.findMany
+      .mockResolvedValueOnce([
+        { id: 'offer-1', catalogProductId: 'cp-1', variant: null },
+      ])
+      .mockResolvedValueOnce([
+        { catalogProductId: 'cp-1', variant: null, seller: { id: 'seller-1', companyName: 'Acme' } },
+        { catalogProductId: 'cp-1', variant: null, seller: { id: 'seller-2', companyName: 'Beta' } },
+      ]);
+
+    const result = await service.getAllProducts({ page: 1, limit: 20 } as never);
+
+    expect(result.data[0].sellerCount).toBe(2);
+    expect(result.data[0].sellers).toEqual([
+      { id: 'seller-1', companyName: 'Acme' },
+      { id: 'seller-2', companyName: 'Beta' },
+    ]);
+    expect(prisma.sellerOffer.findMany).toHaveBeenNthCalledWith(2, {
+      where: {
+        deletedAt: null,
+        OR: [
+          { catalogProductId: { in: ['cp-1'] } },
+          { variant: { catalogProductId: { in: ['cp-1'] } } },
+        ],
+      },
+      select: {
+        catalogProductId: true,
+        variant: { select: { catalogProductId: true } },
+        seller: { select: { id: true, companyName: true } },
+      },
+    });
+  });
+
+  it('resolves siblings through the variant path when catalogProductId is null on the row itself', async () => {
+    const { service, prisma } = buildForProducts();
+    prisma.sellerOffer.findMany
+      .mockResolvedValueOnce([
+        { id: 'offer-1', catalogProductId: null, variant: { catalogProduct: { id: 'cp-1' } } },
+      ])
+      .mockResolvedValueOnce([
+        { catalogProductId: null, variant: { catalogProductId: 'cp-1' }, seller: { id: 'seller-1', companyName: 'Acme' } },
+        { catalogProductId: 'cp-1', variant: null, seller: { id: 'seller-2', companyName: 'Beta' } },
+      ]);
+
+    const result = await service.getAllProducts({ page: 1, limit: 20 } as never);
+
+    expect(result.data[0].sellerCount).toBe(2);
+    expect(result.data[0].sellers.map((s: { companyName: string }) => s.companyName)).toEqual(['Acme', 'Beta']);
+  });
+
+  it('dedupes a seller who appears twice among siblings (e.g. both a direct and a variant offer for the same catalog product)', async () => {
+    const { service, prisma } = buildForProducts();
+    prisma.sellerOffer.findMany
+      .mockResolvedValueOnce([
+        { id: 'offer-1', catalogProductId: 'cp-1', variant: null },
+      ])
+      .mockResolvedValueOnce([
+        { catalogProductId: 'cp-1', variant: null, seller: { id: 'seller-1', companyName: 'Acme' } },
+        { catalogProductId: null, variant: { catalogProductId: 'cp-1' }, seller: { id: 'seller-1', companyName: 'Acme' } },
+      ]);
+
+    const result = await service.getAllProducts({ page: 1, limit: 20 } as never);
+
+    expect(result.data[0].sellerCount).toBe(1);
+    expect(result.data[0].sellers).toEqual([{ id: 'seller-1', companyName: 'Acme' }]);
+  });
+});
