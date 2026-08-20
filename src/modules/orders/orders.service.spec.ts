@@ -503,3 +503,101 @@ describe('OrdersService.createSettlementsForDeliveredOrder', () => {
     expect(prisma.sellerSettlement.create).not.toHaveBeenCalled();
   });
 });
+
+describe('OrdersService.checkout — price integrity', () => {
+  const cartItem = (overrides: Partial<any> = {}) => ({
+    id: 'cartitem-1',
+    sellerOfferId: 'offer-1', // flat scalar CartItem.sellerOfferId, separate from the nested sellerOffer relation below — orderItemsData reads this directly
+    quantity: 2,
+    unitPrice: 50, // stale snapshot from whenever the item was added to cart
+    sellerOffer: {
+      id: 'offer-1',
+      name: 'Test Product',
+      isActive: true,
+      deletedAt: null,
+      mrp: 100,
+      finalCustomerPayable: 80, // the seller's CURRENT price — different from unitPrice above
+      seller: { id: 'seller-1', verificationStatus: 'APPROVED', companyName: 'Acme' },
+      batches: [{ id: 'batch-1', stock: 10, expiryDate: new Date('2099-01-01') }],
+      ...overrides,
+    },
+  });
+
+  const buildCheckout = (items: any[]) => {
+    const txOrderItemCreateManyCalls: any[] = [];
+    const tx = {
+      order: { create: jest.fn().mockResolvedValue({ id: 'order-1' }) },
+      orderItem: {
+        createMany: jest.fn().mockImplementation((args: any) => {
+          txOrderItemCreateManyCalls.push(args);
+          return Promise.resolve({ count: args.data.length });
+        }),
+      },
+      orderAddress: { create: jest.fn().mockResolvedValue({}) },
+      productBatch: { update: jest.fn().mockResolvedValue({}) },
+      cartItem: { deleteMany: jest.fn().mockResolvedValue({ count: items.length }) },
+    };
+    const prisma = {
+      cart: {
+        findUnique: jest.fn().mockResolvedValue({ id: 'cart-1', items }),
+      },
+      buyerProfile: {
+        findUnique: jest.fn().mockResolvedValue({ referralCodeId: null }),
+      },
+      $transaction: jest.fn().mockImplementation((cb: any) => cb(tx)),
+      // checkout()'s final "5. Fetch the created order with full details" step
+      // (orders.service.ts:592) runs after the transaction, unwrapped in any
+      // try/catch — items: [] keeps its follow-up per-item catalogProduct
+      // lookup loop a no-op, so no further prisma.catalogProduct mock is needed.
+      order: {
+        findUnique: jest.fn().mockResolvedValue({ id: 'order-1', items: [] }),
+      },
+    };
+    const service = new OrdersService(
+      prisma as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+    );
+    return { service, prisma, tx, txOrderItemCreateManyCalls };
+  };
+
+  // deferSellerNotification: true skips checkout()'s post-transaction
+  // this.sellerOrderNotifier.notifySellersOfNewOrder(...) call entirely (see
+  // orders.service.ts's "4f. Notify each seller" block) — needed here because
+  // this test's OrdersService is built with sellerOrderNotifier as `{} as
+  // never`; without this flag, checkout() would call a method that doesn't
+  // exist on `{}` and throw synchronously (not something a `.catch()` further
+  // down the chain could ever reach, since the call itself never returns).
+  const checkoutDto = () => dto({ deferSellerNotification: true } as never);
+
+  it('charges the live seller price, not the cart item\'s stale unitPrice snapshot', async () => {
+    const { service, txOrderItemCreateManyCalls } = buildCheckout([cartItem()]);
+
+    await service.checkout('buyer-1', checkoutDto());
+
+    const created = txOrderItemCreateManyCalls[0].data[0];
+    expect(created.unitPrice).toBe(80); // live finalCustomerPayable, not the stale 50
+    expect(created.totalPrice).toBe(160); // 2 * 80, not 2 * 50
+  });
+
+  it('falls back to live mrp when finalCustomerPayable is null', async () => {
+    const { service, txOrderItemCreateManyCalls } = buildCheckout([
+      cartItem({ finalCustomerPayable: null }),
+    ]);
+
+    await service.checkout('buyer-1', checkoutDto());
+
+    expect(txOrderItemCreateManyCalls[0].data[0].unitPrice).toBe(100);
+  });
+
+  it('still rejects a deactivated offer before any price recompute', async () => {
+    const { service } = buildCheckout([cartItem({ isActive: false })]);
+
+    await expect(service.checkout('buyer-1', checkoutDto())).rejects.toThrow(
+      'Product "Test Product" is no longer available. Please remove it from your cart.',
+    );
+  });
+});
