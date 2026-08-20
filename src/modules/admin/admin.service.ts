@@ -643,6 +643,7 @@ export class AdminService {
             rejectionReason: true,
             createdAt: true,
             updatedAt: true,
+            catalogProductId: true,
             variant: {
               select: {
                 catalogProduct: {
@@ -684,7 +685,9 @@ export class AdminService {
         this.prisma.sellerOffer.count({ where }),
       ]);
 
-      return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
+      const dataWithSellers = await this.attachOtherSellers(data);
+
+      return { data: dataWithSellers, total, page, limit, totalPages: Math.ceil(total / limit) };
     } catch (error) {
       this.logger.warn(
         `Failed to fetch products: ${error instanceof Error ? error.message : 'Unknown error'}`,
@@ -693,6 +696,71 @@ export class AdminService {
     }
   }
 
+  /**
+   * For each seller-offer row in an admin product listing, resolve how many
+   * OTHER sellers carry the same underlying catalog product, and their names.
+   * A listing reaches its catalog product via one of two independent, mutually
+   * exclusive paths - the same distinction adminUpdateProduct() below already
+   * has to account for: either a direct catalogProductId (simple products),
+   * or variant.catalogProduct.id (variant products, e.g. an English/Malayalam
+   * edition pair). One batched query covers both paths across the whole page
+   * rather than a query per row.
+   */
+  private async attachOtherSellers<
+    T extends {
+      id: string;
+      catalogProductId: string | null;
+      variant: { catalogProduct: { id: string } | null } | null;
+    },
+  >(offers: T[]): Promise<(T & { sellerCount: number; sellers: { id: string; companyName: string }[] })[]> {
+    const resolvedCatalogProductId = (offer: T): string | null =>
+      offer.catalogProductId ?? offer.variant?.catalogProduct?.id ?? null;
+
+    const catalogProductIds = Array.from(
+      new Set(offers.map(resolvedCatalogProductId).filter((id): id is string => id !== null)),
+    );
+
+    if (catalogProductIds.length === 0) {
+      return offers.map((offer) => ({ ...offer, sellerCount: 1, sellers: [] }));
+    }
+
+    const siblingOffers = await this.prisma.sellerOffer.findMany({
+      where: {
+        deletedAt: null,
+        OR: [
+          { catalogProductId: { in: catalogProductIds } },
+          { variant: { catalogProductId: { in: catalogProductIds } } },
+        ],
+      },
+      select: {
+        catalogProductId: true,
+        variant: { select: { catalogProductId: true } },
+        seller: { select: { id: true, companyName: true } },
+      },
+    });
+
+    const sellersByCatalogProductId = new Map<string, Map<string, string>>();
+    for (const sibling of siblingOffers) {
+      const cpId = sibling.catalogProductId ?? sibling.variant?.catalogProductId ?? null;
+      if (!cpId) continue;
+      const sellersMap = sellersByCatalogProductId.get(cpId) ?? new Map<string, string>();
+      sellersMap.set(sibling.seller.id, sibling.seller.companyName);
+      sellersByCatalogProductId.set(cpId, sellersMap);
+    }
+
+    return offers.map((offer) => {
+      const cpId = resolvedCatalogProductId(offer);
+      const sellersMap = cpId ? sellersByCatalogProductId.get(cpId) : undefined;
+      if (!sellersMap) {
+        return { ...offer, sellerCount: 1, sellers: [] };
+      }
+      return {
+        ...offer,
+        sellerCount: sellersMap.size,
+        sellers: Array.from(sellersMap, ([id, companyName]) => ({ id, companyName })),
+      };
+    });
+  }
 
   /**
    * Admin edit of a product's master (catalog) fields. The admin UI works
