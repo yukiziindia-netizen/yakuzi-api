@@ -4,6 +4,7 @@ import {
   Get,
   Patch,
   Body,
+  Query,
   UseGuards,
   HttpCode,
   HttpStatus,
@@ -75,5 +76,19 @@ export class SellersController {
   async getDashboard(@CurrentUser('id') userId: string) {
     const data = await this.sellersService.getDashboard(userId);
     return { message: 'Seller dashboard retrieved successfully', data };
+  }
+
+  @Get('waitlist')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: "Get buyers waiting on this seller's out-of-stock products",
+  })
+  @ApiResponse({ status: 200, description: 'Waitlist entries returned' })
+  async getWaitlist(
+    @CurrentUser('id') userId: string,
+    @Query('productId') productId?: string,
+  ) {
+    const data = await this.sellersService.getWaitlist(userId, productId);
+    return { message: 'Waitlist retrieved successfully', data };
   }
 }

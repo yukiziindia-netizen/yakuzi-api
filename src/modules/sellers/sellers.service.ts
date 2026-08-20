@@ -453,4 +453,77 @@ export class SellersService {
     }
   }
 
+  /**
+   * Buyers waiting on products this seller currently carries. Scoped through
+   * the seller's own active SellerOffers, not a direct FK on ProductWaitlist —
+   * a buyer's "Notify Me" click targets the catalog product, not any one
+   * seller's specific offer (a product page can list several sellers), and
+   * the existing restock flow already notifies every waitlisted buyer for a
+   * catalogProductId regardless of which seller restocked. So "this seller's
+   * waitlist" means: any catalog product they currently have an active,
+   * approved listing for.
+   */
+  async getWaitlist(userId: string, productId?: string) {
+    const seller = await this.prisma.sellerProfile.findUnique({
+      where: { userId },
+    });
+
+    if (!seller) {
+      return [];
+    }
+
+    const activeOffers = await this.prisma.sellerOffer.findMany({
+      where: {
+        sellerId: seller.id,
+        isActive: true,
+        deletedAt: null,
+        catalogProductId: { not: null },
+      },
+      select: { catalogProductId: true },
+      distinct: ['catalogProductId'],
+    });
+
+    let catalogProductIds = activeOffers
+      .map((o) => o.catalogProductId)
+      .filter((id): id is string => id !== null);
+
+    if (productId) {
+      catalogProductIds = catalogProductIds.filter((id) => id === productId);
+    }
+
+    if (catalogProductIds.length === 0) {
+      return [];
+    }
+
+    const entries = await this.prisma.productWaitlist.findMany({
+      where: { catalogProductId: { in: catalogProductIds } },
+      orderBy: { createdAt: 'desc' },
+      include: {
+        catalogProduct: {
+          select: {
+            id: true,
+            name: true,
+            images: {
+              orderBy: [{ order: 'asc' }, { id: 'asc' }],
+              take: 1,
+              select: { url: true },
+            },
+          },
+        },
+        user: { select: { username: true } },
+      },
+    });
+
+    return entries.map((entry) => ({
+      id: entry.id,
+      product: {
+        id: entry.catalogProduct.id,
+        name: entry.catalogProduct.name,
+        image: entry.catalogProduct.images[0]?.url ?? null,
+      },
+      buyer: { name: entry.user.username ?? 'Yukizi buyer' },
+      createdAt: entry.createdAt,
+      isNotified: entry.isNotified,
+    }));
+  }
 }
