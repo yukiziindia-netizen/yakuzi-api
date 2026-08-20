@@ -29,6 +29,7 @@ import { UpdateProductDto } from './dto/update-product.dto';
 import { QueryProductDto } from './dto/query-product.dto';
 import { CreateProductRequestDto } from './dto/create-product-request.dto';
 import { BulkCreateProductDto } from './dto/bulk-create-product.dto';
+import { AddToWaitlistDto } from './dto/add-to-waitlist.dto';
 
 @ApiTags('Products')
 @Controller('products')
@@ -301,8 +302,9 @@ export class ProductsController {
   async addToWaitlist(
     @CurrentUser('id') userId: string,
     @Param('id') id: string,
+    @Body() dto: AddToWaitlistDto,
   ) {
-    const data = await this.productsService.addToWaitlist(userId, id);
+    const data = await this.productsService.addToWaitlist(userId, id, dto.email);
     return { message: 'Added to waitlist', data };
   }
 

@@ -58,6 +58,7 @@ const build = () => {
     inventoryService as never,
     {} as never,
     {} as never,
+    {} as never,
   );
   return { service, prisma, inventoryService };
 };
@@ -99,6 +100,7 @@ describe('ProductsService — createdByAdminId is never exposed on read', () => 
       {} as never,
       {} as never,
       {} as never,
+      {} as never,
     );
     const raw = {
       id: 'offer-1',
@@ -124,6 +126,7 @@ describe('ProductsService.validateIds', () => {
     };
     const service = new ProductsService(
       prisma as never,
+      {} as never,
       {} as never,
       {} as never,
       {} as never,
@@ -185,5 +188,175 @@ describe('ProductsService.validateIds', () => {
 
     expect(result).toEqual([]);
     expect(prisma.sellerOffer.findMany).not.toHaveBeenCalled();
+  });
+});
+
+describe('ProductsService.addToWaitlist', () => {
+  const buildForWaitlist = (userEmail: string | null) => {
+    const prisma = {
+      catalogProduct: {
+        findUnique: jest.fn().mockResolvedValue({ id: 'product-1' }),
+      },
+      user: {
+        findUnique: jest.fn().mockResolvedValue({ email: userEmail }),
+        update: jest.fn().mockResolvedValue({}),
+      },
+      productWaitlist: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({ id: 'waitlist-1' }),
+      },
+    };
+    const service = new ProductsService(
+      prisma as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+    );
+    return { service, prisma };
+  };
+
+  it('claims the submitted email onto an account that has none', async () => {
+    const { service, prisma } = buildForWaitlist(null);
+
+    await service.addToWaitlist('user-1', 'product-1', 'buyer@example.com');
+
+    expect(prisma.user.update).toHaveBeenCalledWith({
+      where: { id: 'user-1' },
+      data: { email: 'buyer@example.com' },
+    });
+  });
+
+  it('ignores the submitted email when the account already has one', async () => {
+    const { service, prisma } = buildForWaitlist('existing@example.com');
+
+    await service.addToWaitlist('user-1', 'product-1', 'new@example.com');
+
+    expect(prisma.user.update).not.toHaveBeenCalled();
+  });
+
+  it('throws a friendly conflict when the email is already used by another account', async () => {
+    const { Prisma } = require('@prisma/client');
+    const { service, prisma } = buildForWaitlist(null);
+    prisma.user.update.mockRejectedValue(
+      new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+        code: 'P2002',
+        clientVersion: 'test',
+      }),
+    );
+
+    await expect(
+      service.addToWaitlist('user-1', 'product-1', 'taken@example.com'),
+    ).rejects.toThrow('This email is already used by another account.');
+  });
+
+  it('requires an email when the account has none and none was submitted', async () => {
+    const { service } = buildForWaitlist(null);
+
+    await expect(
+      service.addToWaitlist('user-1', 'product-1'),
+    ).rejects.toThrow(
+      'An email address is required so we can notify you when this item is back in stock.',
+    );
+  });
+
+  it('does not require an email when the account already has one', async () => {
+    const { service, prisma } = buildForWaitlist('existing@example.com');
+
+    await expect(
+      service.addToWaitlist('user-1', 'product-1'),
+    ).resolves.toEqual({ id: 'waitlist-1' });
+    expect(prisma.productWaitlist.create).toHaveBeenCalled();
+  });
+});
+
+describe('ProductsService.notifyWaitlistedUsers', () => {
+  const buildForNotify = (
+    entries: { userId: string; email: string | null }[],
+  ) => {
+    const prisma = {
+      productWaitlist: {
+        findMany: jest.fn().mockResolvedValue(
+          entries.map((e, i) => ({
+            id: `waitlist-${i}`,
+            userId: e.userId,
+            catalogProductId: 'product-1',
+            catalogProduct: { name: 'Figurine', slug: 'figurine' },
+            user: { email: e.email },
+          })),
+        ),
+        updateMany: jest.fn().mockResolvedValue({ count: entries.length }),
+      },
+      notification: {
+        createMany: jest.fn().mockResolvedValue({ count: entries.length }),
+      },
+    };
+    const mailService = {
+      sendMail: jest.fn().mockResolvedValue({ sent: true, retryable: false }),
+    };
+    const service = new ProductsService(
+      prisma as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      mailService as never,
+    );
+    return { service, prisma, mailService };
+  };
+
+  it('emails every waitlisted user who has an email on file', async () => {
+    const { service, mailService } = buildForNotify([
+      { userId: 'user-1', email: 'a@example.com' },
+      { userId: 'user-2', email: 'b@example.com' },
+    ]);
+
+    await service.notifyWaitlistedUsers('product-1');
+
+    expect(mailService.sendMail).toHaveBeenCalledTimes(2);
+    expect(mailService.sendMail).toHaveBeenCalledWith(
+      expect.objectContaining({ to: 'a@example.com', subject: expect.stringContaining('back in stock') }),
+    );
+  });
+
+  it('skips the email but still creates the in-app notification for a user with no email on file', async () => {
+    const { service, prisma, mailService } = buildForNotify([
+      { userId: 'user-1', email: null },
+    ]);
+
+    await service.notifyWaitlistedUsers('product-1');
+
+    expect(mailService.sendMail).not.toHaveBeenCalled();
+    expect(prisma.notification.createMany).toHaveBeenCalledWith({
+      data: [
+        {
+          userId: 'user-1',
+          message: expect.stringContaining('back in stock'),
+        },
+      ],
+    });
+  });
+
+  it('still marks the batch notified even when a mail send fails', async () => {
+    const { service, prisma, mailService } = buildForNotify([
+      { userId: 'user-1', email: 'a@example.com' },
+    ]);
+    mailService.sendMail.mockResolvedValue({ sent: false, retryable: true });
+
+    await expect(service.notifyWaitlistedUsers('product-1')).resolves.toBeUndefined();
+
+    expect(prisma.productWaitlist.updateMany).toHaveBeenCalledWith({
+      where: { id: { in: ['waitlist-0'] } },
+      data: { isNotified: true },
+    });
+  });
+
+  it('does nothing for an empty waitlist', async () => {
+    const { service, prisma, mailService } = buildForNotify([]);
+
+    await service.notifyWaitlistedUsers('product-1');
+
+    expect(mailService.sendMail).not.toHaveBeenCalled();
+    expect(prisma.notification.createMany).not.toHaveBeenCalled();
+    expect(prisma.productWaitlist.updateMany).not.toHaveBeenCalled();
   });
 });
