@@ -4,6 +4,7 @@ import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 // default import cannot also be used as a type namespace.
 import nodemailer, { type Transporter } from 'nodemailer';
 import { redactEmail } from './redact-email';
+import { PrismaService } from '../../database/prisma.service';
 
 export interface MailAttachment {
   filename: string;
@@ -57,6 +58,12 @@ export class MailService implements OnModuleDestroy {
   private readonly logger = new Logger(MailService.name);
   private session: MailSession | null = null;
   private warnedUnconfigured = false;
+
+  // Optional (not required) so every existing `new MailService()` call site -
+  // in particular this file's own unit tests, which construct it directly
+  // rather than through Nest's DI - keeps working unchanged. In production
+  // Nest always resolves the real PrismaService (DatabaseModule is @Global()).
+  constructor(private readonly prisma?: PrismaService) {}
 
   private get user(): string | undefined {
     return process.env.SMTP_USER?.trim() || undefined;
@@ -133,9 +140,11 @@ export class MailService implements OnModuleDestroy {
       return { sent: false, retryable: false };
     }
 
+    const fromAddress = await this.resolveFromAddress(session.fromUser);
+
     try {
       await session.transporter.sendMail({
-        from: `"${process.env.MAIL_FROM_NAME?.trim() || 'Yukizi'}" <${session.fromUser}>`,
+        from: `"${process.env.MAIL_FROM_NAME?.trim() || 'Yukizi'}" <${fromAddress}>`,
         replyTo: process.env.MAIL_REPLY_TO?.trim() || undefined,
         to: options.to,
         subject: options.subject,
@@ -150,6 +159,32 @@ export class MailService implements OnModuleDestroy {
         `Mail to ${redactEmail(options.to)} failed (retryable=${retryable}): ${(error as Error).message}`,
       );
       return { sent: false, retryable };
+    }
+  }
+
+  /**
+   * Admin can set a different display "From" address (Settings → Notifications
+   * → Sender Email) than the account SMTP actually authenticates as - Gmail's
+   * relay only accepts that when the address is a verified "Send As" alias on
+   * the SAME authenticated account, so this never changes login credentials,
+   * only the header. Read fresh on every send rather than cached alongside
+   * the session: unlike credentials (see getSession()), a stale read here has
+   * no failure mode worse than "used the old address once more", and an
+   * admin changing it should take effect immediately, not after a restart.
+   */
+  private async resolveFromAddress(fallback: string): Promise<string> {
+    if (!this.prisma) return fallback;
+    try {
+      const setting = await this.prisma.systemSetting.findUnique({
+        where: { key: 'mailFromAddress' },
+      });
+      const configured = setting?.value?.trim();
+      return configured || fallback;
+    } catch (error) {
+      this.logger.warn(
+        `Could not read mailFromAddress setting, using default sender: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      );
+      return fallback;
     }
   }
 
