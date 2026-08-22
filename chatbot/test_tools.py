@@ -35,3 +35,25 @@ def test_search_products_returns_no_results_message_when_empty():
     with patch("main.get_db_connection", return_value=mock_conn):
         result = search_products("nonexistent")
     assert "No products found" in result
+
+
+from main import search_blogs
+
+
+def test_search_blogs_only_queries_published_posts():
+    mock_conn, mock_cursor = _mock_conn_returning(
+        [{"title": "Top 5 Manga of 2026", "excerpt": "...", "slug": "top-5-manga-2026"}]
+    )
+    with patch("main.get_db_connection", return_value=mock_conn):
+        result = search_blogs("manga")
+
+    assert "Top 5 Manga" in result
+    executed_sql = mock_cursor.execute.call_args[0][0]
+    assert "'PUBLISHED'" in executed_sql
+
+
+def test_search_blogs_returns_no_results_message_when_empty():
+    mock_conn, _ = _mock_conn_returning([])
+    with patch("main.get_db_connection", return_value=mock_conn):
+        result = search_blogs("nonexistent")
+    assert "No blog posts found" in result

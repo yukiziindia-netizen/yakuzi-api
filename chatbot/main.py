@@ -180,6 +180,26 @@ def search_products(query: str) -> str:
     finally:
         conn.close()
 
+def search_blogs(query: str) -> str:
+    """Searches published blog posts by title, excerpt, or tag."""
+    conn = get_db_connection()
+    if not conn: return "Error: Could not connect to database."
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(
+                'SELECT title, excerpt, slug FROM blog_posts '
+                'WHERE status = \'PUBLISHED\' '
+                'AND (title ILIKE %s OR excerpt ILIKE %s OR %s = ANY(tags)) '
+                'ORDER BY "publishedAt" DESC LIMIT 5',
+                (f"%{query}%", f"%{query}%", query)
+            )
+            rows = cur.fetchall()
+            return str(rows) if rows else f"No blog posts found matching '{query}'."
+    except Exception as e:
+        return f"Error executing query: {str(e)}"
+    finally:
+        conn.close()
+
 def get_order_status(order_id: str) -> str:
     """Gets the status of an order given its ID."""
     conn = get_db_connection()
