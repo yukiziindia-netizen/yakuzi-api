@@ -953,6 +953,18 @@ model ChatbotJob {
   @@map("chatbot_jobs")
 }
 
+model ChatbotRule {
+  id          String   @id @default(uuid())
+  trigger     String
+  instruction String
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("chatbot_rules")
+  @@index([isActive])
+}
+
 enum MarketingSlot {
   HOMEPAGE_CAROUSEL
   LOGIN_CAROUSEL
