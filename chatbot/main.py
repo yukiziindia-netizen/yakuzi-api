@@ -138,18 +138,31 @@ def get_db_connection():
         return None
 
 def search_products(query: str) -> str:
-    """Searches the database for products matching the query."""
+    """Searches the database for products matching the query, including
+    description, category, live stock across active/approved seller offers,
+    and average review rating."""
     conn = get_db_connection()
     if not conn: return "Error: Could not connect to database."
     try:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute(
-                # Table is catalog_products (Prisma @@map on CatalogProduct).
-                # There is no "products" table, so this query always errored.
-                'SELECT name, manufacturer, mrp FROM catalog_products '
-                'WHERE (name ILIKE %s OR manufacturer ILIKE %s) '
-                'AND "isActive" = true AND "deletedAt" IS NULL LIMIT 5',
-                (f"%{query}%", f"%{query}%")
+                'SELECT cp.name, cp.manufacturer, cp.mrp, cp.description, '
+                'c.name AS category, '
+                'COALESCE(('
+                '  SELECT SUM(pb.stock) FROM product_batches pb '
+                '  JOIN seller_offers so ON so.id = pb."sellerOfferId" '
+                '  WHERE so."catalogProductId" = cp.id AND so."isActive" = true '
+                '  AND so."approvalStatus" = \'APPROVED\' AND pb."expiryDate" > NOW()'
+                '), 0) AS stock, '
+                'COALESCE(('
+                '  SELECT ROUND(AVG(r.rating)::numeric, 1) FROM reviews r '
+                '  WHERE r."catalogProductId" = cp.id'
+                '), 0) AS avg_rating '
+                'FROM catalog_products cp '
+                'JOIN categories c ON c.id = cp."categoryId" '
+                'WHERE (cp.name ILIKE %s OR cp.manufacturer ILIKE %s OR cp.description ILIKE %s) '
+                'AND cp."isActive" = true AND cp."deletedAt" IS NULL LIMIT 5',
+                (f"%{query}%", f"%{query}%", f"%{query}%")
             )
             rows = cur.fetchall()
             return str(rows) if rows else f"No products found matching '{query}'."
