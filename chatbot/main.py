@@ -1,9 +1,8 @@
 import os
 import sys
 import time
-import asyncio
 import traceback
-from fastapi import FastAPI, HTTPException, UploadFile, File, Form, BackgroundTasks
+from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from typing import List, Dict, Any, Optional
 import base64
@@ -94,15 +93,9 @@ class ChatRequest(BaseModel):
     thinking_enabled: Optional[bool] = True
     thinking_budget: Optional[int] = 2048
 
-class PromptRequest(BaseModel):
-    prompt: str
-
 class ConversationTrainRequest(BaseModel):
     history: List[ChatMessage]
     custom_name: Optional[str] = "yukizi-custom-bot"
-
-class SyncTrainingRequest(BaseModel):
-    histories: List[List[ChatMessage]]
 
 
 # ==========================================
@@ -138,21 +131,106 @@ def get_db_connection():
         return None
 
 def search_products(query: str) -> str:
-    """Searches the database for products matching the query."""
+    """Searches the database for products matching the query, including
+    description, category, live stock across active/approved seller offers,
+    and average review rating."""
     conn = get_db_connection()
     if not conn: return "Error: Could not connect to database."
     try:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute(
-                # Table is catalog_products (Prisma @@map on CatalogProduct).
-                # There is no "products" table, so this query always errored.
-                'SELECT name, manufacturer, mrp FROM catalog_products '
-                'WHERE (name ILIKE %s OR manufacturer ILIKE %s) '
-                'AND "isActive" = true AND "deletedAt" IS NULL LIMIT 5',
-                (f"%{query}%", f"%{query}%")
+                'SELECT cp.name, cp.manufacturer, cp.mrp, cp.description, '
+                'c.name AS category, '
+                'COALESCE(('
+                '  SELECT SUM(pb.stock) FROM product_batches pb '
+                '  JOIN seller_offers so ON so.id = pb."sellerOfferId" '
+                '  WHERE so."catalogProductId" = cp.id AND so."isActive" = true '
+                '  AND so."deletedAt" IS NULL '
+                '  AND so."approvalStatus" = \'APPROVED\' AND pb."expiryDate" > NOW()'
+                '), 0) AS stock, '
+                'COALESCE(('
+                '  SELECT ROUND(AVG(r.rating)::numeric, 1) FROM reviews r '
+                '  WHERE r."catalogProductId" = cp.id'
+                '), 0) AS avg_rating '
+                'FROM catalog_products cp '
+                'JOIN categories c ON c.id = cp."categoryId" '
+                'WHERE (cp.name ILIKE %s OR cp.manufacturer ILIKE %s OR cp.description ILIKE %s) '
+                'AND cp."isActive" = true AND cp."deletedAt" IS NULL '
+                'ORDER BY cp.name LIMIT 5',
+                (f"%{query}%", f"%{query}%", f"%{query}%")
             )
             rows = cur.fetchall()
+            # RealDictCursor returns Decimal for numeric columns (mrp, avg_rating).
+            # str(Decimal(...)) renders as Python constructor syntax
+            # (e.g. "Decimal('499.00')"), which Gemini could echo verbatim into a
+            # customer-facing reply, so cast to plain floats before stringifying.
+            for row in rows:
+                row['mrp'] = float(row['mrp']) if row['mrp'] is not None else None
+                row['avg_rating'] = float(row['avg_rating']) if row['avg_rating'] is not None else None
             return str(rows) if rows else f"No products found matching '{query}'."
+    except Exception as e:
+        return f"Error executing query: {str(e)}"
+    finally:
+        conn.close()
+
+def search_blogs(query: str) -> str:
+    """Searches published blog posts by title, excerpt, or tag."""
+    conn = get_db_connection()
+    if not conn: return "Error: Could not connect to database."
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(
+                'SELECT title, excerpt, slug FROM blog_posts '
+                'WHERE status = \'PUBLISHED\' '
+                'AND (title ILIKE %s OR excerpt ILIKE %s OR %s = ANY(tags)) '
+                'ORDER BY "publishedAt" DESC LIMIT 5',
+                (f"%{query}%", f"%{query}%", query)
+            )
+            rows = cur.fetchall()
+            return str(rows) if rows else f"No blog posts found matching '{query}'."
+    except Exception as e:
+        return f"Error executing query: {str(e)}"
+    finally:
+        conn.close()
+
+def get_product_reviews(product_identifier: str) -> str:
+    """Looks up a product by id or name, then returns its average rating
+    and a handful of recent review comments."""
+    conn = get_db_connection()
+    if not conn: return "Error: Could not connect to database."
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(
+                'SELECT id FROM catalog_products '
+                'WHERE (id = %s OR name ILIKE %s) AND "isActive" = true AND "deletedAt" IS NULL '
+                'ORDER BY (id = %s) DESC, name '
+                'LIMIT 1',
+                (product_identifier, f"%{product_identifier}%", product_identifier)
+            )
+            product = cur.fetchone()
+            if not product:
+                return f"No product found matching '{product_identifier}'."
+
+            cur.execute(
+                'SELECT ROUND(AVG(rating)::numeric, 1) AS avg_rating, COUNT(*) AS review_count '
+                'FROM reviews WHERE "catalogProductId" = %s',
+                (product['id'],)
+            )
+            summary = cur.fetchone()
+            if not summary or not summary['review_count']:
+                return "No reviews yet for this product."
+
+            cur.execute(
+                'SELECT rating, comment FROM reviews WHERE "catalogProductId" = %s '
+                'AND comment IS NOT NULL ORDER BY "createdAt" DESC LIMIT 5',
+                (product['id'],)
+            )
+            recent = cur.fetchall()
+
+            lines = [f"Average rating: {summary['avg_rating']}/5 from {summary['review_count']} review(s)."]
+            for r in recent:
+                lines.append(f"- {r['rating']}/5: {r['comment']}")
+            return "\n".join(lines)
     except Exception as e:
         return f"Error executing query: {str(e)}"
     finally:
@@ -173,33 +251,41 @@ def get_order_status(order_id: str) -> str:
         conn.close()
 
 # ==========================================
-# BACKGROUND TUNING MONITOR
+# LEARNED RULES (structured training)
 # ==========================================
-async def monitor_tuning_job(job_id: str, client: Any):
-    """Polls Gemini tuning job and auto-switches model upon completion."""
-    global ACTIVE_MODEL
-    print(f"Started monitoring tuning job: {job_id}")
-    while True:
-        try:
-            # Using client.tunings.get(...) assuming job_id is the tuning job name.
-            model_info = client.tunings.get(name=job_id)
-            state = getattr(model_info, 'state', str(model_info))
-            print(f"Tuning Job {job_id} status: {state}")
-            
-            if state == 'ACTIVE' or state == 'SUCCEEDED':
-                ACTIVE_MODEL = job_id
-                with open(MODEL_FILE, 'w', encoding='utf-8') as f:
-                    f.write(job_id)
-                print(f"Model {job_id} successfully trained! Auto-switched ACTIVE_MODEL to {job_id}.")
-                break
-            elif state in ['FAILED', 'CANCELLED']:
-                print(f"Model tuning failed or cancelled. Sticking to {ACTIVE_MODEL}.")
-                break
-            
-            await asyncio.sleep(60) # Poll every 60 seconds
-        except Exception as e:
-            print(f"Error checking tuning status for {job_id}: {e}")
-            await asyncio.sleep(60)
+def get_active_rules() -> list:
+    """Reads active ChatbotRule rows fresh on every call — no caching, so an
+    admin toggling a rule off takes effect on the very next chat message."""
+    conn = get_db_connection()
+    if not conn:
+        return []
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(
+                'SELECT trigger, instruction FROM chatbot_rules '
+                'WHERE "isActive" = true ORDER BY "createdAt" DESC LIMIT 100'
+            )
+            return cur.fetchall()
+    except Exception as e:
+        print(f"Error fetching chatbot rules: {e}", file=sys.stderr)
+        return []
+    finally:
+        conn.close()
+
+
+def build_system_instruction() -> str:
+    """Base persona (never modified by training) plus a bounded, structured
+    list of admin-taught rules — replaces the old model of appending raw
+    conversation transcripts directly into system_prompt.txt forever."""
+    base = load_text_file(PROMPT_FILE, DEFAULT_PROMPT)
+    rules = get_active_rules()
+    if not rules:
+        return base
+    rules_block = "\n\nLEARNED RULES (store-specific behavior taught by an admin):\n" + "\n".join(
+        f"- {r['trigger']}: {r['instruction']}" for r in rules
+    )
+    return base + rules_block
+
 
 # ==========================================
 # ENDPOINTS
@@ -213,101 +299,43 @@ def health_check():
         "active_model": ACTIVE_MODEL
     }
 
-@app.post("/train/prompt")
-def update_prompt(req: PromptRequest):
-    global ACTIVE_SYSTEM_INSTRUCTION
-    ACTIVE_SYSTEM_INSTRUCTION = req.prompt
-    with open(PROMPT_FILE, 'w', encoding='utf-8') as f:
-        f.write(req.prompt)
-    return {"message": "System prompt updated successfully.", "active_prompt": ACTIVE_SYSTEM_INSTRUCTION}
-
-@app.post("/train/dataset")
-async def upload_dataset(background_tasks: BackgroundTasks, file: UploadFile = File(...), custom_name: str = Form("yukizi-custom-bot")):
-    global ACTIVE_SYSTEM_INSTRUCTION
-    
-    # Save the uploaded jsonl
-    temp_file = f"temp_{file.filename}"
-    with open(temp_file, "wb") as f:
-        f.write(await file.read())
-        
-    try:
-        dataset_text = "\n[NEW BATCH OF LEARNED EXAMPLES]\n"
-        with open(temp_file, "r", encoding="utf-8") as f:
-            for line in f:
-                if not line.strip(): continue
-                try:
-                    data = json.loads(line)
-                    user_text = data.get("text_input", "")
-                    model_text = data.get("output", "")
-                    if user_text and model_text:
-                        dataset_text += f"User: {user_text}\nAssistant: {model_text}\n\n"
-                except Exception:
-                    pass
-        
-        ACTIVE_SYSTEM_INSTRUCTION += dataset_text
-        with open(PROMPT_FILE, 'w', encoding='utf-8') as f:
-            f.write(ACTIVE_SYSTEM_INSTRUCTION)
-            
-        return {
-            "message": "Dataset successfully learned and appended to System Instructions.",
-            "job_id": "CONTEXT_INJECTION_" + custom_name,
-            "status": "SUCCEEDED"
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to process dataset: {str(e)}")
-    finally:
-        if os.path.exists(temp_file):
-            os.remove(temp_file)
-
-@app.get("/train/status/{job_id}")
-def check_tuning_status(job_id: str):
+@app.post("/train/extract")
+def extract_rule(req: ConversationTrainRequest):
+    """Distills the instruction an admin just taught in a sandbox conversation
+    into a short {trigger, instruction} pair. Does not persist anything —
+    the caller (NestJS) shows this as an editable draft before saving."""
     api_key = os.environ.get("GEMINI_API_KEY")
     if not HAS_GEMINI or not api_key:
         raise HTTPException(status_code=500, detail="Gemini SDK/API Key not configured.")
-    try:
-        client = genai.Client(api_key=api_key)
-        model_info = client.tunings.get(name=job_id)
-        state = getattr(model_info, 'state', 'UNKNOWN')
-        return {
-            "job_id": job_id,
-            "status": state,
-            "is_active_model": (ACTIVE_MODEL == job_id)
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to fetch status: {str(e)}")
-
-@app.post("/train/conversation")
-async def train_conversation(background_tasks: BackgroundTasks, req: ConversationTrainRequest):
-    global ACTIVE_SYSTEM_INSTRUCTION
-    
     if len(req.history) < 2:
-        raise HTTPException(status_code=400, detail="Not enough conversation history to train on.")
+        raise HTTPException(status_code=400, detail="Not enough conversation history to extract a rule from.")
 
+    transcript = "\n".join(f"{m.role}: {m.content}" for m in req.history if m.content)
+    extraction_prompt = (
+        "An admin just taught a customer-service chatbot a new behavior through this "
+        "conversation. Distill the single instruction being taught into a short JSON "
+        "object with two fields: \"trigger\" (a few words describing when this applies) "
+        "and \"instruction\" (the exact behavior to follow, as an imperative sentence). "
+        "Respond with ONLY the JSON object, no other text.\n\n"
+        f"Conversation:\n{transcript}"
+    )
     try:
-        conversation_text = "\n[NEW LEARNED EXAMPLE]\n"
-        for i in range(len(req.history) - 1):
-            if req.history[i].role == "user" and req.history[i+1].role in ["assistant", "model"]:
-                user_text = req.history[i].content or ""
-                model_text = req.history[i+1].content or ""
-                if user_text and model_text:
-                    conversation_text += f"User: {user_text}\nAssistant: {model_text}\n\n"
-        
-        if conversation_text == "\n[NEW LEARNED EXAMPLE]\n":
-             raise HTTPException(status_code=400, detail="No valid user-assistant exchanges found to train on.")
-             
-        ACTIVE_SYSTEM_INSTRUCTION += conversation_text
-        with open(PROMPT_FILE, 'w', encoding='utf-8') as f:
-            f.write(ACTIVE_SYSTEM_INSTRUCTION)
-
-        return {
-            "message": "Conversation successfully learned and appended to System Instructions.",
-            "job_id": "CONTEXT_INJECTION_" + (req.custom_name or "bot"),
-            "status": "SUCCEEDED"
-        }
+        client = get_genai_client(api_key)
+        response = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=extraction_prompt,
+            config=types.GenerateContentConfig(response_mime_type="application/json"),
+        )
+        parsed = json.loads(response.text)
+        trigger = str(parsed.get("trigger", "")).strip()
+        instruction = str(parsed.get("instruction", "")).strip()
+        if not trigger or not instruction:
+            raise ValueError("Gemini returned an incomplete rule")
+        return {"trigger": trigger, "instruction": instruction}
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to process conversation: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to extract rule: {str(e)}")
 
 @app.post("/train/reset")
 def reset_training_memory():
@@ -317,36 +345,6 @@ def reset_training_memory():
         f.write(DEFAULT_PROMPT)
     return {
         "message": "Training memory successfully cleared and reset to default system prompt.",
-        "active_prompt": ACTIVE_SYSTEM_INSTRUCTION
-    }
-
-@app.post("/train/sync")
-def sync_training_memory(req: SyncTrainingRequest):
-    global ACTIVE_SYSTEM_INSTRUCTION
-    new_prompt = DEFAULT_PROMPT
-    added_count = 0
-    for history in req.histories:
-        if not history or len(history) < 2:
-            continue
-        conversation_text = "\n[NEW LEARNED EXAMPLE]\n"
-        has_valid_pair = False
-        for i in range(len(history) - 1):
-            if history[i].role == "user" and history[i+1].role in ["assistant", "model"]:
-                u = history[i].content or ""
-                m = history[i+1].content or ""
-                if u and m:
-                    conversation_text += f"User: {u}\nAssistant: {m}\n\n"
-                    has_valid_pair = True
-        if has_valid_pair:
-            new_prompt += conversation_text
-            added_count += 1
-
-    ACTIVE_SYSTEM_INSTRUCTION = new_prompt
-    with open(PROMPT_FILE, 'w', encoding='utf-8') as f:
-        f.write(new_prompt)
-
-    return {
-        "message": f"Training memory synced with {added_count} job histories.",
         "active_prompt": ACTIVE_SYSTEM_INSTRUCTION
     }
 
@@ -388,8 +386,8 @@ async def chat(request: ChatRequest):
                 print(f"ThinkingConfig setup notice: {te}", file=sys.stderr)
 
         config = types.GenerateContentConfig(
-            system_instruction=load_text_file(PROMPT_FILE, DEFAULT_PROMPT),
-            tools=[search_products, get_order_status],
+            system_instruction=build_system_instruction(),
+            tools=[search_products, get_order_status, search_blogs, get_product_reviews],
             thinking_config=thinking_config
         )
         
