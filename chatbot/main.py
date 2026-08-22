@@ -431,6 +431,44 @@ async def train_conversation(background_tasks: BackgroundTasks, req: Conversatio
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to process conversation: {str(e)}")
 
+@app.post("/train/extract")
+def extract_rule(req: ConversationTrainRequest):
+    """Distills the instruction an admin just taught in a sandbox conversation
+    into a short {trigger, instruction} pair. Does not persist anything —
+    the caller (NestJS) shows this as an editable draft before saving."""
+    if len(req.history) < 2:
+        raise HTTPException(status_code=400, detail="Not enough conversation history to extract a rule from.")
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not HAS_GEMINI or not api_key:
+        raise HTTPException(status_code=500, detail="Gemini SDK/API Key not configured.")
+
+    transcript = "\n".join(f"{m.role}: {m.content}" for m in req.history if m.content)
+    extraction_prompt = (
+        "An admin just taught a customer-service chatbot a new behavior through this "
+        "conversation. Distill the single instruction being taught into a short JSON "
+        "object with two fields: \"trigger\" (a few words describing when this applies) "
+        "and \"instruction\" (the exact behavior to follow, as an imperative sentence). "
+        "Respond with ONLY the JSON object, no other text.\n\n"
+        f"Conversation:\n{transcript}"
+    )
+    try:
+        client = get_genai_client(api_key)
+        response = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=extraction_prompt,
+            config=types.GenerateContentConfig(response_mime_type="application/json"),
+        )
+        parsed = json.loads(response.text)
+        trigger = str(parsed.get("trigger", "")).strip()
+        instruction = str(parsed.get("instruction", "")).strip()
+        if not trigger or not instruction:
+            raise ValueError("Gemini returned an incomplete rule")
+        return {"trigger": trigger, "instruction": instruction}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to extract rule: {str(e)}")
+
 @app.post("/train/reset")
 def reset_training_memory():
     global ACTIVE_SYSTEM_INSTRUCTION
