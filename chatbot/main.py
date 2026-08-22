@@ -3,7 +3,7 @@ import sys
 import time
 import asyncio
 import traceback
-from fastapi import FastAPI, HTTPException, UploadFile, File, Form, BackgroundTasks
+from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from typing import List, Dict, Any, Optional
 import base64
@@ -100,9 +100,6 @@ class PromptRequest(BaseModel):
 class ConversationTrainRequest(BaseModel):
     history: List[ChatMessage]
     custom_name: Optional[str] = "yukizi-custom-bot"
-
-class SyncTrainingRequest(BaseModel):
-    histories: List[List[ChatMessage]]
 
 
 # ==========================================
@@ -295,35 +292,6 @@ def build_system_instruction() -> str:
 
 
 # ==========================================
-# BACKGROUND TUNING MONITOR
-# ==========================================
-async def monitor_tuning_job(job_id: str, client: Any):
-    """Polls Gemini tuning job and auto-switches model upon completion."""
-    global ACTIVE_MODEL
-    print(f"Started monitoring tuning job: {job_id}")
-    while True:
-        try:
-            # Using client.tunings.get(...) assuming job_id is the tuning job name.
-            model_info = client.tunings.get(name=job_id)
-            state = getattr(model_info, 'state', str(model_info))
-            print(f"Tuning Job {job_id} status: {state}")
-            
-            if state == 'ACTIVE' or state == 'SUCCEEDED':
-                ACTIVE_MODEL = job_id
-                with open(MODEL_FILE, 'w', encoding='utf-8') as f:
-                    f.write(job_id)
-                print(f"Model {job_id} successfully trained! Auto-switched ACTIVE_MODEL to {job_id}.")
-                break
-            elif state in ['FAILED', 'CANCELLED']:
-                print(f"Model tuning failed or cancelled. Sticking to {ACTIVE_MODEL}.")
-                break
-            
-            await asyncio.sleep(60) # Poll every 60 seconds
-        except Exception as e:
-            print(f"Error checking tuning status for {job_id}: {e}")
-            await asyncio.sleep(60)
-
-# ==========================================
 # ENDPOINTS
 # ==========================================
 @app.get("/health")
@@ -342,94 +310,6 @@ def update_prompt(req: PromptRequest):
     with open(PROMPT_FILE, 'w', encoding='utf-8') as f:
         f.write(req.prompt)
     return {"message": "System prompt updated successfully.", "active_prompt": ACTIVE_SYSTEM_INSTRUCTION}
-
-@app.post("/train/dataset")
-async def upload_dataset(background_tasks: BackgroundTasks, file: UploadFile = File(...), custom_name: str = Form("yukizi-custom-bot")):
-    global ACTIVE_SYSTEM_INSTRUCTION
-    
-    # Save the uploaded jsonl
-    temp_file = f"temp_{file.filename}"
-    with open(temp_file, "wb") as f:
-        f.write(await file.read())
-        
-    try:
-        dataset_text = "\n[NEW BATCH OF LEARNED EXAMPLES]\n"
-        with open(temp_file, "r", encoding="utf-8") as f:
-            for line in f:
-                if not line.strip(): continue
-                try:
-                    data = json.loads(line)
-                    user_text = data.get("text_input", "")
-                    model_text = data.get("output", "")
-                    if user_text and model_text:
-                        dataset_text += f"User: {user_text}\nAssistant: {model_text}\n\n"
-                except Exception:
-                    pass
-        
-        ACTIVE_SYSTEM_INSTRUCTION += dataset_text
-        with open(PROMPT_FILE, 'w', encoding='utf-8') as f:
-            f.write(ACTIVE_SYSTEM_INSTRUCTION)
-            
-        return {
-            "message": "Dataset successfully learned and appended to System Instructions.",
-            "job_id": "CONTEXT_INJECTION_" + custom_name,
-            "status": "SUCCEEDED"
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to process dataset: {str(e)}")
-    finally:
-        if os.path.exists(temp_file):
-            os.remove(temp_file)
-
-@app.get("/train/status/{job_id}")
-def check_tuning_status(job_id: str):
-    api_key = os.environ.get("GEMINI_API_KEY")
-    if not HAS_GEMINI or not api_key:
-        raise HTTPException(status_code=500, detail="Gemini SDK/API Key not configured.")
-    try:
-        client = genai.Client(api_key=api_key)
-        model_info = client.tunings.get(name=job_id)
-        state = getattr(model_info, 'state', 'UNKNOWN')
-        return {
-            "job_id": job_id,
-            "status": state,
-            "is_active_model": (ACTIVE_MODEL == job_id)
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to fetch status: {str(e)}")
-
-@app.post("/train/conversation")
-async def train_conversation(background_tasks: BackgroundTasks, req: ConversationTrainRequest):
-    global ACTIVE_SYSTEM_INSTRUCTION
-    
-    if len(req.history) < 2:
-        raise HTTPException(status_code=400, detail="Not enough conversation history to train on.")
-
-    try:
-        conversation_text = "\n[NEW LEARNED EXAMPLE]\n"
-        for i in range(len(req.history) - 1):
-            if req.history[i].role == "user" and req.history[i+1].role in ["assistant", "model"]:
-                user_text = req.history[i].content or ""
-                model_text = req.history[i+1].content or ""
-                if user_text and model_text:
-                    conversation_text += f"User: {user_text}\nAssistant: {model_text}\n\n"
-        
-        if conversation_text == "\n[NEW LEARNED EXAMPLE]\n":
-             raise HTTPException(status_code=400, detail="No valid user-assistant exchanges found to train on.")
-             
-        ACTIVE_SYSTEM_INSTRUCTION += conversation_text
-        with open(PROMPT_FILE, 'w', encoding='utf-8') as f:
-            f.write(ACTIVE_SYSTEM_INSTRUCTION)
-
-        return {
-            "message": "Conversation successfully learned and appended to System Instructions.",
-            "job_id": "CONTEXT_INJECTION_" + (req.custom_name or "bot"),
-            "status": "SUCCEEDED"
-        }
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to process conversation: {str(e)}")
 
 @app.post("/train/extract")
 def extract_rule(req: ConversationTrainRequest):
@@ -477,36 +357,6 @@ def reset_training_memory():
         f.write(DEFAULT_PROMPT)
     return {
         "message": "Training memory successfully cleared and reset to default system prompt.",
-        "active_prompt": ACTIVE_SYSTEM_INSTRUCTION
-    }
-
-@app.post("/train/sync")
-def sync_training_memory(req: SyncTrainingRequest):
-    global ACTIVE_SYSTEM_INSTRUCTION
-    new_prompt = DEFAULT_PROMPT
-    added_count = 0
-    for history in req.histories:
-        if not history or len(history) < 2:
-            continue
-        conversation_text = "\n[NEW LEARNED EXAMPLE]\n"
-        has_valid_pair = False
-        for i in range(len(history) - 1):
-            if history[i].role == "user" and history[i+1].role in ["assistant", "model"]:
-                u = history[i].content or ""
-                m = history[i+1].content or ""
-                if u and m:
-                    conversation_text += f"User: {u}\nAssistant: {m}\n\n"
-                    has_valid_pair = True
-        if has_valid_pair:
-            new_prompt += conversation_text
-            added_count += 1
-
-    ACTIVE_SYSTEM_INSTRUCTION = new_prompt
-    with open(PROMPT_FILE, 'w', encoding='utf-8') as f:
-        f.write(new_prompt)
-
-    return {
-        "message": f"Training memory synced with {added_count} job histories.",
         "active_prompt": ACTIVE_SYSTEM_INSTRUCTION
     }
 
