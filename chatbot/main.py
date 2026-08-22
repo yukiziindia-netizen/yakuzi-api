@@ -1,7 +1,6 @@
 import os
 import sys
 import time
-import asyncio
 import traceback
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
