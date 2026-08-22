@@ -210,8 +210,9 @@ def get_product_reviews(product_identifier: str) -> str:
             cur.execute(
                 'SELECT id FROM catalog_products '
                 'WHERE (id = %s OR name ILIKE %s) AND "isActive" = true AND "deletedAt" IS NULL '
+                'ORDER BY (id = %s) DESC, name '
                 'LIMIT 1',
-                (product_identifier, f"%{product_identifier}%")
+                (product_identifier, f"%{product_identifier}%", product_identifier)
             )
             product = cur.fetchone()
             if not product:
