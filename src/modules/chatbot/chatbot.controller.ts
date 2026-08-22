@@ -8,7 +8,6 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { ChatbotService } from './chatbot.service';
-import { PrismaService } from '../../database/prisma.service';
 import {
   IsString,
   IsNotEmpty,
@@ -92,10 +91,7 @@ export class ChatRequestDto {
 @ApiTags('Chatbot')
 @Controller('chatbot')
 export class ChatbotController {
-  constructor(
-    private readonly chatbotService: ChatbotService,
-    private readonly prisma: PrismaService,
-  ) {}
+  constructor(private readonly chatbotService: ChatbotService) {}
 
   private getSidecarUrl(): string {
     return process.env.CHATBOT_API_URL || 'http://127.0.0.1:5005';
