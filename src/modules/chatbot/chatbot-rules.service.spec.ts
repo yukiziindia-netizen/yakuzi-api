@@ -1,3 +1,4 @@
+import { NotFoundException } from '@nestjs/common';
 import { ChatbotRulesService } from './chatbot-rules.service';
 
 const buildRule = (over: Partial<any> = {}) => ({
@@ -15,6 +16,7 @@ const build = () => {
     chatbotRule: {
       create: jest.fn(),
       findMany: jest.fn(),
+      findUnique: jest.fn(),
       update: jest.fn(),
       delete: jest.fn(),
     },
@@ -47,6 +49,7 @@ describe('ChatbotRulesService', () => {
 
   it('toggles isActive via update', async () => {
     const { service, prisma } = build();
+    prisma.chatbotRule.findUnique.mockResolvedValue(buildRule());
     prisma.chatbotRule.update.mockResolvedValue(buildRule({ isActive: false }));
 
     await service.update('rule-1', { isActive: false });
@@ -59,6 +62,7 @@ describe('ChatbotRulesService', () => {
 
   it('edits trigger and instruction via update', async () => {
     const { service, prisma } = build();
+    prisma.chatbotRule.findUnique.mockResolvedValue(buildRule());
     prisma.chatbotRule.update.mockResolvedValue(buildRule({ trigger: 'updated trigger' }));
 
     await service.update('rule-1', { trigger: 'updated trigger' });
@@ -69,12 +73,31 @@ describe('ChatbotRulesService', () => {
     });
   });
 
+  it('throws NotFoundException when updating a non-existent id', async () => {
+    const { service, prisma } = build();
+    prisma.chatbotRule.findUnique.mockResolvedValue(null);
+
+    await expect(service.update('missing-id', { isActive: false })).rejects.toThrow(
+      NotFoundException,
+    );
+    expect(prisma.chatbotRule.update).not.toHaveBeenCalled();
+  });
+
   it('deletes a rule by id', async () => {
     const { service, prisma } = build();
+    prisma.chatbotRule.findUnique.mockResolvedValue(buildRule());
     prisma.chatbotRule.delete.mockResolvedValue(buildRule());
 
     await service.delete('rule-1');
 
     expect(prisma.chatbotRule.delete).toHaveBeenCalledWith({ where: { id: 'rule-1' } });
+  });
+
+  it('throws NotFoundException when deleting a non-existent id', async () => {
+    const { service, prisma } = build();
+    prisma.chatbotRule.findUnique.mockResolvedValue(null);
+
+    await expect(service.delete('missing-id')).rejects.toThrow(NotFoundException);
+    expect(prisma.chatbotRule.delete).not.toHaveBeenCalled();
   });
 });

@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { CreateChatbotRuleDto, UpdateChatbotRuleDto } from './chatbot-rules.dto';
 
@@ -16,14 +16,20 @@ export class ChatbotRulesService {
     return this.prisma.chatbotRule.findMany({ orderBy: { createdAt: 'desc' } });
   }
 
-  update(id: string, dto: UpdateChatbotRuleDto) {
+  async update(id: string, dto: UpdateChatbotRuleDto) {
+    const existing = await this.prisma.chatbotRule.findUnique({ where: { id } });
+    if (!existing) throw new NotFoundException('Chatbot rule not found');
+
     return this.prisma.chatbotRule.update({
       where: { id },
-      data: dto,
+      data: { trigger: dto.trigger, instruction: dto.instruction, isActive: dto.isActive },
     });
   }
 
-  delete(id: string) {
+  async delete(id: string) {
+    const existing = await this.prisma.chatbotRule.findUnique({ where: { id } });
+    if (!existing) throw new NotFoundException('Chatbot rule not found');
+
     return this.prisma.chatbotRule.delete({ where: { id } });
   }
 }
