@@ -200,6 +200,48 @@ def search_blogs(query: str) -> str:
     finally:
         conn.close()
 
+def get_product_reviews(product_identifier: str) -> str:
+    """Looks up a product by id or name, then returns its average rating
+    and a handful of recent review comments."""
+    conn = get_db_connection()
+    if not conn: return "Error: Could not connect to database."
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(
+                'SELECT id FROM catalog_products '
+                'WHERE (id = %s OR name ILIKE %s) AND "isActive" = true AND "deletedAt" IS NULL '
+                'LIMIT 1',
+                (product_identifier, f"%{product_identifier}%")
+            )
+            product = cur.fetchone()
+            if not product:
+                return f"No product found matching '{product_identifier}'."
+
+            cur.execute(
+                'SELECT ROUND(AVG(rating)::numeric, 1) AS avg_rating, COUNT(*) AS review_count '
+                'FROM reviews WHERE "catalogProductId" = %s',
+                (product['id'],)
+            )
+            summary = cur.fetchone()
+            if not summary or not summary['review_count']:
+                return "No reviews yet for this product."
+
+            cur.execute(
+                'SELECT rating, comment FROM reviews WHERE "catalogProductId" = %s '
+                'AND comment IS NOT NULL ORDER BY "createdAt" DESC LIMIT 5',
+                (product['id'],)
+            )
+            recent = cur.fetchall()
+
+            lines = [f"Average rating: {summary['avg_rating']}/5 from {summary['review_count']} review(s)."]
+            for r in recent:
+                lines.append(f"- {r['rating']}/5: {r['comment']}")
+            return "\n".join(lines)
+    except Exception as e:
+        return f"Error executing query: {str(e)}"
+    finally:
+        conn.close()
+
 def get_order_status(order_id: str) -> str:
     """Gets the status of an order given its ID."""
     conn = get_db_connection()
@@ -468,7 +510,7 @@ async def chat(request: ChatRequest):
 
         config = types.GenerateContentConfig(
             system_instruction=build_system_instruction(),
-            tools=[search_products, get_order_status],
+            tools=[search_products, get_order_status, search_blogs, get_product_reviews],
             thinking_config=thinking_config
         )
         
