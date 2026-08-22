@@ -173,6 +173,43 @@ def get_order_status(order_id: str) -> str:
         conn.close()
 
 # ==========================================
+# LEARNED RULES (structured training)
+# ==========================================
+def get_active_rules() -> list:
+    """Reads active ChatbotRule rows fresh on every call — no caching, so an
+    admin toggling a rule off takes effect on the very next chat message."""
+    conn = get_db_connection()
+    if not conn:
+        return []
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(
+                'SELECT trigger, instruction FROM chatbot_rules '
+                'WHERE "isActive" = true ORDER BY "createdAt" DESC LIMIT 100'
+            )
+            return cur.fetchall()
+    except Exception as e:
+        print(f"Error fetching chatbot rules: {e}", file=sys.stderr)
+        return []
+    finally:
+        conn.close()
+
+
+def build_system_instruction() -> str:
+    """Base persona (never modified by training) plus a bounded, structured
+    list of admin-taught rules — replaces the old model of appending raw
+    conversation transcripts directly into system_prompt.txt forever."""
+    base = load_text_file(PROMPT_FILE, DEFAULT_PROMPT)
+    rules = get_active_rules()
+    if not rules:
+        return base
+    rules_block = "\n\nLEARNED RULES (store-specific behavior taught by an admin):\n" + "\n".join(
+        f"- {r['trigger']}: {r['instruction']}" for r in rules
+    )
+    return base + rules_block
+
+
+# ==========================================
 # BACKGROUND TUNING MONITOR
 # ==========================================
 async def monitor_tuning_job(job_id: str, client: Any):
@@ -388,7 +425,7 @@ async def chat(request: ChatRequest):
                 print(f"ThinkingConfig setup notice: {te}", file=sys.stderr)
 
         config = types.GenerateContentConfig(
-            system_instruction=load_text_file(PROMPT_FILE, DEFAULT_PROMPT),
+            system_instruction=build_system_instruction(),
             tools=[search_products, get_order_status],
             thinking_config=thinking_config
         )
