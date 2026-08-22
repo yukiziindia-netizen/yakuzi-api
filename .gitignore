@@ -3,8 +3,10 @@ node_modules/
 
 # Python chatbot sidecar (virtualenv is built on the server, never committed)
 .venv/
+venv/
 __pycache__/
 *.pyc
+.pytest_cache/
 
 # Build output
 dist/
