@@ -93,9 +93,6 @@ class ChatRequest(BaseModel):
     thinking_enabled: Optional[bool] = True
     thinking_budget: Optional[int] = 2048
 
-class PromptRequest(BaseModel):
-    prompt: str
-
 class ConversationTrainRequest(BaseModel):
     history: List[ChatMessage]
     custom_name: Optional[str] = "yukizi-custom-bot"
@@ -301,14 +298,6 @@ def health_check():
         "has_api_key": bool(os.environ.get("GEMINI_API_KEY")),
         "active_model": ACTIVE_MODEL
     }
-
-@app.post("/train/prompt")
-def update_prompt(req: PromptRequest):
-    global ACTIVE_SYSTEM_INSTRUCTION
-    ACTIVE_SYSTEM_INSTRUCTION = req.prompt
-    with open(PROMPT_FILE, 'w', encoding='utf-8') as f:
-        f.write(req.prompt)
-    return {"message": "System prompt updated successfully.", "active_prompt": ACTIVE_SYSTEM_INSTRUCTION}
 
 @app.post("/train/extract")
 def extract_rule(req: ConversationTrainRequest):
