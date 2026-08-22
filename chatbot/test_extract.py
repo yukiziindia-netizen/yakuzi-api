@@ -33,7 +33,9 @@ def test_extract_returns_trigger_and_instruction_from_transcript():
 
 
 def test_extract_rejects_short_history():
-    response = client.post("/train/extract", json={"history": [SAMPLE_HISTORY[0]]})
+    with patch("main.HAS_GEMINI", True), \
+         patch.dict("os.environ", {"GEMINI_API_KEY": "test-key"}):
+        response = client.post("/train/extract", json={"history": [SAMPLE_HISTORY[0]]})
     assert response.status_code == 400
 
 

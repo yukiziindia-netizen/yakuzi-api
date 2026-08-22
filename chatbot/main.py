@@ -436,11 +436,11 @@ def extract_rule(req: ConversationTrainRequest):
     """Distills the instruction an admin just taught in a sandbox conversation
     into a short {trigger, instruction} pair. Does not persist anything —
     the caller (NestJS) shows this as an editable draft before saving."""
-    if len(req.history) < 2:
-        raise HTTPException(status_code=400, detail="Not enough conversation history to extract a rule from.")
     api_key = os.environ.get("GEMINI_API_KEY")
     if not HAS_GEMINI or not api_key:
         raise HTTPException(status_code=500, detail="Gemini SDK/API Key not configured.")
+    if len(req.history) < 2:
+        raise HTTPException(status_code=400, detail="Not enough conversation history to extract a rule from.")
 
     transcript = "\n".join(f"{m.role}: {m.content}" for m in req.history if m.content)
     extraction_prompt = (
