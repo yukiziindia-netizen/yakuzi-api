@@ -942,6 +942,9 @@ model SystemSetting {
   @@map("system_settings")
 }
 
+// LEGACY: unused since the 2026-08-22 chatbot rebuild (replaced by ChatbotRule).
+// Nothing reads or writes this anymore — kept as a read-only historical log
+// rather than dropped. Safe to remove in a future migration.
 model ChatbotJob {
   id        String   @id @default(uuid())
   jobId     String
@@ -951,6 +954,18 @@ model ChatbotJob {
   updatedAt DateTime @updatedAt
 
   @@map("chatbot_jobs")
+}
+
+model ChatbotRule {
+  id          String   @id @default(uuid())
+  trigger     String
+  instruction String
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("chatbot_rules")
+  @@index([isActive])
 }
 
 enum MarketingSlot {
