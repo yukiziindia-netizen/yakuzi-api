@@ -64,6 +64,43 @@ describe('ChatbotRulesService', () => {
     });
   });
 
+  it('stores the source conversation on create when provided', async () => {
+    const { service, prisma } = build();
+    prisma.chatbotRule.aggregate.mockResolvedValue({ _max: { order: null } });
+    prisma.chatbotRule.create.mockResolvedValue(buildRule());
+    const history = [
+      { role: 'user', content: 'never discuss politics' },
+      { role: 'assistant', content: 'Understood.' },
+    ];
+
+    await service.create({ trigger: 't', instruction: 'i', history });
+
+    expect(prisma.chatbotRule.create).toHaveBeenCalledWith({
+      data: { trigger: 't', instruction: 'i', tier: 'SURFACE', order: 0, history },
+    });
+  });
+
+  it('overwrites the stored conversation on update when provided', async () => {
+    const { service, prisma } = build();
+    prisma.chatbotRule.findUnique.mockResolvedValue(buildRule());
+    prisma.chatbotRule.update.mockResolvedValue(buildRule());
+    const history = [{ role: 'user', content: 'refined teaching' }];
+
+    await service.update('rule-1', { trigger: 't2', instruction: 'i2', history });
+
+    expect(prisma.chatbotRule.update).toHaveBeenCalledWith({
+      where: { id: 'rule-1' },
+      data: {
+        trigger: 't2',
+        instruction: 'i2',
+        isActive: undefined,
+        tier: undefined,
+        order: undefined,
+        history,
+      },
+    });
+  });
+
   it('lists rules CORE-first, then manual order, then creation time', async () => {
     const { service, prisma } = build();
     prisma.chatbotRule.findMany.mockResolvedValue([buildRule()]);

@@ -19,6 +19,9 @@ export class ChatbotRulesService {
         instruction: dto.instruction,
         tier,
         order: (maxOrder._max.order ?? -1) + 1,
+        ...(dto.history !== undefined && {
+          history: dto.history as unknown as Prisma.InputJsonValue,
+        }),
       },
     });
   }
@@ -55,6 +58,9 @@ export class ChatbotRulesService {
         isActive: dto.isActive,
         tier: dto.tier,
         order,
+        ...(dto.history !== undefined && {
+          history: dto.history as unknown as Prisma.InputJsonValue,
+        }),
       },
     });
   }
