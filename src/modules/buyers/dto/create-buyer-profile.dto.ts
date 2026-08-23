@@ -66,30 +66,30 @@ export class CreateBuyerProfileDto {
   })
   aadhaarNumber?: string;
 
-  @ApiProperty({ example: 'DL-MH-123456' })
+  @ApiPropertyOptional({ example: 'DL-MH-123456' })
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
-  drugLicenseNumber: string;
+  drugLicenseNumber?: string;
 
-  @ApiProperty({ example: 'https://s3.amazonaws.com/drug-license.pdf' })
+  @ApiPropertyOptional({ example: 'https://s3.amazonaws.com/drug-license.pdf' })
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
-  drugLicenseUrl: string;
+  drugLicenseUrl?: string;
 
   @ApiPropertyOptional({ example: '2026-12-31' })
   @IsOptional()
   @IsString()
   drugLicenseExpiry?: string;
 
-  @ApiProperty({ example: 'DL-MH-123456' })
+  @ApiPropertyOptional({ example: 'DL-MH-123456' })
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
-  drugLicenseNumber2: string;
+  drugLicenseNumber2?: string;
 
-  @ApiProperty({ example: 'https://s3.amazonaws.com/drug-license2.pdf' })
+  @ApiPropertyOptional({ example: 'https://s3.amazonaws.com/drug-license2.pdf' })
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
-  drugLicenseUrl2: string;
+  drugLicenseUrl2?: string;
 
   @ApiPropertyOptional({ example: '2026-12-31' })
   @IsOptional()
