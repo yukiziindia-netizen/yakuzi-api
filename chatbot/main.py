@@ -52,8 +52,8 @@ MODEL_FILE = os.path.join(BASE_DIR, "current_model.txt")
 DEFAULT_PROMPT = """You are an intelligent, versatile AI Assistant integrated into the Yukizi platform powered by Gemini Thinking.
 
 CORE PRIORITIES:
-- Store & Order Inquiries: For store-related inquiries, assist customers with products, order status, and shopping using your integrated database tools (search_products, get_order_status) and learned training data.
-- General AI Knowledge: If a user asks general knowledge, scientific, technical, coding, or off-topic questions, seamlessly utilize your full general AI knowledge and reasoning to provide a helpful, accurate, and comprehensive answer.
+- Store & Order Inquiries: For store-related inquiries, assist customers with products, order status, and shopping using your integrated database tools (search_products, get_order_status, search_blogs, get_product_reviews) and learned training data. When a customer asks whether a product is good, worth buying, or how others liked it, use get_product_reviews to answer from real customer feedback instead of guessing.
+- General AI Knowledge: You are NOT restricted to store topics. If a user asks general knowledge, scientific, technical, coding, or any off-topic question, seamlessly utilize your full general AI knowledge and reasoning to provide a helpful, accurate, and comprehensive answer, exactly as a standard Gemini assistant would.
 
 FORMATTING & STYLING RULES:
 - Do NOT output raw Markdown asterisks (like * or **) in your responses.
@@ -167,6 +167,49 @@ def get_order_status(order_id: str) -> str:
             cur.execute("SELECT id, \"orderStatus\", \"paymentStatus\", \"totalAmount\" FROM orders WHERE id = %s", (order_id,))
             row = cur.fetchone()
             return str(row) if row else f"Order '{order_id}' not found."
+    except Exception as e:
+        return f"Error executing query: {str(e)}"
+    finally:
+        conn.close()
+
+def search_blogs(query: str) -> str:
+    """Searches published blog posts for content matching the query."""
+    conn = get_db_connection()
+    if not conn: return "Error: Could not connect to database."
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(
+                'SELECT title, excerpt, slug FROM blog_posts '
+                "WHERE (title ILIKE %s OR excerpt ILIKE %s) AND status = 'PUBLISHED' "
+                'ORDER BY "publishedAt" DESC NULLS LAST LIMIT 5',
+                (f"%{query}%", f"%{query}%")
+            )
+            rows = cur.fetchall()
+            return str(rows) if rows else f"No published blog posts found matching '{query}'."
+    except Exception as e:
+        return f"Error executing query: {str(e)}"
+    finally:
+        conn.close()
+
+def get_product_reviews(product_name: str) -> str:
+    """Gets customer reviews and average rating for a product by name."""
+    conn = get_db_connection()
+    if not conn: return "Error: Could not connect to database."
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(
+                'SELECT r.rating, r.comment, r."createdAt" '
+                'FROM reviews r '
+                'JOIN catalog_products cp ON cp.id = r."catalogProductId" '
+                'WHERE cp.name ILIKE %s '
+                'ORDER BY r."createdAt" DESC LIMIT 5',
+                (f"%{product_name}%",)
+            )
+            rows = cur.fetchall()
+            if not rows:
+                return f"No reviews found for a product matching '{product_name}'."
+            avg = sum(r['rating'] for r in rows) / len(rows)
+            return f"Average rating: {avg:.1f}/5 across {len(rows)} recent review(s). Reviews: {rows}"
     except Exception as e:
         return f"Error executing query: {str(e)}"
     finally:
@@ -389,7 +432,7 @@ async def chat(request: ChatRequest):
 
         config = types.GenerateContentConfig(
             system_instruction=load_text_file(PROMPT_FILE, DEFAULT_PROMPT),
-            tools=[search_products, get_order_status],
+            tools=[search_products, get_order_status, search_blogs, get_product_reviews],
             thinking_config=thinking_config
         )
         
