@@ -1,4 +1,4 @@
-import { NotFoundException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { ChatbotRulesService } from './chatbot-rules.service';
 
 const buildRule = (over: Partial<any> = {}) => ({
@@ -6,6 +6,8 @@ const buildRule = (over: Partial<any> = {}) => ({
   trigger: 'best comic recommendation',
   instruction: 'must say kuji kari',
   isActive: true,
+  tier: 'SURFACE',
+  order: 0,
   createdAt: new Date('2026-08-22T00:00:00Z'),
   updatedAt: new Date('2026-08-22T00:00:00Z'),
   ...over,
@@ -19,31 +21,58 @@ const build = () => {
       findUnique: jest.fn(),
       update: jest.fn(),
       delete: jest.fn(),
+      deleteMany: jest.fn(),
+      aggregate: jest.fn(),
     },
+    $transaction: jest.fn(),
   };
   const service = new ChatbotRulesService(prisma as never);
   return { service, prisma };
 };
 
 describe('ChatbotRulesService', () => {
-  it('creates a rule from trigger/instruction', async () => {
+  it('creates a rule at the end of its tier, defaulting to SURFACE', async () => {
     const { service, prisma } = build();
-    prisma.chatbotRule.create.mockResolvedValue(buildRule());
+    prisma.chatbotRule.aggregate.mockResolvedValue({ _max: { order: 2 } });
+    prisma.chatbotRule.create.mockResolvedValue(buildRule({ order: 3 }));
 
     await service.create({ trigger: 'best comic recommendation', instruction: 'must say kuji kari' });
 
+    expect(prisma.chatbotRule.aggregate).toHaveBeenCalledWith({
+      where: { tier: 'SURFACE' },
+      _max: { order: true },
+    });
     expect(prisma.chatbotRule.create).toHaveBeenCalledWith({
-      data: { trigger: 'best comic recommendation', instruction: 'must say kuji kari' },
+      data: {
+        trigger: 'best comic recommendation',
+        instruction: 'must say kuji kari',
+        tier: 'SURFACE',
+        order: 3,
+      },
     });
   });
 
-  it('lists rules most-recent first', async () => {
+  it('creates a CORE rule in the CORE tier when asked', async () => {
+    const { service, prisma } = build();
+    prisma.chatbotRule.aggregate.mockResolvedValue({ _max: { order: null } });
+    prisma.chatbotRule.create.mockResolvedValue(buildRule({ tier: 'CORE', order: 0 }));
+
+    await service.create({ trigger: 't', instruction: 'i', tier: 'CORE' });
+
+    expect(prisma.chatbotRule.create).toHaveBeenCalledWith({
+      data: { trigger: 't', instruction: 'i', tier: 'CORE', order: 0 },
+    });
+  });
+
+  it('lists rules CORE-first, then manual order, then creation time', async () => {
     const { service, prisma } = build();
     prisma.chatbotRule.findMany.mockResolvedValue([buildRule()]);
 
     const result = await service.list();
 
-    expect(prisma.chatbotRule.findMany).toHaveBeenCalledWith({ orderBy: { createdAt: 'desc' } });
+    expect(prisma.chatbotRule.findMany).toHaveBeenCalledWith({
+      orderBy: [{ tier: 'asc' }, { order: 'asc' }, { createdAt: 'asc' }],
+    });
     expect(result).toEqual([buildRule()]);
   });
 
@@ -56,20 +85,37 @@ describe('ChatbotRulesService', () => {
 
     expect(prisma.chatbotRule.update).toHaveBeenCalledWith({
       where: { id: 'rule-1' },
-      data: { isActive: false },
+      data: {
+        trigger: undefined,
+        instruction: undefined,
+        isActive: false,
+        tier: undefined,
+        order: undefined,
+      },
     });
   });
 
-  it('edits trigger and instruction via update', async () => {
+  it('appends to the end of the target tier on a tier move without explicit order', async () => {
     const { service, prisma } = build();
-    prisma.chatbotRule.findUnique.mockResolvedValue(buildRule());
-    prisma.chatbotRule.update.mockResolvedValue(buildRule({ trigger: 'updated trigger' }));
+    prisma.chatbotRule.findUnique.mockResolvedValue(buildRule({ tier: 'SURFACE', order: 0 }));
+    prisma.chatbotRule.aggregate.mockResolvedValue({ _max: { order: 4 } });
+    prisma.chatbotRule.update.mockResolvedValue(buildRule({ tier: 'CORE', order: 5 }));
 
-    await service.update('rule-1', { trigger: 'updated trigger' });
+    await service.update('rule-1', { tier: 'CORE' });
 
+    expect(prisma.chatbotRule.aggregate).toHaveBeenCalledWith({
+      where: { tier: 'CORE' },
+      _max: { order: true },
+    });
     expect(prisma.chatbotRule.update).toHaveBeenCalledWith({
       where: { id: 'rule-1' },
-      data: { trigger: 'updated trigger' },
+      data: {
+        trigger: undefined,
+        instruction: undefined,
+        isActive: undefined,
+        tier: 'CORE',
+        order: 5,
+      },
     });
   });
 
@@ -99,5 +145,38 @@ describe('ChatbotRulesService', () => {
 
     await expect(service.delete('missing-id')).rejects.toThrow(NotFoundException);
     expect(prisma.chatbotRule.delete).not.toHaveBeenCalled();
+  });
+
+  it('deleteAll clears every rule', async () => {
+    const { service, prisma } = build();
+    prisma.chatbotRule.deleteMany.mockResolvedValue({ count: 3 });
+
+    await service.deleteAll();
+
+    expect(prisma.chatbotRule.deleteMany).toHaveBeenCalledWith();
+  });
+
+  describe('reorder', () => {
+    it('rejects an id set that does not exactly match the tier', async () => {
+      const { service, prisma } = build();
+      prisma.chatbotRule.findMany.mockResolvedValue([{ id: 'a' }, { id: 'b' }]);
+
+      await expect(service.reorder('CORE', ['a'])).rejects.toThrow(BadRequestException);
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('writes sequential order values in the given order', async () => {
+      const { service, prisma } = build();
+      prisma.chatbotRule.findMany
+        .mockResolvedValueOnce([{ id: 'a' }, { id: 'b' }])
+        .mockResolvedValueOnce([]);
+      prisma.$transaction.mockResolvedValue(undefined);
+
+      await service.reorder('CORE', ['b', 'a']);
+
+      expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+      expect(prisma.chatbotRule.update).toHaveBeenCalledWith({ where: { id: 'b' }, data: { order: 0 } });
+      expect(prisma.chatbotRule.update).toHaveBeenCalledWith({ where: { id: 'a' }, data: { order: 1 } });
+    });
   });
 });

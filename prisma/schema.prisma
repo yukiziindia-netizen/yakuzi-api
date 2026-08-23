@@ -956,16 +956,24 @@ model ChatbotJob {
   @@map("chatbot_jobs")
 }
 
+enum ChatbotRuleTier {
+  CORE
+  SURFACE
+}
+
 model ChatbotRule {
-  id          String   @id @default(uuid())
+  id          String          @id @default(uuid())
   trigger     String
   instruction String
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  isActive    Boolean         @default(true)
+  tier        ChatbotRuleTier @default(SURFACE)
+  order       Int             @default(0)
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
 
   @@map("chatbot_rules")
   @@index([isActive])
+  @@index([tier, order])
 }
 
 enum MarketingSlot {
