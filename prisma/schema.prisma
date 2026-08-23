@@ -968,6 +968,7 @@ model ChatbotRule {
   isActive    Boolean         @default(true)
   tier        ChatbotRuleTier @default(SURFACE)
   order       Int             @default(0)
+  history     Json?
   createdAt   DateTime        @default(now())
   updatedAt   DateTime        @updatedAt
 
