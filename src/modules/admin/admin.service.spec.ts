@@ -1,6 +1,12 @@
 import { AdminService } from './admin.service';
 import { OrderStatus, PaymentStatus } from '@prisma/client';
 
+// Shared across every AdminService construction below. Returning undefined
+// for every key means callers fall through to their hardcoded defaults
+// (e.g. TEST_BUYER_PHONES -> '8500237151'), matching the pre-config-change
+// behavior unless a specific test overrides `get` for its own key.
+const mockConfigService = { get: jest.fn().mockReturnValue(undefined) };
+
 const baseOrder = {
   id: 'order-1',
   orderStatus: OrderStatus.PAYMENT_RECEIVED,
@@ -32,6 +38,7 @@ const build = (pushResult: Record<string, unknown> = {}) => {
     sellersService as never,
     {} as never,
     {} as never,
+    mockConfigService as never,
   );
   return { service, prisma, ordersService };
 };
@@ -109,6 +116,7 @@ describe('AdminService.adminUpdateProduct — catalog product resolution', () =>
       sellersService as never,
       {} as never,
       {} as never,
+      mockConfigService as never,
     );
     return { service, prisma };
   };
@@ -184,6 +192,7 @@ describe('AdminService.getSettlementsSummary — totals across all pages', () =>
       {} as never,
       {} as never,
       {} as never,
+      mockConfigService as never,
     );
     return { service, prisma };
   };
@@ -255,6 +264,7 @@ describe('AdminService.getDashboard — Platform Revenue', () => {
       {} as never,
       {} as never,
       {} as never,
+      mockConfigService as never,
     );
     return { service, prisma };
   };
@@ -345,6 +355,7 @@ describe('AdminService.approveUser — seller approval email', () => {
       sellersService as never,
       mailService as never,
       {} as never,
+      mockConfigService as never,
     );
     return { service, mailService };
   };
@@ -433,6 +444,7 @@ describe('AdminService.adminCreateProductForSeller', () => {
       {} as never,
       {} as never,
       productsService as never,
+      mockConfigService as never,
     );
 
     const dto = {
@@ -474,6 +486,7 @@ describe('AdminService.getAllOrders — test-order exclusion', () => {
       {} as never,
       {} as never,
       {} as never,
+      mockConfigService as never,
     );
     return { service, prisma };
   };
@@ -532,6 +545,7 @@ describe('AdminService.getAllProducts — other-sellers aggregation', () => {
       {} as never,
       {} as never,
       {} as never,
+      mockConfigService as never,
     );
     return { service, prisma };
   };
