@@ -45,6 +45,37 @@ describe('ChatbotService training', () => {
     jest.spyOn(service, 'resyncSidecar').mockResolvedValue(undefined);
   });
 
+  describe('listTrainings', () => {
+    it('only returns SAVED rows, never legacy job-status rows', async () => {
+      prisma.chatbotJob.findMany.mockResolvedValue([]);
+
+      await service.listTrainings();
+
+      expect(prisma.chatbotJob.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { status: 'SAVED' } }),
+      );
+    });
+  });
+
+  describe('updateTraining', () => {
+    it('appends to the end of the target tier on a tier move without explicit order', async () => {
+      prisma.chatbotJob.findUnique.mockResolvedValue({ id: 't1', tier: 'SURFACE', order: 0 });
+      prisma.chatbotJob.aggregate.mockResolvedValue({ _max: { order: 4 } });
+      prisma.chatbotJob.update.mockResolvedValue({ id: 't1' });
+
+      await service.updateTraining('t1', { tier: 'CORE' });
+
+      expect(prisma.chatbotJob.aggregate).toHaveBeenCalledWith({
+        where: { tier: 'CORE', status: 'SAVED' },
+        _max: { order: true },
+      });
+      expect(prisma.chatbotJob.update).toHaveBeenCalledWith({
+        where: { id: 't1' },
+        data: { tier: 'CORE', order: 5 },
+      });
+    });
+  });
+
   describe('createTraining', () => {
     it('rejects a history with no user/assistant pair', async () => {
       await expect(

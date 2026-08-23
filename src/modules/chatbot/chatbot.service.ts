@@ -153,8 +153,12 @@ export class ChatbotService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+  // status:'SAVED' scoping everywhere below: chatbot_jobs is still shared with
+  // the legacy, unauthenticated /chatbot/job-status routes, so rows written by
+  // that old flow must never surface in the admin panel or the live prompt.
   async listTrainings() {
     return this.prisma.chatbotJob.findMany({
+      where: { status: 'SAVED' },
       orderBy: [{ tier: 'asc' }, { order: 'asc' }, { createdAt: 'asc' }],
     });
   }
@@ -176,7 +180,7 @@ export class ChatbotService implements OnModuleInit, OnModuleDestroy {
 
     const tier = dto.tier ?? ChatbotTrainingTier.SURFACE;
     const maxOrder = await this.prisma.chatbotJob.aggregate({
-      where: { tier },
+      where: { tier, status: 'SAVED' },
       _max: { order: true },
     });
     const firstUserMessage = dto.history.find((m) => m.role === 'user' && m.content)?.content ?? 'Untitled training';
@@ -200,11 +204,23 @@ export class ChatbotService implements OnModuleInit, OnModuleDestroy {
     const existing = await this.prisma.chatbotJob.findUnique({ where: { id } });
     if (!existing) throw new NotFoundException('Training not found');
 
+    // A tier move without an explicit order lands at the END of the target
+    // tier — otherwise the row keeps its old order number and slots into the
+    // middle of the other tier's list.
+    let order = dto.order;
+    if (dto.tier !== undefined && dto.tier !== existing.tier && dto.order === undefined) {
+      const maxOrder = await this.prisma.chatbotJob.aggregate({
+        where: { tier: dto.tier, status: 'SAVED' },
+        _max: { order: true },
+      });
+      order = (maxOrder._max.order ?? -1) + 1;
+    }
+
     const updated = await this.prisma.chatbotJob.update({
       where: { id },
       data: {
         ...(dto.tier !== undefined && { tier: dto.tier }),
-        ...(dto.order !== undefined && { order: dto.order }),
+        ...(order !== undefined && { order }),
         ...(dto.label !== undefined && { label: dto.label.trim() }),
       },
     });
@@ -228,7 +244,7 @@ export class ChatbotService implements OnModuleInit, OnModuleDestroy {
 
   async reorderTrainings(tier: ChatbotTrainingTier, orderedIds: string[]) {
     const existing = await this.prisma.chatbotJob.findMany({
-      where: { tier },
+      where: { tier, status: 'SAVED' },
       select: { id: true },
     });
     const existingIds = existing.map((j) => j.id).sort();
@@ -261,6 +277,7 @@ export class ChatbotService implements OnModuleInit, OnModuleDestroy {
 
   async resyncSidecar(): Promise<void> {
     const trainings = await this.prisma.chatbotJob.findMany({
+      where: { status: 'SAVED' },
       orderBy: [{ tier: 'asc' }, { order: 'asc' }, { createdAt: 'asc' }],
     });
     const histories = trainings
