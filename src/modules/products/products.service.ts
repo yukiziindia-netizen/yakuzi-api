@@ -1701,12 +1701,31 @@ export class ProductsService {
   }
 
   /**
-   * List all categories (public).
+   * List all categories (public). Each category and sub-category carries its
+   * ordered banner slideshow (`bannerImages`); the category's legacy single
+   * `image`/`mobileImage` fields are derived from slide 1 so pre-slideshow
+   * consumers keep working (falling back to the legacy columns for any
+   * category that predates the slideshow data migration).
    */
   async getCategories() {
-    return this.prisma.category.findMany({
-      include: { subCategories: true },
+    const bannerInclude = {
+      orderBy: [{ order: 'asc' as const }, { id: 'asc' as const }],
+      select: { id: true, image: true, mobileImage: true, order: true },
+    };
+    const categories = await this.prisma.category.findMany({
+      include: {
+        bannerImages: bannerInclude,
+        subCategories: { include: { bannerImages: bannerInclude } },
+      },
       orderBy: { name: 'asc' },
+    });
+    return categories.map((cat) => {
+      const first = cat.bannerImages[0];
+      return {
+        ...cat,
+        image: first?.image ?? cat.image,
+        mobileImage: first ? first.mobileImage : cat.mobileImage,
+      };
     });
   }
 

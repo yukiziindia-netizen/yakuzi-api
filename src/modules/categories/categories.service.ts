@@ -13,6 +13,7 @@ import { UpdateSubCategoryDto } from './dto/update-subcategory.dto';
 import { BulkCreateCategoryDto } from './dto/bulk-category.dto';
 import { BulkCreateSubCategoryDto } from './dto/bulk-category.dto';
 import { QuerySubCategoryDto } from './dto/query-subcategory.dto';
+import { ReplaceBannersDto } from './dto/replace-banners.dto';
 
 @Injectable()
 export class CategoriesService {
@@ -65,7 +66,10 @@ export class CategoriesService {
     try {
       if ((this.prisma as any).category) {
         const categories = await (this.prisma as any).category.findMany({
-          include: { subCategories: true },
+          include: {
+            subCategories: true,
+            bannerImages: { orderBy: [{ order: 'asc' }, { id: 'asc' }] },
+          },
           orderBy: { name: 'asc' },
         });
         return categories || [];
@@ -210,7 +214,10 @@ export class CategoriesService {
 
         const subCategories = await (this.prisma as any).subCategory.findMany({
           where,
-          include: { category: true },
+          include: {
+            category: true,
+            bannerImages: { orderBy: [{ order: 'asc' }, { id: 'asc' }] },
+          },
           orderBy: { name: 'asc' },
         });
         return subCategories || [];
@@ -265,6 +272,82 @@ export class CategoriesService {
     await this.prisma.subCategory.delete({ where: { id } });
     this.logger.log(`SubCategory deleted: ${id}`);
     return { message: 'SubCategory deleted successfully' };
+  }
+
+  // ──────────────────────────────────────────────
+  // BANNER SLIDESHOWS
+  // ──────────────────────────────────────────────
+
+  /**
+   * Atomically replace a category's banner slideshow with the given ordered
+   * list (order = array index). Empty array clears the slideshow. The legacy
+   * single-image columns (`image`/`mobileImage`) are kept in sync with slide 1
+   * so older consumers (admin list thumbnails, pre-slideshow clients) never
+   * drift from what the slideshow shows first.
+   */
+  async replaceCategoryBanners(categoryId: string, dto: ReplaceBannersDto) {
+    const existing = await this.prisma.category.findUnique({
+      where: { id: categoryId },
+    });
+    if (!existing) throw new NotFoundException('Category not found');
+
+    const first = dto.banners[0];
+    const [, , rows] = await this.prisma.$transaction([
+      this.prisma.categoryBannerImage.deleteMany({ where: { categoryId } }),
+      this.prisma.category.update({
+        where: { id: categoryId },
+        data: {
+          image: first?.image ?? null,
+          mobileImage: first?.mobileImage ?? null,
+          bannerImages: {
+            create: dto.banners.map((b, index) => ({
+              image: b.image,
+              mobileImage: b.mobileImage ?? null,
+              order: index,
+            })),
+          },
+        },
+      }),
+      this.prisma.categoryBannerImage.findMany({
+        where: { categoryId },
+        orderBy: [{ order: 'asc' }, { id: 'asc' }],
+      }),
+    ]);
+    this.logger.log(
+      `Category ${categoryId} banners replaced (${dto.banners.length} slides)`,
+    );
+    return rows;
+  }
+
+  /**
+   * Same as replaceCategoryBanners, for a sub-category. Sub-categories have no
+   * legacy single-image columns, so this only manages the slideshow rows.
+   */
+  async replaceSubCategoryBanners(subCategoryId: string, dto: ReplaceBannersDto) {
+    const existing = await this.prisma.subCategory.findUnique({
+      where: { id: subCategoryId },
+    });
+    if (!existing) throw new NotFoundException('SubCategory not found');
+
+    const [, , rows] = await this.prisma.$transaction([
+      this.prisma.categoryBannerImage.deleteMany({ where: { subCategoryId } }),
+      this.prisma.categoryBannerImage.createMany({
+        data: dto.banners.map((b, index) => ({
+          subCategoryId,
+          image: b.image,
+          mobileImage: b.mobileImage ?? null,
+          order: index,
+        })),
+      }),
+      this.prisma.categoryBannerImage.findMany({
+        where: { subCategoryId },
+        orderBy: [{ order: 'asc' }, { id: 'asc' }],
+      }),
+    ]);
+    this.logger.log(
+      `SubCategory ${subCategoryId} banners replaced (${dto.banners.length} slides)`,
+    );
+    return rows;
   }
 
   async getSubCategoryMap() {
