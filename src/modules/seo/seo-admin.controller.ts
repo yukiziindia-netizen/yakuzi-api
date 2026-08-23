@@ -28,6 +28,7 @@ import {
   LinkKeywordDto,
   ListSeoMetaQueryDto,
   UpdateKeywordDto,
+  UpdateProductSlugDto,
   UpdateRedirectDto,
   UpsertSeoMetaDto,
 } from './seo.dto';
@@ -50,6 +51,27 @@ export class AdminSeoController {
     private readonly redirectsService: SeoRedirectsService,
     private readonly keywordsService: SeoKeywordsService,
   ) {}
+
+  // ── product URL slug ──────────────────────────────────────
+  // Catalog-id keyed (the SEO tab's PRODUCT keyspace). Changes the REAL
+  // public URL, with the same 301-redirect handling as the product form.
+
+  @Get('product-slug/:id')
+  @HttpCode(HttpStatus.OK)
+  async getProductSlug(@Param('id', ParseUUIDPipe) id: string) {
+    const data = await this.seoService.getProductSlug(id);
+    return { message: 'Product slug retrieved successfully', data };
+  }
+
+  @Patch('product-slug/:id')
+  @HttpCode(HttpStatus.OK)
+  async updateProductSlug(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateProductSlugDto,
+  ) {
+    const data = await this.seoService.updateProductSlug(id, dto.slug);
+    return { message: 'Product slug updated successfully', data };
+  }
 
   // ── metadata ──────────────────────────────────────────────
 

@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma, SeoEntityType } from '@prisma/client';
 import { PrismaService } from '../../database/prisma.service';
+import { applySlugChange, SlugPrisma } from '../admin/product-slug';
 import {
   ScorableMeta,
   computeAiVisibilityScore,
@@ -31,6 +32,34 @@ const EDITABLE_FIELDS = [
 @Injectable()
 export class SeoService {
   constructor(private readonly prisma: PrismaService) {}
+
+  // ─── Product URL slug (catalog-id keyed, same keyspace as PRODUCT SeoMeta) ──
+  // The SEO tab's "Canonical URL" field only sets a meta tag; these let the
+  // SEO tab change the product's REAL public URL, with the 301-redirect
+  // safety net applySlugChange already provides to the product-form editor.
+
+  async getProductSlug(id: string) {
+    const product = await this.prisma.catalogProduct.findUnique({
+      where: { id },
+      select: { id: true, name: true, slug: true },
+    });
+    if (!product) throw new NotFoundException('Product not found');
+    return product;
+  }
+
+  async updateProductSlug(id: string, requestedSlug: string) {
+    const product = await this.prisma.catalogProduct.findUnique({
+      where: { id },
+      select: { id: true, slug: true },
+    });
+    if (!product) throw new NotFoundException('Product not found');
+    const slug = await applySlugChange(
+      this.prisma as unknown as SlugPrisma,
+      product,
+      requestedSlug,
+    );
+    return { id: product.id, slug };
+  }
 
   /** Public read. Null when no override exists — callers merge fail-open. */
   async getMeta(entityType: SeoEntityType, entityId: string) {
