@@ -4,6 +4,7 @@ import {
   BadRequestException,
   Logger,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import csv from 'csv-parser';
 import { Readable } from 'stream';
 import slugify from 'slugify';
@@ -38,6 +39,15 @@ import { MailService } from '../mail/mail.service';
 import { ProductsService } from '../products/products.service';
 import { AdminCreateProductDto } from './dto/admin-create-product.dto';
 
+// Fallback for the known internal test/QA buyer account(s) (e.g. manual
+// payment-gateway testing) if TEST_BUYER_PHONES is not set in the
+// environment — same config-first-with-hardcoded-fallback convention as
+// OtpSmsService's Nimbus credentials. Kept as a plain string (not an array)
+// so the env var can be a comma-separated list; getTestBuyerPhones() below
+// does the splitting. A phone number, unlike a code constant, is otherwise
+// stuck in git history forever with no way to rotate it without a deploy.
+const DEFAULT_TEST_BUYER_PHONES = '8500237151';
+
 @Injectable()
 export class AdminService {
   private readonly logger = new Logger(AdminService.name);
@@ -49,7 +59,25 @@ export class AdminService {
     private readonly sellersService: SellersService,
     private readonly mailService: MailService,
     private readonly productsService: ProductsService,
+    private readonly configService: ConfigService,
   ) {}
+
+  /**
+   * Known internal test/QA buyer account(s) — their orders are real rows in
+   * the DB (never delete them) but are excluded by default from admin order
+   * views/totals so they don't pollute Order Monitoring or the Dashboard.
+   * Identified by exact phone number rather than any name-based heuristic,
+   * since a real buyer's self-entered legal name could plausibly start with
+   * "test" (e.g. "Testline Diagnostics") and get silently hidden.
+   * Comma-separated in TEST_BUYER_PHONES so a future second test account
+   * doesn't require a code change, just an env var update.
+   */
+  private getTestBuyerPhones(): string[] {
+    return (this.configService.get<string>('TEST_BUYER_PHONES') || DEFAULT_TEST_BUYER_PHONES)
+      .split(',')
+      .map((phone) => phone.trim())
+      .filter(Boolean);
+  }
 
   // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   // DASHBOARD
@@ -102,13 +130,20 @@ export class AdminService {
         safeQuery(() => this.prisma.user.count({ where: dateWhere }), 0),
         safeQuery(() => this.prisma.user.count({ where: { role: 'BUYER', ...dateWhere } }), 0),
         safeQuery(() => this.prisma.user.count({ where: { role: 'SELLER', ...dateWhere } }), 0),
-        safeQuery(() => this.prisma.order.count({ where: dateWhere }), 0),
+        safeQuery(
+          () =>
+            this.prisma.order.count({
+              where: { ...dateWhere, buyer: { phone: { notIn: this.getTestBuyerPhones() } } },
+            }),
+          0,
+        ),
         safeQuery(
           () =>
             this.prisma.order.aggregate({
               where: {
                 paymentStatus: PaymentStatus.SUCCESS,
                 orderStatus: { notIn: [OrderStatus.CANCELLED, OrderStatus.RETURNED] },
+                buyer: { phone: { notIn: this.getTestBuyerPhones() } },
                 ...dateWhere,
               },
               _sum: { totalAmount: true },
@@ -118,7 +153,11 @@ export class AdminService {
         safeQuery(
           () =>
             this.prisma.order.count({
-              where: { orderStatus: OrderStatus.PLACED, ...dateWhere },
+              where: {
+                orderStatus: OrderStatus.PLACED,
+                buyer: { phone: { notIn: this.getTestBuyerPhones() } },
+                ...dateWhere,
+              },
             }),
           0,
         ),
@@ -132,6 +171,10 @@ export class AdminService {
             }),
           0,
         ),
+        // Deliberately NOT excluding the test buyer here — settlements are
+        // seller-keyed, not buyer-keyed, and a test order's payment could
+        // still generate a real payout. This is a known, accepted asymmetry
+        // with totalOrders/revenueResult above, not an oversight.
         safeQuery(
           () =>
             this.prisma.sellerSettlement.count({
@@ -166,7 +209,7 @@ export class AdminService {
         safeQuery(
           () =>
             this.prisma.order.findMany({
-              where: dateWhere,
+              where: { ...dateWhere, buyer: { phone: { notIn: this.getTestBuyerPhones() } } },
               take: 5,
               orderBy: { createdAt: 'desc' },
               select: {
@@ -1073,6 +1116,9 @@ export class AdminService {
       }
     }
 
+    if (query.includeTestOrders !== 'true') {
+      where.buyer = { phone: { notIn: this.getTestBuyerPhones() } };
+    }
 
     const [data, total] = await Promise.all([
       this.prisma.order.findMany({

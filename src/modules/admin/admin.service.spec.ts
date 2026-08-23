@@ -1,6 +1,12 @@
 import { AdminService } from './admin.service';
 import { OrderStatus, PaymentStatus } from '@prisma/client';
 
+// Shared across every AdminService construction below. Returning undefined
+// for every key means callers fall through to their hardcoded defaults
+// (e.g. TEST_BUYER_PHONES -> '8500237151'), matching the pre-config-change
+// behavior unless a specific test overrides `get` for its own key.
+const mockConfigService = { get: jest.fn().mockReturnValue(undefined) };
+
 const baseOrder = {
   id: 'order-1',
   orderStatus: OrderStatus.PAYMENT_RECEIVED,
@@ -32,6 +38,7 @@ const build = (pushResult: Record<string, unknown> = {}) => {
     sellersService as never,
     {} as never,
     {} as never,
+    mockConfigService as never,
   );
   return { service, prisma, ordersService };
 };
@@ -109,6 +116,7 @@ describe('AdminService.adminUpdateProduct — catalog product resolution', () =>
       sellersService as never,
       {} as never,
       {} as never,
+      mockConfigService as never,
     );
     return { service, prisma };
   };
@@ -184,6 +192,7 @@ describe('AdminService.getSettlementsSummary — totals across all pages', () =>
       {} as never,
       {} as never,
       {} as never,
+      mockConfigService as never,
     );
     return { service, prisma };
   };
@@ -255,6 +264,7 @@ describe('AdminService.getDashboard — Platform Revenue', () => {
       {} as never,
       {} as never,
       {} as never,
+      mockConfigService as never,
     );
     return { service, prisma };
   };
@@ -269,10 +279,13 @@ describe('AdminService.getDashboard — Platform Revenue', () => {
     });
   });
 
-  it('still counts every order (regardless of payment) toward Total Orders', async () => {
+  it('still counts every order (regardless of payment) toward Total Orders, aside from the known test-buyer exclusion', async () => {
     const { service, prisma } = buildForDashboard();
     await service.getDashboard({});
-    expect(prisma.order.count).toHaveBeenCalledWith({ where: {} });
+    const totalOrdersCall = prisma.order.count.mock.calls[0][0];
+    expect(totalOrdersCall).toEqual({
+      where: { buyer: { phone: { notIn: ['8500237151'] } } },
+    });
   });
 
   it('leaves the DELIVERED-only referral revenue aggregate untouched', async () => {
@@ -282,6 +295,35 @@ describe('AdminService.getDashboard — Platform Revenue', () => {
     expect(referralCall.where).toMatchObject({
       referralCodeId: { not: null },
       orderStatus: OrderStatus.DELIVERED,
+    });
+    // Only the first aggregate call (Platform Revenue) gets the test-buyer
+    // exclusion — the referral aggregate is intentionally untouched.
+    expect(referralCall.where.buyer).toBeUndefined();
+  });
+
+  it('excludes the known test-buyer account from Total Orders so it agrees with Order Monitoring', async () => {
+    const { service, prisma } = buildForDashboard();
+    await service.getDashboard({});
+    expect(prisma.order.count).toHaveBeenCalledWith({
+      where: expect.objectContaining({ buyer: { phone: { notIn: ['8500237151'] } } }),
+    });
+  });
+
+  it('excludes the known test-buyer account from the Platform Revenue aggregate', async () => {
+    const { service, prisma } = buildForDashboard();
+    await service.getDashboard({});
+    const revenueCall = prisma.order.aggregate.mock.calls[0][0];
+    expect(revenueCall.where).toMatchObject({
+      buyer: { phone: { notIn: ['8500237151'] } },
+    });
+  });
+
+  it('excludes the known test-buyer account from Recent Orders', async () => {
+    const { service, prisma } = buildForDashboard();
+    await service.getDashboard({});
+    const recentOrdersCall = prisma.order.findMany.mock.calls[0][0];
+    expect(recentOrdersCall.where).toMatchObject({
+      buyer: { phone: { notIn: ['8500237151'] } },
     });
   });
 });
@@ -313,6 +355,7 @@ describe('AdminService.approveUser — seller approval email', () => {
       sellersService as never,
       mailService as never,
       {} as never,
+      mockConfigService as never,
     );
     return { service, mailService };
   };
@@ -401,6 +444,7 @@ describe('AdminService.adminCreateProductForSeller', () => {
       {} as never,
       {} as never,
       productsService as never,
+      mockConfigService as never,
     );
 
     const dto = {
@@ -427,6 +471,65 @@ describe('AdminService.adminCreateProductForSeller', () => {
   });
 });
 
+describe('AdminService.getAllOrders — test-order exclusion', () => {
+  const buildForOrders = () => {
+    const prisma = {
+      order: {
+        findMany: jest.fn().mockResolvedValue([]),
+        count: jest.fn().mockResolvedValue(0),
+      },
+    };
+    const service = new AdminService(
+      prisma as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      mockConfigService as never,
+    );
+    return { service, prisma };
+  };
+
+  it('excludes known test-buyer orders by default (no includeTestOrders param)', async () => {
+    const { service, prisma } = buildForOrders();
+    await service.getAllOrders({ page: 1, limit: 20 } as never);
+
+    const where = prisma.order.findMany.mock.calls[0][0].where;
+    expect(where.buyer).toEqual({ phone: { notIn: ['8500237151'] } });
+    expect(prisma.order.count).toHaveBeenCalledWith({ where });
+  });
+
+  it('excludes known test-buyer orders when includeTestOrders is anything other than "true"', async () => {
+    const { service, prisma } = buildForOrders();
+    await service.getAllOrders({ page: 1, limit: 20, includeTestOrders: 'false' } as never);
+
+    const where = prisma.order.findMany.mock.calls[0][0].where;
+    expect(where.buyer).toEqual({ phone: { notIn: ['8500237151'] } });
+  });
+
+  it('does not apply the exclusion when includeTestOrders is "true"', async () => {
+    const { service, prisma } = buildForOrders();
+    await service.getAllOrders({ page: 1, limit: 20, includeTestOrders: 'true' } as never);
+
+    const where = prisma.order.findMany.mock.calls[0][0].where;
+    expect(where.buyer).toBeUndefined();
+  });
+
+  it('combines the test-order exclusion with other filters (status) in the same where object', async () => {
+    const { service, prisma } = buildForOrders();
+    await service.getAllOrders({
+      page: 1,
+      limit: 20,
+      status: OrderStatus.PLACED,
+    } as never);
+
+    const where = prisma.order.findMany.mock.calls[0][0].where;
+    expect(where.orderStatus).toBe(OrderStatus.PLACED);
+    expect(where.buyer).toEqual({ phone: { notIn: ['8500237151'] } });
+  });
+});
+
 describe('AdminService.getAllProducts — other-sellers aggregation', () => {
   const buildForProducts = () => {
     const prisma = {
@@ -442,6 +545,7 @@ describe('AdminService.getAllProducts — other-sellers aggregation', () => {
       {} as never,
       {} as never,
       {} as never,
+      mockConfigService as never,
     );
     return { service, prisma };
   };
