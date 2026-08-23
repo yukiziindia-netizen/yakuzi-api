@@ -940,10 +940,13 @@ export class AuthService {
     const payload = { sub: userId, role };
     const secret = this.configService.get<string>('JWT_SECRET') || 'yukizi_fallback_secret_key_2026';
 
-    const accessExpiresIn = this.configService.get<string>(
-      'JWT_ACCESS_EXPIRES',
-      '15m',
-    );
+    // The admin panel has no token-refresh loop — when the access token
+    // expires, the 401 interceptor logs the admin out mid-work. Admins get a
+    // longer working session; buyer/seller token lifetimes are unchanged.
+    const accessExpiresIn =
+      role === Role.ADMIN
+        ? this.configService.get<string>('JWT_ADMIN_ACCESS_EXPIRES', '8h')
+        : this.configService.get<string>('JWT_ACCESS_EXPIRES', '15m');
     const refreshExpiresIn = this.configService.get<string>(
       'JWT_REFRESH_EXPIRES',
       '7d',
