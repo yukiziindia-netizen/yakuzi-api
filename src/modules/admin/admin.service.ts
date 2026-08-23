@@ -38,6 +38,16 @@ import { MailService } from '../mail/mail.service';
 import { ProductsService } from '../products/products.service';
 import { AdminCreateProductDto } from './dto/admin-create-product.dto';
 
+// Known internal test/QA buyer accounts (e.g. manual payment-gateway
+// testing). Their orders are real rows in the DB — never delete them — but
+// they're excluded by default from admin order views/totals so they don't
+// pollute Order Monitoring or the Dashboard. Identified by exact phone
+// number rather than any name-based heuristic, since a real buyer's
+// self-entered legal name could plausibly start with "test" (e.g. "Testline
+// Diagnostics") and get silently hidden. Structured as an array so a future
+// second test account doesn't require touching the filter logic below.
+const TEST_BUYER_PHONES = ['8500237151'];
+
 @Injectable()
 export class AdminService {
   private readonly logger = new Logger(AdminService.name);
@@ -102,13 +112,20 @@ export class AdminService {
         safeQuery(() => this.prisma.user.count({ where: dateWhere }), 0),
         safeQuery(() => this.prisma.user.count({ where: { role: 'BUYER', ...dateWhere } }), 0),
         safeQuery(() => this.prisma.user.count({ where: { role: 'SELLER', ...dateWhere } }), 0),
-        safeQuery(() => this.prisma.order.count({ where: dateWhere }), 0),
+        safeQuery(
+          () =>
+            this.prisma.order.count({
+              where: { ...dateWhere, buyer: { phone: { notIn: TEST_BUYER_PHONES } } },
+            }),
+          0,
+        ),
         safeQuery(
           () =>
             this.prisma.order.aggregate({
               where: {
                 paymentStatus: PaymentStatus.SUCCESS,
                 orderStatus: { notIn: [OrderStatus.CANCELLED, OrderStatus.RETURNED] },
+                buyer: { phone: { notIn: TEST_BUYER_PHONES } },
                 ...dateWhere,
               },
               _sum: { totalAmount: true },
@@ -118,7 +135,11 @@ export class AdminService {
         safeQuery(
           () =>
             this.prisma.order.count({
-              where: { orderStatus: OrderStatus.PLACED, ...dateWhere },
+              where: {
+                orderStatus: OrderStatus.PLACED,
+                buyer: { phone: { notIn: TEST_BUYER_PHONES } },
+                ...dateWhere,
+              },
             }),
           0,
         ),
@@ -166,7 +187,7 @@ export class AdminService {
         safeQuery(
           () =>
             this.prisma.order.findMany({
-              where: dateWhere,
+              where: { ...dateWhere, buyer: { phone: { notIn: TEST_BUYER_PHONES } } },
               take: 5,
               orderBy: { createdAt: 'desc' },
               select: {
@@ -1074,12 +1095,7 @@ export class AdminService {
     }
 
     if (query.includeTestOrders !== 'true') {
-      where.NOT = {
-        ...(typeof where.NOT === 'object' && !Array.isArray(where.NOT) ? where.NOT : {}),
-        buyer: {
-          buyerProfile: { legalName: { startsWith: 'test', mode: 'insensitive' } },
-        },
-      };
+      where.buyer = { phone: { notIn: TEST_BUYER_PHONES } };
     }
 
     const [data, total] = await Promise.all([

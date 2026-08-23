@@ -269,10 +269,13 @@ describe('AdminService.getDashboard — Platform Revenue', () => {
     });
   });
 
-  it('still counts every order (regardless of payment) toward Total Orders', async () => {
+  it('still counts every order (regardless of payment) toward Total Orders, aside from the known test-buyer exclusion', async () => {
     const { service, prisma } = buildForDashboard();
     await service.getDashboard({});
-    expect(prisma.order.count).toHaveBeenCalledWith({ where: {} });
+    const totalOrdersCall = prisma.order.count.mock.calls[0][0];
+    expect(totalOrdersCall).toEqual({
+      where: { buyer: { phone: { notIn: ['8500237151'] } } },
+    });
   });
 
   it('leaves the DELIVERED-only referral revenue aggregate untouched', async () => {
@@ -282,6 +285,35 @@ describe('AdminService.getDashboard — Platform Revenue', () => {
     expect(referralCall.where).toMatchObject({
       referralCodeId: { not: null },
       orderStatus: OrderStatus.DELIVERED,
+    });
+    // Only the first aggregate call (Platform Revenue) gets the test-buyer
+    // exclusion — the referral aggregate is intentionally untouched.
+    expect(referralCall.where.buyer).toBeUndefined();
+  });
+
+  it('excludes the known test-buyer account from Total Orders so it agrees with Order Monitoring', async () => {
+    const { service, prisma } = buildForDashboard();
+    await service.getDashboard({});
+    expect(prisma.order.count).toHaveBeenCalledWith({
+      where: expect.objectContaining({ buyer: { phone: { notIn: ['8500237151'] } } }),
+    });
+  });
+
+  it('excludes the known test-buyer account from the Platform Revenue aggregate', async () => {
+    const { service, prisma } = buildForDashboard();
+    await service.getDashboard({});
+    const revenueCall = prisma.order.aggregate.mock.calls[0][0];
+    expect(revenueCall.where).toMatchObject({
+      buyer: { phone: { notIn: ['8500237151'] } },
+    });
+  });
+
+  it('excludes the known test-buyer account from Recent Orders', async () => {
+    const { service, prisma } = buildForDashboard();
+    await service.getDashboard({});
+    const recentOrdersCall = prisma.order.findMany.mock.calls[0][0];
+    expect(recentOrdersCall.where).toMatchObject({
+      buyer: { phone: { notIn: ['8500237151'] } },
     });
   });
 });
@@ -451,11 +483,7 @@ describe('AdminService.getAllOrders — test-order exclusion', () => {
     await service.getAllOrders({ page: 1, limit: 20 } as never);
 
     const where = prisma.order.findMany.mock.calls[0][0].where;
-    expect(where.NOT).toEqual({
-      buyer: {
-        buyerProfile: { legalName: { startsWith: 'test', mode: 'insensitive' } },
-      },
-    });
+    expect(where.buyer).toEqual({ phone: { notIn: ['8500237151'] } });
     expect(prisma.order.count).toHaveBeenCalledWith({ where });
   });
 
@@ -464,11 +492,7 @@ describe('AdminService.getAllOrders — test-order exclusion', () => {
     await service.getAllOrders({ page: 1, limit: 20, includeTestOrders: 'false' } as never);
 
     const where = prisma.order.findMany.mock.calls[0][0].where;
-    expect(where.NOT).toEqual({
-      buyer: {
-        buyerProfile: { legalName: { startsWith: 'test', mode: 'insensitive' } },
-      },
-    });
+    expect(where.buyer).toEqual({ phone: { notIn: ['8500237151'] } });
   });
 
   it('does not apply the exclusion when includeTestOrders is "true"', async () => {
@@ -476,7 +500,7 @@ describe('AdminService.getAllOrders — test-order exclusion', () => {
     await service.getAllOrders({ page: 1, limit: 20, includeTestOrders: 'true' } as never);
 
     const where = prisma.order.findMany.mock.calls[0][0].where;
-    expect(where.NOT).toBeUndefined();
+    expect(where.buyer).toBeUndefined();
   });
 
   it('combines the test-order exclusion with other filters (status) in the same where object', async () => {
@@ -489,11 +513,7 @@ describe('AdminService.getAllOrders — test-order exclusion', () => {
 
     const where = prisma.order.findMany.mock.calls[0][0].where;
     expect(where.orderStatus).toBe(OrderStatus.PLACED);
-    expect(where.NOT).toEqual({
-      buyer: {
-        buyerProfile: { legalName: { startsWith: 'test', mode: 'insensitive' } },
-      },
-    });
+    expect(where.buyer).toEqual({ phone: { notIn: ['8500237151'] } });
   });
 });
 

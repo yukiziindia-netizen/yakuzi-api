@@ -65,7 +65,7 @@ export class AdminQueryOrdersDto {
   @ApiPropertyOptional({
     example: 'false',
     description:
-      'Set to "true" to include orders from known test buyer accounts (excluded by default). Test buyers are identified by their profile legal name starting with "test".',
+      'Set to "true" to include orders from known internal test accounts (excluded by default).',
   })
   @IsOptional()
   @IsIn(['true', 'false'])
