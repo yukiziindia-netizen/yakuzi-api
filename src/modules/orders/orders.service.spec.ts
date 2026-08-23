@@ -601,3 +601,98 @@ describe('OrdersService.checkout — price integrity', () => {
     );
   });
 });
+
+
+describe('OrdersService.updateShippingDetails — auto-accept + Shiprocket push', () => {
+  const build = ({ updatedCount = 1 } = {}) => {
+    const prisma = {
+      sellerProfile: {
+        findUnique: jest.fn().mockResolvedValue({ id: 'seller-1', userId: 'user-1' }),
+      },
+      orderItem: {
+        findMany: jest.fn().mockResolvedValue([{ id: 'item-1', isShippingLocked: false }]),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+      },
+      order: {
+        update: jest.fn().mockResolvedValue({ id: 'order-1' }),
+        updateMany: jest.fn().mockResolvedValue({ count: updatedCount }),
+        findUnique: jest.fn().mockResolvedValue({
+          id: 'order-1',
+          buyerId: 'buyer-1',
+          buyer: { email: 'b@x.com', phone: '9999999999' },
+          address: null,
+          items: [],
+        }),
+      },
+    };
+    const service = new OrdersService(
+      prisma as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+    );
+    const notifySpy = jest
+      .spyOn(service, 'notifyBuyerOfStatusChange')
+      .mockResolvedValue(undefined);
+    const pushSpy = jest
+      .spyOn(service, 'pushOrderToShiprocketIfNeeded')
+      .mockResolvedValue({ shiprocketOrderId: 'sr-1', shipmentId: 'ship-1' });
+    return { service, prisma, notifySpy, pushSpy };
+  };
+
+  const dto = { packageWeight: 2 } as never;
+
+  it('advances a PLACED order to ACCEPTED with a status-guarded write and notifies the buyer', async () => {
+    const { service, prisma, notifySpy } = build();
+    await service.updateShippingDetails('user-1', 'order-1', dto);
+
+    expect(prisma.order.updateMany).toHaveBeenCalledWith({
+      where: { id: 'order-1', orderStatus: OrderStatus.PLACED },
+      data: { orderStatus: OrderStatus.ACCEPTED },
+    });
+    expect(notifySpy).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'order-1' }),
+      OrderStatus.ACCEPTED,
+    );
+  });
+
+  it('pushes the order to Shiprocket and persists the returned identifiers', async () => {
+    const { service, prisma, pushSpy } = build();
+    await service.updateShippingDetails('user-1', 'order-1', dto);
+
+    expect(pushSpy).toHaveBeenCalled();
+    expect(prisma.order.update).toHaveBeenCalledWith({
+      where: { id: 'order-1' },
+      data: { shiprocketOrderId: 'sr-1', shipmentId: 'ship-1' },
+    });
+  });
+
+  it('does not notify when the guarded accept write loses (order no longer PLACED) but still pushes', async () => {
+    const { service, notifySpy, pushSpy } = build({ updatedCount: 0 });
+    await service.updateShippingDetails('user-1', 'order-1', dto);
+
+    expect(notifySpy).not.toHaveBeenCalled();
+    expect(pushSpy).toHaveBeenCalled();
+  });
+
+  it('skips the extra persist when the push no-ops (already pushed / failed)', async () => {
+    const { service, prisma, pushSpy } = build();
+    pushSpy.mockResolvedValue({});
+    await service.updateShippingDetails('user-1', 'order-1', dto);
+
+    const persistCalls = prisma.order.update.mock.calls.filter(
+      (c: any[]) => c[0]?.data?.shiprocketOrderId,
+    );
+    expect(persistCalls).toHaveLength(0);
+  });
+
+  it('never lets an auto-accept/push failure break the shipping-details save itself', async () => {
+    const { service, pushSpy } = build();
+    pushSpy.mockRejectedValue(new Error('shiprocket down'));
+    await expect(
+      service.updateShippingDetails('user-1', 'order-1', dto),
+    ).resolves.toEqual({ id: 'order-1' });
+  });
+});

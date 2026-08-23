@@ -19,10 +19,13 @@ const FORWARD_SEQUENCE: OrderStatus[] = [
 ];
 
 const SHIPROCKET_STATUS_MAP: Record<string, OrderStatus> = {
-  'PICKUP GENERATED': OrderStatus.DISPATCHED_FROM_SELLER,
-  'PICKUP SCHEDULED': OrderStatus.DISPATCHED_FROM_SELLER,
+  // Pickup scheduled/generated in the Shiprocket dashboard = our
+  // "Ready to Ship" — the earliest stage Shiprocket drives. Everything
+  // before it (PLACED -> ACCEPTED) comes from seller actions on our side.
+  'PICKUP GENERATED': OrderStatus.READY_TO_SHIP,
+  'PICKUP SCHEDULED': OrderStatus.READY_TO_SHIP,
   'PICKED UP': OrderStatus.DISPATCHED_FROM_SELLER,
-  'IN TRANSIT': OrderStatus.DISPATCHED_FROM_SELLER,
+  'IN TRANSIT': OrderStatus.SHIPPED,
   SHIPPED: OrderStatus.SHIPPED,
   'OUT FOR DELIVERY': OrderStatus.OUT_FOR_DELIVERY,
   DELIVERED: OrderStatus.DELIVERED,

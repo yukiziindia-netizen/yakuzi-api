@@ -1526,17 +1526,11 @@ export class AdminService {
             ? PaymentStatus.PARTIAL
             : PaymentStatus.PENDING;
 
-      const isInitialStatus =
-        payment.order.orderStatus === OrderStatus.PLACED ||
-        payment.order.orderStatus === OrderStatus.ACCEPTED;
-
+      // Payment success no longer advances orderStatus — the "Paid"
+      // stepper stage was removed from the pipeline (2026-08-23 spec).
       await tx.order.update({
         where: { id: payment.orderId },
-        data: {
-          paymentStatus: newStatus,
-          ...(newStatus === PaymentStatus.SUCCESS &&
-            isInitialStatus && { orderStatus: OrderStatus.PAYMENT_RECEIVED }),
-        },
+        data: { paymentStatus: newStatus },
       });
 
       // If fully paid AND delivered â†’ create seller settlements
