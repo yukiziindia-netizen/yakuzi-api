@@ -3,6 +3,7 @@ import {
   IsString,
   IsEnum,
   IsInt,
+  IsIn,
   Min,
   Max,
   IsUUID,
@@ -60,6 +61,15 @@ export class AdminQueryOrdersDto {
   @IsOptional()
   @IsString()
   dateTo?: string;
+
+  @ApiPropertyOptional({
+    example: 'false',
+    description:
+      'Set to "true" to include orders from known test buyer accounts (excluded by default). Test buyers are identified by their profile legal name starting with "test".',
+  })
+  @IsOptional()
+  @IsIn(['true', 'false'])
+  includeTestOrders?: string;
 
   @ApiPropertyOptional({ example: 1, default: 1, description: 'Page number' })
   @IsOptional()

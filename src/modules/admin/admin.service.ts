@@ -1073,6 +1073,14 @@ export class AdminService {
       }
     }
 
+    if (query.includeTestOrders !== 'true') {
+      where.NOT = {
+        ...(typeof where.NOT === 'object' && !Array.isArray(where.NOT) ? where.NOT : {}),
+        buyer: {
+          buyerProfile: { legalName: { startsWith: 'test', mode: 'insensitive' } },
+        },
+      };
+    }
 
     const [data, total] = await Promise.all([
       this.prisma.order.findMany({

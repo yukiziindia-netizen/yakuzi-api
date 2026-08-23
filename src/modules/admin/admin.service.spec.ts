@@ -427,6 +427,76 @@ describe('AdminService.adminCreateProductForSeller', () => {
   });
 });
 
+describe('AdminService.getAllOrders — test-order exclusion', () => {
+  const buildForOrders = () => {
+    const prisma = {
+      order: {
+        findMany: jest.fn().mockResolvedValue([]),
+        count: jest.fn().mockResolvedValue(0),
+      },
+    };
+    const service = new AdminService(
+      prisma as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+    );
+    return { service, prisma };
+  };
+
+  it('excludes known test-buyer orders by default (no includeTestOrders param)', async () => {
+    const { service, prisma } = buildForOrders();
+    await service.getAllOrders({ page: 1, limit: 20 } as never);
+
+    const where = prisma.order.findMany.mock.calls[0][0].where;
+    expect(where.NOT).toEqual({
+      buyer: {
+        buyerProfile: { legalName: { startsWith: 'test', mode: 'insensitive' } },
+      },
+    });
+    expect(prisma.order.count).toHaveBeenCalledWith({ where });
+  });
+
+  it('excludes known test-buyer orders when includeTestOrders is anything other than "true"', async () => {
+    const { service, prisma } = buildForOrders();
+    await service.getAllOrders({ page: 1, limit: 20, includeTestOrders: 'false' } as never);
+
+    const where = prisma.order.findMany.mock.calls[0][0].where;
+    expect(where.NOT).toEqual({
+      buyer: {
+        buyerProfile: { legalName: { startsWith: 'test', mode: 'insensitive' } },
+      },
+    });
+  });
+
+  it('does not apply the exclusion when includeTestOrders is "true"', async () => {
+    const { service, prisma } = buildForOrders();
+    await service.getAllOrders({ page: 1, limit: 20, includeTestOrders: 'true' } as never);
+
+    const where = prisma.order.findMany.mock.calls[0][0].where;
+    expect(where.NOT).toBeUndefined();
+  });
+
+  it('combines the test-order exclusion with other filters (status) in the same where object', async () => {
+    const { service, prisma } = buildForOrders();
+    await service.getAllOrders({
+      page: 1,
+      limit: 20,
+      status: OrderStatus.PLACED,
+    } as never);
+
+    const where = prisma.order.findMany.mock.calls[0][0].where;
+    expect(where.orderStatus).toBe(OrderStatus.PLACED);
+    expect(where.NOT).toEqual({
+      buyer: {
+        buyerProfile: { legalName: { startsWith: 'test', mode: 'insensitive' } },
+      },
+    });
+  });
+});
+
 describe('AdminService.getAllProducts — other-sellers aggregation', () => {
   const buildForProducts = () => {
     const prisma = {
