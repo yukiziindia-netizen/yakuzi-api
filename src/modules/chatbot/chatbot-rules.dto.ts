@@ -1,4 +1,15 @@
-import { IsBoolean, IsNotEmpty, IsOptional, IsString } from 'class-validator';
+import {
+  ArrayNotEmpty,
+  ArrayUnique,
+  IsArray,
+  IsBoolean,
+  IsEnum,
+  IsInt,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+} from 'class-validator';
+import { ChatbotRuleTier } from '@prisma/client';
 
 export class CreateChatbotRuleDto {
   @IsString()
@@ -8,6 +19,10 @@ export class CreateChatbotRuleDto {
   @IsString()
   @IsNotEmpty()
   instruction!: string;
+
+  @IsOptional()
+  @IsEnum(ChatbotRuleTier)
+  tier?: ChatbotRuleTier;
 }
 
 export class UpdateChatbotRuleDto {
@@ -24,4 +39,23 @@ export class UpdateChatbotRuleDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+
+  @IsOptional()
+  @IsEnum(ChatbotRuleTier)
+  tier?: ChatbotRuleTier;
+
+  @IsOptional()
+  @IsInt()
+  order?: number;
+}
+
+export class ReorderChatbotRulesDto {
+  @IsEnum(ChatbotRuleTier)
+  tier!: ChatbotRuleTier;
+
+  @IsArray()
+  @ArrayNotEmpty()
+  @ArrayUnique()
+  @IsString({ each: true })
+  orderedIds!: string[];
 }

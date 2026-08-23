@@ -51,8 +51,8 @@ MODEL_FILE = os.path.join(BASE_DIR, "current_model.txt")
 DEFAULT_PROMPT = """You are an intelligent, versatile AI Assistant integrated into the Yukizi platform powered by Gemini Thinking.
 
 CORE PRIORITIES:
-- Store & Order Inquiries: For store-related inquiries, assist customers with products, order status, and shopping using your integrated database tools (search_products, get_order_status) and learned training data.
-- General AI Knowledge: If a user asks general knowledge, scientific, technical, coding, or off-topic questions, seamlessly utilize your full general AI knowledge and reasoning to provide a helpful, accurate, and comprehensive answer.
+- Store & Order Inquiries: For store-related inquiries, assist customers with products, order status, and shopping using your integrated database tools (search_products, get_order_status, search_blogs, get_product_reviews) and learned training data. When a customer asks whether a product is good, worth buying, or how others liked it, use get_product_reviews to answer from real customer feedback instead of guessing.
+- General AI Knowledge: You are NOT restricted to store topics. If a user asks general knowledge, scientific, technical, coding, or any off-topic question, seamlessly utilize your full general AI knowledge and reasoning to provide a helpful, accurate, and comprehensive answer, exactly as a standard Gemini assistant would.
 
 FORMATTING & STYLING RULES:
 - Do NOT output raw Markdown asterisks (like * or **) in your responses.
@@ -255,15 +255,18 @@ def get_order_status(order_id: str) -> str:
 # ==========================================
 def get_active_rules() -> list:
     """Reads active ChatbotRule rows fresh on every call — no caching, so an
-    admin toggling a rule off takes effect on the very next chat message."""
+    admin toggling a rule off takes effect on the very next chat message.
+    Ordered the way the admin arranged them: CORE tier first (Postgres enum
+    order follows declaration order, CORE before SURFACE), then the manual
+    per-tier "order", then creation time as the tiebreak."""
     conn = get_db_connection()
     if not conn:
         return []
     try:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute(
-                'SELECT trigger, instruction FROM chatbot_rules '
-                'WHERE "isActive" = true ORDER BY "createdAt" DESC LIMIT 100'
+                'SELECT trigger, instruction, tier FROM chatbot_rules '
+                'WHERE "isActive" = true ORDER BY tier ASC, "order" ASC, "createdAt" ASC LIMIT 100'
             )
             return cur.fetchall()
     except Exception as e:
@@ -276,14 +279,23 @@ def get_active_rules() -> list:
 def build_system_instruction() -> str:
     """Base persona (never modified by training) plus a bounded, structured
     list of admin-taught rules — replaces the old model of appending raw
-    conversation transcripts directly into system_prompt.txt forever."""
+    conversation transcripts directly into system_prompt.txt forever.
+    CORE rules are presented as foundational; SURFACE rules layer on top."""
     base = load_text_file(PROMPT_FILE, DEFAULT_PROMPT)
     rules = get_active_rules()
     if not rules:
         return base
-    rules_block = "\n\nLEARNED RULES (store-specific behavior taught by an admin):\n" + "\n".join(
-        f"- {r['trigger']}: {r['instruction']}" for r in rules
-    )
+    core = [r for r in rules if r.get('tier') == 'CORE']
+    surface = [r for r in rules if r.get('tier') != 'CORE']
+    rules_block = "\n\nLEARNED RULES (store-specific behavior taught by an admin):"
+    if core:
+        rules_block += "\nCore rules (foundational — these take priority):\n" + "\n".join(
+            f"- {r['trigger']}: {r['instruction']}" for r in core
+        )
+    if surface:
+        rules_block += "\nAdditional rules:\n" + "\n".join(
+            f"- {r['trigger']}: {r['instruction']}" for r in surface
+        )
     return base + rules_block
 
 
