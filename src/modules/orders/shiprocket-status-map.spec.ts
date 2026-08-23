@@ -2,11 +2,14 @@ import { OrderStatus } from '@prisma/client';
 import { mapShiprocketStatus, isForwardStatusMove } from './shiprocket-status-map';
 
 describe('mapShiprocketStatus', () => {
-  it('maps in-transit variants to DISPATCHED_FROM_SELLER', () => {
-    expect(mapShiprocketStatus('Pickup Generated')).toBe(OrderStatus.DISPATCHED_FROM_SELLER);
-    expect(mapShiprocketStatus('Pickup Scheduled')).toBe(OrderStatus.DISPATCHED_FROM_SELLER);
+  it('maps pickup scheduling to READY_TO_SHIP', () => {
+    expect(mapShiprocketStatus('Pickup Generated')).toBe(OrderStatus.READY_TO_SHIP);
+    expect(mapShiprocketStatus('Pickup Scheduled')).toBe(OrderStatus.READY_TO_SHIP);
+  });
+
+  it('maps Picked Up to DISPATCHED_FROM_SELLER and In Transit to SHIPPED', () => {
     expect(mapShiprocketStatus('Picked Up')).toBe(OrderStatus.DISPATCHED_FROM_SELLER);
-    expect(mapShiprocketStatus('In Transit')).toBe(OrderStatus.DISPATCHED_FROM_SELLER);
+    expect(mapShiprocketStatus('In Transit')).toBe(OrderStatus.SHIPPED);
   });
 
   it('maps Shipped to SHIPPED', () => {

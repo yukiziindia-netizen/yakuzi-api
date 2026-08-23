@@ -1152,16 +1152,20 @@ export class OrdersService {
     }
 
     // 4. Validate status transition
+    // PAYMENT_RECEIVED and RECEIVED_AT_WAREHOUSE were removed from the
+    // pipeline (2026-08-23 spec) — they remain valid SOURCE states so
+    // legacy orders sitting in them can still progress, but nothing may
+    // transition INTO them anymore.
     const validTransitions: Record<string, string[]> = {
       PLACED: ['ACCEPTED', 'CANCELLED'],
-      ACCEPTED: ['PAYMENT_RECEIVED', 'READY_TO_SHIP', 'CANCELLED'],
+      ACCEPTED: ['READY_TO_SHIP', 'CANCELLED'],
       PAYMENT_RECEIVED: [
         'READY_TO_SHIP',
         'DISPATCHED_FROM_SELLER',
         'CANCELLED',
       ],
       READY_TO_SHIP: ['DISPATCHED_FROM_SELLER', 'CANCELLED'],
-      DISPATCHED_FROM_SELLER: ['RECEIVED_AT_WAREHOUSE', 'SHIPPED', 'CANCELLED'],
+      DISPATCHED_FROM_SELLER: ['SHIPPED', 'CANCELLED'],
       RECEIVED_AT_WAREHOUSE: ['SHIPPED', 'CANCELLED'],
       SHIPPED: ['OUT_FOR_DELIVERY', 'CANCELLED'],
       OUT_FOR_DELIVERY: ['DELIVERED', 'CANCELLED'],
@@ -1378,6 +1382,61 @@ export class OrdersService {
     this.logger.log(
       `Order ${orderId} shipping details updated by seller ${seller.id}`,
     );
+
+    // Submitting shipping details IS the seller's acceptance signal:
+    // advance PLACED -> ACCEPTED (guarded updateMany so a concurrent
+    // admin change — e.g. a cancellation — always wins), then push the
+    // order to Shiprocket immediately with the real dimensions just
+    // saved. The admin schedules the pickup inside Shiprocket's
+    // dashboard; from there the 30-min poller drives READY_TO_SHIP and
+    // every later stage. A failure in any of this must never block the
+    // shipping-details save itself.
+    try {
+      const accepted = await this.prisma.order.updateMany({
+        where: { id: orderId, orderStatus: OrderStatus.PLACED },
+        data: { orderStatus: OrderStatus.ACCEPTED },
+      });
+
+      if (accepted.count > 0) {
+        const forNotify = await this.prisma.order.findUnique({
+          where: { id: orderId },
+          select: {
+            id: true,
+            buyerId: true,
+            buyer: { select: { email: true, phone: true } },
+          },
+        });
+        if (forNotify) {
+          await this.notifyBuyerOfStatusChange(
+            forNotify,
+            OrderStatus.ACCEPTED,
+          );
+        }
+      }
+
+      const forPush = await this.prisma.order.findUnique({
+        where: { id: orderId },
+        include: {
+          address: true,
+          buyer: { include: { buyerProfile: true } },
+          items: { include: { sellerOffer: true } },
+        },
+      });
+      if (forPush) {
+        const shiprocketFields =
+          await this.pushOrderToShiprocketIfNeeded(forPush);
+        if (Object.keys(shiprocketFields).length > 0) {
+          await this.prisma.order.update({
+            where: { id: orderId },
+            data: shiprocketFields,
+          });
+        }
+      }
+    } catch (error: any) {
+      this.logger.error(
+        `Post-shipping-details auto-accept/Shiprocket push failed for order ${orderId}: ${error.message}`,
+      );
+    }
 
     return updated;
   }

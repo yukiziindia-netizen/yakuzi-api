@@ -334,17 +334,14 @@ export class PaymentsService {
           confirmedTotalPaid = finalPaidAmount;
         }
 
-        const isInitialStatus =
-          ro.orderStatus === OrderStatus.PLACED ||
-          ro.orderStatus === OrderStatus.ACCEPTED;
-
+        // Payment success no longer advances orderStatus — the "Paid"
+        // stepper stage was removed from the pipeline (2026-08-23 spec).
+        // paymentStatus alone is the source of payment truth; the shipping
+        // pipeline (PLACED -> ACCEPTED -> READY_TO_SHIP -> ...) is driven
+        // by seller actions and Shiprocket sync.
         await tx.order.update({
           where: { id: ro.id },
-          data: {
-            paymentStatus: newStatus,
-            ...(newStatus === PaymentStatus.SUCCESS &&
-              isInitialStatus && { orderStatus: OrderStatus.PAYMENT_RECEIVED }),
-          },
+          data: { paymentStatus: newStatus },
         });
 
         // 3. If fully paid AND delivered → create seller settlements
