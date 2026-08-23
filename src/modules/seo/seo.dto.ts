@@ -255,3 +255,9 @@ export class LinkKeywordDto {
   @Min(1)
   weight?: number;
 }
+
+export class UpdateProductSlugDto {
+  @IsString()
+  @IsNotEmpty()
+  slug!: string;
+}
