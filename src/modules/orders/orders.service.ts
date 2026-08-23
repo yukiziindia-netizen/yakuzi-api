@@ -30,6 +30,18 @@ const SELLER_FINAL_DOCUMENT_FIELDS: string[] = [
   'packedPictureUrl',
 ];
 
+/**
+ * Document fields on updateAdminShippingDocs' dto. Used to tell an actual
+ * document upload apart from a lock-only toggle (isShippingLocked with none
+ * of these set), which must not trigger a "documents ready" seller email.
+ */
+const ADMIN_SHIPPING_DOC_FIELDS = [
+  'adminShippingLabelUrl',
+  'adminInvoiceUrl',
+  'manifestUrl',
+  'invoiceUrl',
+] as const;
+
 @Injectable()
 export class OrdersService {
   private readonly logger = new Logger(OrdersService.name);
@@ -1383,6 +1395,10 @@ export class OrdersService {
       `Order ${orderId} shipping details updated by seller ${seller.id}`,
     );
 
+    // Best-effort, same contract as SellersService.emailAdminNewSeller: a
+    // mail failure here must never fail the seller's save.
+    await this.emailAdminShippingDetailsSubmitted(orderId, seller);
+
     // Submitting shipping details IS the seller's acceptance signal:
     // advance PLACED -> ACCEPTED (guarded updateMany so a concurrent
     // admin change — e.g. a cancellation — always wins), then push the
@@ -1446,8 +1462,8 @@ export class OrdersService {
   // ──────────────────────────────────────────────
   async updateAdminShippingDocs(
     orderId: string,
-    dto: { 
-      adminShippingLabelUrl?: string; 
+    dto: {
+      adminShippingLabelUrl?: string;
       adminInvoiceUrl?: string;
       manifestUrl?: string;
       invoiceUrl?: string;
@@ -1466,12 +1482,26 @@ export class OrdersService {
 
     const { sellerId, ...updateFields } = dto;
 
+    // Only a real document upload should notify a seller - a lock-only
+    // toggle (isShippingLocked with nothing else) leaves nothing to
+    // download, so it must not trigger a "documents ready" email.
+    const hasNewDocs = ADMIN_SHIPPING_DOC_FIELDS.some(
+      (field) => updateFields[field],
+    );
+
+    // Which sellers actually had their OrderItem rows written - so the
+    // "documents ready" email below only reaches sellers whose own order
+    // view will actually show the new documents, not every seller on the
+    // order regardless of whether their items were touched.
+    let notifySellerIds: string[];
+
     if (sellerId) {
       // Update only order items for this seller
       await this.prisma.orderItem.updateMany({
         where: { orderId, sellerId },
         data: updateFields as any,
       });
+      notifySellerIds = [sellerId];
 
       // Also update the parent order table if this is the only seller or as fallback
       const uniqueSellers = Array.from(new Set(order.items.map(i => i.sellerId)));
@@ -1501,19 +1531,71 @@ export class OrdersService {
           where: { orderId, sellerId: { in: sellerIds } },
           data: updateFields as any,
         });
+        notifySellerIds = sellerIds;
       } else {
         await this.prisma.orderItem.updateMany({
           where: { orderId },
           data: updateFields as any,
         });
+        notifySellerIds = Array.from(new Set(order.items.map((item) => item.sellerId)));
       }
     }
 
     this.logger.log(`Order ${orderId} admin shipping docs updated`);
+
+    if (hasNewDocs) {
+      await this.sellerOrderNotifier.notifySellersDocsReady(
+        notifySellerIds.map((id) => ({ orderId, sellerId: id })),
+      );
+    }
+
     return this.prisma.order.findUnique({
       where: { id: orderId },
       include: { items: { include: { seller: true } } }
     });
+  }
+
+  /**
+   * Best-effort — the shipping-details save has already succeeded by the
+   * time this runs, so a mail failure here must never fail it.
+   */
+  private async emailAdminShippingDetailsSubmitted(
+    orderId: string,
+    seller: { id: string; companyName: string },
+  ): Promise<void> {
+    const to = process.env.ADMIN_NOTIFICATION_EMAIL?.trim();
+    if (!to) {
+      this.logger.warn(
+        `shipping-details-submitted admin email skipped: ADMIN_NOTIFICATION_EMAIL is not set (order ${orderId}, seller ${seller.id})`,
+      );
+      return;
+    }
+
+    const orderRef = orderId.slice(0, 8).toUpperCase();
+    const safeCompanyName = this.escape(seller.companyName);
+    const result = await this.mailService.sendMail({
+      to,
+      subject: `Shipping details submitted for order ${orderRef}`,
+      text: `${seller.companyName} has submitted shipping details for order ${orderRef}.\n\nReview it in the admin dashboard.`,
+      html: `<p><strong>${safeCompanyName}</strong> has submitted shipping details for order <strong>${orderRef}</strong>.</p><p>Review it in the admin dashboard.</p>`,
+    });
+    if (!result.sent) {
+      this.logger.warn(
+        `Could not email admin about shipping-details submission for order ${orderId} (retryable=${result.retryable})`,
+      );
+    }
+  }
+
+  /**
+   * Escapes text for safe interpolation into an HTML email body. Same
+   * approach as InvoiceEmailService.escape() / SellerOrderNotifierService.escape().
+   */
+  private escape(value: string): string {
+    return String(value ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
   }
 
   // ──────────────────────────────────────────────
