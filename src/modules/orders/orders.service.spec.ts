@@ -604,10 +604,22 @@ describe('OrdersService.checkout — price integrity', () => {
 
 
 describe('OrdersService.updateShippingDetails — auto-accept + Shiprocket push', () => {
+  const ORIGINAL_ADMIN_EMAIL = process.env.ADMIN_NOTIFICATION_EMAIL;
+
+  afterEach(() => {
+    if (ORIGINAL_ADMIN_EMAIL === undefined) {
+      delete process.env.ADMIN_NOTIFICATION_EMAIL;
+    } else {
+      process.env.ADMIN_NOTIFICATION_EMAIL = ORIGINAL_ADMIN_EMAIL;
+    }
+  });
+
   const build = ({ updatedCount = 1 } = {}) => {
     const prisma = {
       sellerProfile: {
-        findUnique: jest.fn().mockResolvedValue({ id: 'seller-1', userId: 'user-1' }),
+        findUnique: jest
+          .fn()
+          .mockResolvedValue({ id: 'seller-1', userId: 'user-1', companyName: 'Acme Co' }),
       },
       orderItem: {
         findMany: jest.fn().mockResolvedValue([{ id: 'item-1', isShippingLocked: false }]),
@@ -625,10 +637,13 @@ describe('OrdersService.updateShippingDetails — auto-accept + Shiprocket push'
         }),
       },
     };
+    const mailService = {
+      sendMail: jest.fn().mockResolvedValue({ sent: true, retryable: false }),
+    };
     const service = new OrdersService(
       prisma as never,
       {} as never,
-      {} as never,
+      mailService as never,
       {} as never,
       {} as never,
       {} as never,
@@ -639,7 +654,7 @@ describe('OrdersService.updateShippingDetails — auto-accept + Shiprocket push'
     const pushSpy = jest
       .spyOn(service, 'pushOrderToShiprocketIfNeeded')
       .mockResolvedValue({ shiprocketOrderId: 'sr-1', shipmentId: 'ship-1' });
-    return { service, prisma, notifySpy, pushSpy };
+    return { service, prisma, mailService, notifySpy, pushSpy };
   };
 
   const dto = { packageWeight: 2 } as never;
@@ -694,5 +709,132 @@ describe('OrdersService.updateShippingDetails — auto-accept + Shiprocket push'
     await expect(
       service.updateShippingDetails('user-1', 'order-1', dto),
     ).resolves.toEqual({ id: 'order-1' });
+  });
+
+  describe('admin notification email', () => {
+    it('emails ADMIN_NOTIFICATION_EMAIL when it is configured', async () => {
+      process.env.ADMIN_NOTIFICATION_EMAIL = 'admin@yukizi.com';
+      const { service, mailService } = build();
+
+      await service.updateShippingDetails('user-1', 'order-1', dto);
+
+      expect(mailService.sendMail).toHaveBeenCalledWith(
+        expect.objectContaining({
+          to: 'admin@yukizi.com',
+          subject: expect.stringContaining('ORDER-1'),
+          text: expect.stringContaining('Acme Co'),
+        }),
+      );
+    });
+
+    it('skips silently when ADMIN_NOTIFICATION_EMAIL is not set', async () => {
+      delete process.env.ADMIN_NOTIFICATION_EMAIL;
+      const { service, mailService } = build();
+
+      await service.updateShippingDetails('user-1', 'order-1', dto);
+
+      expect(mailService.sendMail).not.toHaveBeenCalled();
+    });
+
+    it('never lets a failed admin-notification send break the shipping-details save', async () => {
+      process.env.ADMIN_NOTIFICATION_EMAIL = 'admin@yukizi.com';
+      const { service, mailService } = build();
+      mailService.sendMail.mockResolvedValue({ sent: false, retryable: true });
+
+      await expect(
+        service.updateShippingDetails('user-1', 'order-1', dto),
+      ).resolves.toEqual({ id: 'order-1' });
+    });
+  });
+});
+
+describe('OrdersService.updateAdminShippingDocs', () => {
+  const buildAdmin = (
+    items: { id: string; sellerId: string; packageLength: number | null }[] = [
+      { id: 'item-1', sellerId: 'seller-1', packageLength: 10 },
+    ],
+  ) => {
+    const prisma = {
+      order: {
+        findUnique: jest.fn().mockResolvedValue({ id: 'order-1', items, packageLength: null }),
+        update: jest.fn().mockResolvedValue({}),
+      },
+      orderItem: {
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+      },
+    };
+    const sellerOrderNotifier = {
+      notifySellersDocsReady: jest.fn().mockResolvedValue(undefined),
+    };
+    const service = new OrdersService(
+      prisma as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      sellerOrderNotifier as never,
+    );
+    return { service, prisma, sellerOrderNotifier };
+  };
+
+  it('notifies the scoped seller when a document URL is uploaded for them', async () => {
+    const { service, sellerOrderNotifier } = buildAdmin();
+
+    await service.updateAdminShippingDocs('order-1', {
+      sellerId: 'seller-1',
+      adminShippingLabelUrl: 'https://cdn.example.com/label.pdf',
+    });
+
+    expect(sellerOrderNotifier.notifySellersDocsReady).toHaveBeenCalledWith([
+      { orderId: 'order-1', sellerId: 'seller-1' },
+    ]);
+  });
+
+  it('notifies every seller on the order when all have package details and no sellerId scope is given', async () => {
+    const items = [
+      { id: 'item-1', sellerId: 'seller-1', packageLength: 10 },
+      { id: 'item-2', sellerId: 'seller-2', packageLength: 5 },
+    ];
+    const { service, sellerOrderNotifier } = buildAdmin(items);
+
+    await service.updateAdminShippingDocs('order-1', {
+      manifestUrl: 'https://cdn.example.com/manifest.pdf',
+    });
+
+    expect(sellerOrderNotifier.notifySellersDocsReady).toHaveBeenCalledWith([
+      { orderId: 'order-1', sellerId: 'seller-1' },
+      { orderId: 'order-1', sellerId: 'seller-2' },
+    ]);
+  });
+
+  it('only notifies sellers whose items actually got the document, not every seller on the order', async () => {
+    // seller-2 has no packageLength yet, so the doc-URL write only touches
+    // seller-1's OrderItem rows (see the itemsWithPackage branch) - seller-2
+    // must not be told documents are ready when their own items were never
+    // updated with them.
+    const items = [
+      { id: 'item-1', sellerId: 'seller-1', packageLength: 10 },
+      { id: 'item-2', sellerId: 'seller-2', packageLength: null },
+    ];
+    const { service, sellerOrderNotifier } = buildAdmin(items);
+
+    await service.updateAdminShippingDocs('order-1', {
+      manifestUrl: 'https://cdn.example.com/manifest.pdf',
+    });
+
+    expect(sellerOrderNotifier.notifySellersDocsReady).toHaveBeenCalledWith([
+      { orderId: 'order-1', sellerId: 'seller-1' },
+    ]);
+  });
+
+  it('does not notify on a lock-only toggle with no document URL', async () => {
+    const { service, sellerOrderNotifier } = buildAdmin();
+
+    await service.updateAdminShippingDocs('order-1', {
+      sellerId: 'seller-1',
+      isShippingLocked: true,
+    });
+
+    expect(sellerOrderNotifier.notifySellersDocsReady).not.toHaveBeenCalled();
   });
 });

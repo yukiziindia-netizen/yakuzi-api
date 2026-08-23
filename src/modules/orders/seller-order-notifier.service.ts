@@ -3,6 +3,14 @@ import { PrismaService } from '../../database/prisma.service';
 import { MailService } from '../mail/mail.service';
 import { NotificationsService } from '../notifications/notifications.service';
 
+type SellerContact = {
+  id: string;
+  userId: string;
+  email: string | null;
+  companyName: string;
+  user: { email: string | null };
+};
+
 /**
  * Tells sellers about a new order - the in-app bell and, when they have an
  * address on file, an email.
@@ -24,13 +32,11 @@ export class SellerOrderNotifierService {
     private readonly notificationsService: NotificationsService,
   ) {}
 
-  async notifySellersOfNewOrder(
-    pairs: { orderId: string; sellerId: string }[],
-  ): Promise<void> {
-    if (pairs.length === 0) return;
-
+  private async findSellerContacts(
+    sellerIds: string[],
+  ): Promise<Map<string, SellerContact>> {
     const sellers = await this.prisma.sellerProfile.findMany({
-      where: { id: { in: Array.from(new Set(pairs.map((p) => p.sellerId))) } },
+      where: { id: { in: Array.from(new Set(sellerIds)) } },
       select: {
         id: true,
         userId: true,
@@ -39,7 +45,28 @@ export class SellerOrderNotifierService {
         user: { select: { email: true } },
       },
     });
-    const sellerById = new Map(sellers.map((s) => [s.id, s]));
+    return new Map(sellers.map((s) => [s.id, s]));
+  }
+
+  /**
+   * SellerProfile.email is the business contact sellers fill in during
+   * onboarding and can be blank (e.g. accounts created before it was a
+   * required field); User.email is the separate login address shown in
+   * their own dashboard, which is usually present. Fall back to it so a
+   * seller with no business email on file still gets order emails.
+   */
+  private resolveSellerEmail(seller: SellerContact): string | undefined {
+    return seller.email?.trim() || seller.user?.email?.trim() || undefined;
+  }
+
+  async notifySellersOfNewOrder(
+    pairs: { orderId: string; sellerId: string }[],
+  ): Promise<void> {
+    if (pairs.length === 0) return;
+
+    const sellerById = await this.findSellerContacts(
+      pairs.map((p) => p.sellerId),
+    );
 
     // Notify all sellers concurrently. Callers await this whole method before
     // the buyer/payment-confirmation caller gets a response, so a
@@ -60,16 +87,7 @@ export class SellerOrderNotifierService {
    */
   private async notifyOneSeller(
     { orderId, sellerId }: { orderId: string; sellerId: string },
-    sellerById: Map<
-      string,
-      {
-        id: string;
-        userId: string;
-        email: string | null;
-        companyName: string;
-        user: { email: string | null };
-      }
-    >,
+    sellerById: Map<string, SellerContact>,
   ): Promise<void> {
     const seller = sellerById.get(sellerId);
     if (!seller) {
@@ -89,12 +107,7 @@ export class SellerOrderNotifierService {
         );
       });
 
-    // SellerProfile.email is the business contact sellers fill in during
-    // onboarding and can be blank (e.g. accounts created before it was a
-    // required field); User.email is the separate login address shown in
-    // their own dashboard, which is usually present. Fall back to it so a
-    // seller with no business email on file still gets order emails.
-    const to = seller.email?.trim() || seller.user?.email?.trim();
+    const to = this.resolveSellerEmail(seller);
     if (!to) {
       this.logger.warn(
         `new-order-email skipped: seller ${seller.userId} has no email on file (order ${orderId})`,
@@ -113,6 +126,62 @@ export class SellerOrderNotifierService {
     if (!result.sent) {
       this.logger.warn(
         `Could not email seller ${seller.userId} about new order ${orderId} (retryable=${result.retryable})`,
+      );
+    }
+  }
+
+  /**
+   * Tells sellers their admin-prepared shipping documents (label, invoice,
+   * manifest) are ready to download. Fire only when the admin actually
+   * uploaded a document — see OrdersService.updateAdminShippingDocs, which
+   * also calls this for lock-only updates with no doc URLs and must filter
+   * those out before calling here.
+   */
+  async notifySellersDocsReady(
+    pairs: { orderId: string; sellerId: string }[],
+  ): Promise<void> {
+    if (pairs.length === 0) return;
+
+    const sellerById = await this.findSellerContacts(
+      pairs.map((p) => p.sellerId),
+    );
+
+    await Promise.allSettled(
+      pairs.map((pair) => this.notifyOneSellerDocsReady(pair, sellerById)),
+    );
+  }
+
+  private async notifyOneSellerDocsReady(
+    { orderId, sellerId }: { orderId: string; sellerId: string },
+    sellerById: Map<string, SellerContact>,
+  ): Promise<void> {
+    const seller = sellerById.get(sellerId);
+    if (!seller) {
+      this.logger.warn(
+        `Could not find seller profile ${sellerId} while notifying about ready shipping docs for order ${orderId}`,
+      );
+      return;
+    }
+
+    const to = this.resolveSellerEmail(seller);
+    if (!to) {
+      this.logger.warn(
+        `shipping-docs-ready email skipped: seller ${seller.userId} has no email on file (order ${orderId})`,
+      );
+      return;
+    }
+
+    const orderRef = orderId.slice(0, 8).toUpperCase();
+    const safeCompanyName = this.escape(seller.companyName);
+    const result = await this.mailService.sendMail({
+      to,
+      subject: `Shipping documents ready for order ${orderRef}`,
+      text: `Hello ${seller.companyName},\n\nThe shipping label and other documents for order ${orderRef} are ready. Log in to your seller dashboard to download them.\n\nYukizi`,
+      html: `<p>Hello ${safeCompanyName},</p><p>The shipping label and other documents for order <strong>${orderRef}</strong> are ready. Log in to your seller dashboard to download them.</p><p>Yukizi</p>`,
+    });
+    if (!result.sent) {
+      this.logger.warn(
+        `Could not email seller ${seller.userId} about ready shipping docs for order ${orderId} (retryable=${result.retryable})`,
       );
     }
   }
