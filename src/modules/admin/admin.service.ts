@@ -1722,21 +1722,32 @@ export class AdminService {
       let takeSettled = 0;
       let skipSettled = 0;
 
-      if (!status || status === 'PROJECTED') {
-        if (skip < pendingCount) {
-          skipPending = skip;
-          takePending = Math.min(limit, pendingCount - skip);
-          if (takePending < limit && (!status || status !== 'PROJECTED')) {
-            takeSettled = limit - takePending;
-            skipSettled = 0;
-          }
-        } else if (!status || status !== 'PROJECTED') {
-          skipSettled = skip - pendingCount;
-          takeSettled = limit;
-        }
-      } else {
+      if (status === 'PROJECTED') {
+        // Admin explicitly wants the forecast-only view.
+        skipPending = skip;
+        takePending = limit;
+      } else if (status) {
+        // Admin explicitly filtered to a real settlement status
+        // (PENDING/PROCESSED/PAID/etc) — PROJECTED rows never match a real
+        // payoutStatus, so this is settled-only.
         skipSettled = skip;
         takeSettled = limit;
+      } else {
+        // Default "ALL" view: real settlement records (actual money
+        // owed/paid) take priority over PROJECTED (forecast) entries, so a
+        // page is filled with settled records first and only falls back to
+        // PROJECTED items to fill remaining space.
+        if (skip < settledCount) {
+          skipSettled = skip;
+          takeSettled = Math.min(limit, settledCount - skip);
+          if (takeSettled < limit) {
+            takePending = limit - takeSettled;
+            skipPending = 0;
+          }
+        } else {
+          skipPending = skip - settledCount;
+          takePending = limit;
+        }
       }
 
       if (takePending > 0 && (this.prisma as any).orderItem) {
@@ -1807,7 +1818,7 @@ export class AdminService {
         });
       }
 
-      const data = [...projectedSettlements, ...settledData];
+      const data = [...settledData, ...projectedSettlements];
       return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
     } catch (error) {
       this.logger.warn(`Failed to fetch settlements: ${error instanceof Error ? error.message : 'Unknown error'}`);
