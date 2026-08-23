@@ -3,14 +3,59 @@ import {
   Logger,
   OnModuleInit,
   OnModuleDestroy,
+  BadRequestException,
+  NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { exec, spawn, ChildProcess } from 'child_process';
 import * as path from 'path';
 import * as fs from 'fs';
 import axios from 'axios';
+import { IsArray, IsEnum, IsInt, IsOptional, IsString, MaxLength, ValidateNested } from 'class-validator';
+import { Type } from 'class-transformer';
+import { ChatbotTrainingTier, Prisma } from '@prisma/client';
 
 import { PrismaService } from '../../database/prisma.service';
+
+export class ChatbotTrainingMessageDto {
+  @IsString()
+  role: string;
+
+  @IsOptional()
+  @IsString()
+  content?: string;
+}
+
+export class CreateChatbotTrainingDto {
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => ChatbotTrainingMessageDto)
+  history: ChatbotTrainingMessageDto[];
+
+  @IsOptional()
+  @IsEnum(ChatbotTrainingTier)
+  tier?: ChatbotTrainingTier;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  label?: string;
+}
+
+export class UpdateChatbotTrainingDto {
+  @IsOptional()
+  @IsEnum(ChatbotTrainingTier)
+  tier?: ChatbotTrainingTier;
+
+  @IsOptional()
+  @IsInt()
+  order?: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  label?: string;
+}
 
 @Injectable()
 export class ChatbotService implements OnModuleInit, OnModuleDestroy {
@@ -104,6 +149,141 @@ export class ChatbotService implements OnModuleInit, OnModuleDestroy {
         `Could not sync database training memory to sidecar: ${
           err instanceof Error ? err.message : 'Unknown error'
         }`,
+      );
+    }
+  }
+
+  async listTrainings() {
+    return this.prisma.chatbotJob.findMany({
+      orderBy: [{ tier: 'asc' }, { order: 'asc' }, { createdAt: 'asc' }],
+    });
+  }
+
+  async createTraining(dto: CreateChatbotTrainingDto) {
+    const hasValidPair = dto.history.some(
+      (m, i) =>
+        m.role === 'user' &&
+        !!m.content &&
+        dto.history[i + 1] &&
+        ['assistant', 'model'].includes(dto.history[i + 1].role) &&
+        !!dto.history[i + 1].content,
+    );
+    if (!hasValidPair) {
+      throw new BadRequestException(
+        'No valid user-assistant exchange found in this conversation.',
+      );
+    }
+
+    const tier = dto.tier ?? ChatbotTrainingTier.SURFACE;
+    const maxOrder = await this.prisma.chatbotJob.aggregate({
+      where: { tier },
+      _max: { order: true },
+    });
+    const firstUserMessage = dto.history.find((m) => m.role === 'user' && m.content)?.content ?? 'Untitled training';
+
+    const created = await this.prisma.chatbotJob.create({
+      data: {
+        jobId: `training_${Date.now()}`,
+        status: 'SAVED',
+        history: dto.history as unknown as Prisma.InputJsonValue,
+        label: dto.label?.trim() || firstUserMessage.slice(0, 120),
+        tier,
+        order: (maxOrder._max.order ?? -1) + 1,
+      },
+    });
+
+    await this.resyncSidecar();
+    return created;
+  }
+
+  async updateTraining(id: string, dto: UpdateChatbotTrainingDto) {
+    const existing = await this.prisma.chatbotJob.findUnique({ where: { id } });
+    if (!existing) throw new NotFoundException('Training not found');
+
+    const updated = await this.prisma.chatbotJob.update({
+      where: { id },
+      data: {
+        ...(dto.tier !== undefined && { tier: dto.tier }),
+        ...(dto.order !== undefined && { order: dto.order }),
+        ...(dto.label !== undefined && { label: dto.label.trim() }),
+      },
+    });
+
+    await this.resyncSidecar();
+    return updated;
+  }
+
+  async deleteTraining(id: string) {
+    const existing = await this.prisma.chatbotJob.findUnique({ where: { id } });
+    if (!existing) throw new NotFoundException('Training not found');
+
+    await this.prisma.chatbotJob.delete({ where: { id } });
+    await this.resyncSidecar();
+  }
+
+  async deleteAllTrainings() {
+    await this.prisma.chatbotJob.deleteMany();
+    await this.resetSidecarPrompt();
+  }
+
+  async reorderTrainings(tier: ChatbotTrainingTier, orderedIds: string[]) {
+    const existing = await this.prisma.chatbotJob.findMany({
+      where: { tier },
+      select: { id: true },
+    });
+    const existingIds = existing.map((j) => j.id).sort();
+    const givenIds = [...orderedIds].sort();
+    const isValid =
+      givenIds.length === existingIds.length && givenIds.every((id, i) => id === existingIds[i]);
+    if (!isValid) {
+      throw new BadRequestException(
+        `orderedIds must contain exactly the current set of ${tier} training ids, each exactly once`,
+      );
+    }
+
+    try {
+      await this.prisma.$transaction(
+        orderedIds.map((id, index) =>
+          this.prisma.chatbotJob.update({ where: { id }, data: { order: index } }),
+        ),
+      );
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
+        throw new BadRequestException(
+          'Trainings changed since this reorder was requested — please retry',
+        );
+      }
+      throw error;
+    }
+
+    return this.listTrainings();
+  }
+
+  async resyncSidecar(): Promise<void> {
+    const trainings = await this.prisma.chatbotJob.findMany({
+      orderBy: [{ tier: 'asc' }, { order: 'asc' }, { createdAt: 'asc' }],
+    });
+    const histories = trainings
+      .map((t) => t.history)
+      .filter((h): h is any[] => Array.isArray(h) && h.length > 0);
+
+    try {
+      const apiUrl = process.env.CHATBOT_API_URL || `http://127.0.0.1:${this.port}`;
+      await axios.post(`${apiUrl}/train/sync`, { histories }, { timeout: 5000 });
+    } catch (err) {
+      this.logger.warn(
+        `Could not resync training memory to sidecar: ${err instanceof Error ? err.message : 'Unknown error'}`,
+      );
+    }
+  }
+
+  private async resetSidecarPrompt(): Promise<void> {
+    try {
+      const apiUrl = process.env.CHATBOT_API_URL || `http://127.0.0.1:${this.port}`;
+      await axios.post(`${apiUrl}/train/reset`, {}, { timeout: 5000 });
+    } catch (err) {
+      this.logger.warn(
+        `Could not reset sidecar prompt: ${err instanceof Error ? err.message : 'Unknown error'}`,
       );
     }
   }
