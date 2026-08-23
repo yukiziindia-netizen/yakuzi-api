@@ -242,6 +242,164 @@ describe('AdminService.getSettlementsSummary — totals across all pages', () =>
   });
 });
 
+describe('AdminService.getAllSettlements — pagination priority', () => {
+  const buildForList = ({
+    pendingCount = 0,
+    settledCount = 0,
+  }: {
+    pendingCount?: number;
+    settledCount?: number;
+  }) => {
+    const prisma = {
+      orderItem: {
+        count: jest.fn().mockResolvedValue(pendingCount),
+        findMany: jest.fn().mockResolvedValue([]),
+      },
+      sellerSettlement: {
+        count: jest.fn().mockResolvedValue(settledCount),
+        findMany: jest.fn().mockResolvedValue([]),
+      },
+    };
+    const service = new AdminService(
+      prisma as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      mockConfigService as never,
+    );
+    return { service, prisma };
+  };
+
+  it('does not starve real settlement records off page 1 of the default "ALL" view when there are enough PROJECTED items to fill the whole page', async () => {
+    // 50 not-yet-delivered order items (PROJECTED) vs only 3 real settlement
+    // records. Before the fix, PROJECTED items filled the page first and
+    // took up all 20 slots, so sellerSettlement.findMany never ran with a
+    // meaningful take on page 1 — the 3 real settlements were unreachable
+    // without paging through every PROJECTED entry first.
+    const { service, prisma } = buildForList({ pendingCount: 50, settledCount: 3 });
+
+    await service.getAllSettlements({ page: 1, limit: 20 } as never);
+
+    expect(prisma.sellerSettlement.findMany).toHaveBeenCalledTimes(1);
+    const call = prisma.sellerSettlement.findMany.mock.calls[0][0];
+    expect(call.skip).toBe(0);
+    expect(call.take).toBeGreaterThan(0);
+  });
+
+  it('fills remaining page space with PROJECTED items once real settlements are exhausted, in the default "ALL" view', async () => {
+    const { service, prisma } = buildForList({ pendingCount: 50, settledCount: 3 });
+
+    await service.getAllSettlements({ page: 1, limit: 20 } as never);
+
+    expect(prisma.sellerSettlement.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ skip: 0, take: 3 }),
+    );
+    expect(prisma.orderItem.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ skip: 0, take: 17 }),
+    );
+  });
+
+  it('orders real settlements before PROJECTED items within a page in the default "ALL" view', async () => {
+    const { service, prisma } = buildForList({ pendingCount: 50, settledCount: 3 });
+    prisma.orderItem.findMany.mockResolvedValue([
+      {
+        id: 'item-1',
+        sellerId: 'seller-1',
+        orderId: 'order-1',
+        totalPrice: 100,
+        createdAt: new Date(),
+        sellerOffer: {
+          mrp: 100,
+          finalShippingPrice: 0,
+          shippingCharges: 0,
+          catalogProduct: { commissionPercent: 0, commissionGstPercent: 0 },
+        },
+        seller: { id: 'seller-1', companyName: 'Seller 1', userId: 'u-1' },
+        quantity: 1,
+      },
+    ]);
+    prisma.sellerSettlement.findMany.mockResolvedValue([
+      { id: 'settlement-1', payoutStatus: 'PENDING' },
+    ]);
+
+    const result = await service.getAllSettlements({ page: 1, limit: 20 } as never);
+
+    expect(result.data[0].id).toBe('settlement-1');
+    expect(result.data[1].id).toBe('projected-item-1');
+  });
+
+  it('keeps the explicit PROJECTED-filter view unchanged — no real settlements are fetched', async () => {
+    const { service, prisma } = buildForList({ pendingCount: 50, settledCount: 3 });
+
+    await service.getAllSettlements({ status: 'PROJECTED', page: 1, limit: 20 } as never);
+
+    expect(prisma.orderItem.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ skip: 0, take: 20 }),
+    );
+    expect(prisma.sellerSettlement.findMany).not.toHaveBeenCalled();
+  });
+
+  it('keeps the explicit settled-status-filter view (the current workaround) unchanged — no PROJECTED items are fetched', async () => {
+    const { service, prisma } = buildForList({ pendingCount: 50, settledCount: 3 });
+
+    await service.getAllSettlements({ status: 'PENDING', page: 1, limit: 20 } as never);
+
+    expect(prisma.sellerSettlement.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ skip: 0, take: 20 }),
+    );
+    expect(prisma.orderItem.findMany).not.toHaveBeenCalled();
+  });
+
+  it('computes total as pendingCount + settledCount the same way regardless of which branch is taken', async () => {
+    const { service: allService } = buildForList({ pendingCount: 50, settledCount: 3 });
+    const allResult = await allService.getAllSettlements({ page: 1, limit: 20 } as never);
+    expect(allResult.total).toBe(53);
+
+    const { service: projectedService } = buildForList({ pendingCount: 50, settledCount: 3 });
+    const projectedResult = await projectedService.getAllSettlements({
+      status: 'PROJECTED',
+      page: 1,
+      limit: 20,
+    } as never);
+    expect(projectedResult.total).toBe(50);
+
+    const { service: settledService } = buildForList({ pendingCount: 50, settledCount: 3 });
+    const settledResult = await settledService.getAllSettlements({
+      status: 'PENDING',
+      page: 1,
+      limit: 20,
+    } as never);
+    expect(settledResult.total).toBe(3);
+  });
+
+  it('does not fall back to PROJECTED items when settledCount exactly fills the page (takeSettled === limit)', async () => {
+    // 20 real settlements, page size 20 — settled records alone fill the
+    // whole page exactly, so the `takeSettled < limit` pending-fallback
+    // must NOT fire even though there's plenty of pending data available.
+    const { service, prisma } = buildForList({ pendingCount: 50, settledCount: 20 });
+
+    await service.getAllSettlements({ page: 1, limit: 20 } as never);
+
+    expect(prisma.sellerSettlement.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ skip: 0, take: 20 }),
+    );
+    expect(prisma.orderItem.findMany).not.toHaveBeenCalled();
+  });
+
+  it('falls straight through to the pending-only path when settledCount is 0, in the default "ALL" view', async () => {
+    const { service, prisma } = buildForList({ pendingCount: 50, settledCount: 0 });
+
+    await service.getAllSettlements({ page: 1, limit: 20 } as never);
+
+    expect(prisma.orderItem.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ skip: 0, take: 20 }),
+    );
+    expect(prisma.sellerSettlement.findMany).not.toHaveBeenCalled();
+  });
+});
+
 describe('AdminService.getDashboard — Platform Revenue', () => {
   const buildForDashboard = () => {
     const emptyResult = { _sum: { totalAmount: null }, _count: { id: 0 } };
