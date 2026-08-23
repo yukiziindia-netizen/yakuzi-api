@@ -3,6 +3,7 @@ import {
   Post,
   Get,
   Patch,
+  Put,
   Delete,
   Param,
   Body,
@@ -32,6 +33,7 @@ import {
   BulkCreateSubCategoryDto,
 } from './dto/bulk-category.dto';
 import { QuerySubCategoryDto } from './dto/query-subcategory.dto';
+import { ReplaceBannersDto } from './dto/replace-banners.dto';
 
 @ApiTags('Admin - Categories')
 @ApiBearerAuth('JWT-auth')
@@ -110,6 +112,21 @@ export class CategoriesController {
     return { message: 'Bulk category creation completed', data };
   }
 
+  @Put('categories/:id/banners')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: "Replace a category's banner slideshow (admin only)",
+  })
+  @ApiResponse({ status: 200, description: 'Banners replaced' })
+  @ApiResponse({ status: 404, description: 'Category not found' })
+  async replaceCategoryBanners(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: ReplaceBannersDto,
+  ) {
+    const data = await this.categoriesService.replaceCategoryBanners(id, dto);
+    return { message: 'Category banners updated successfully', data };
+  }
+
   // ═══════════════════════════════════════════════════
   // SUBCATEGORIES
   // ═══════════════════════════════════════════════════
@@ -181,5 +198,23 @@ export class CategoriesController {
   async bulkCreateSubCategories(@Body() dto: BulkCreateSubCategoryDto) {
     const data = await this.categoriesService.bulkCreateSubCategories(dto);
     return { message: 'Bulk subcategory creation completed', data };
+  }
+
+  @Put('subcategories/:id/banners')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: "Replace a sub-category's banner slideshow (admin only)",
+  })
+  @ApiResponse({ status: 200, description: 'Banners replaced' })
+  @ApiResponse({ status: 404, description: 'SubCategory not found' })
+  async replaceSubCategoryBanners(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: ReplaceBannersDto,
+  ) {
+    const data = await this.categoriesService.replaceSubCategoryBanners(
+      id,
+      dto,
+    );
+    return { message: 'SubCategory banners updated successfully', data };
   }
 }

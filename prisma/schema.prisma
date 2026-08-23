@@ -211,6 +211,7 @@ model Category {
   commissionPercent    Decimal?          @db.Decimal(10, 2)
   fixedFee             Decimal?          @db.Decimal(10, 2)
   commissionGstPercent Decimal?          @db.Decimal(10, 2)
+  bannerImages         CategoryBannerImage[]
 
   @@map("categories")
 }
@@ -230,10 +231,32 @@ model SubCategory {
   category             Category         @relation(fields: [categoryId], references: [id], onDelete: Cascade)
   thirdCategories      ThirdCategory[]
   homepageSections     HomepageSection[]
+  bannerImages         CategoryBannerImage[]
 
   @@unique([slug, categoryId])
   @@index([categoryId])
   @@map("sub_categories")
+}
+
+/// Ordered banner slideshow images for a Collection (category) or
+/// Sub-collection (sub-category) page. Exactly one of categoryId /
+/// subCategoryId is set — enforced by a DB CHECK constraint, same
+/// convention as HomepageSection.
+model CategoryBannerImage {
+  id            String       @id @default(uuid())
+  categoryId    String?
+  subCategoryId String?
+  image         String
+  /// Optional portrait-friendly image for phones. Null means "use image".
+  mobileImage   String?
+  order         Int          @default(0)
+  createdAt     DateTime     @default(now())
+  category      Category?    @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  subCategory   SubCategory? @relation(fields: [subCategoryId], references: [id], onDelete: Cascade)
+
+  @@index([categoryId])
+  @@index([subCategoryId])
+  @@map("category_banner_images")
 }
 
 model SellerOffer {
