@@ -373,6 +373,31 @@ describe('AdminService.getAllSettlements — pagination priority', () => {
     } as never);
     expect(settledResult.total).toBe(3);
   });
+
+  it('does not fall back to PROJECTED items when settledCount exactly fills the page (takeSettled === limit)', async () => {
+    // 20 real settlements, page size 20 — settled records alone fill the
+    // whole page exactly, so the `takeSettled < limit` pending-fallback
+    // must NOT fire even though there's plenty of pending data available.
+    const { service, prisma } = buildForList({ pendingCount: 50, settledCount: 20 });
+
+    await service.getAllSettlements({ page: 1, limit: 20 } as never);
+
+    expect(prisma.sellerSettlement.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ skip: 0, take: 20 }),
+    );
+    expect(prisma.orderItem.findMany).not.toHaveBeenCalled();
+  });
+
+  it('falls straight through to the pending-only path when settledCount is 0, in the default "ALL" view', async () => {
+    const { service, prisma } = buildForList({ pendingCount: 50, settledCount: 0 });
+
+    await service.getAllSettlements({ page: 1, limit: 20 } as never);
+
+    expect(prisma.orderItem.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ skip: 0, take: 20 }),
+    );
+    expect(prisma.sellerSettlement.findMany).not.toHaveBeenCalled();
+  });
 });
 
 describe('AdminService.getDashboard — Platform Revenue', () => {
