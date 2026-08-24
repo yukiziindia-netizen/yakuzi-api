@@ -1563,10 +1563,15 @@ export class OrdersService {
     orderId: string,
     seller: { id: string; companyName: string },
   ): Promise<void> {
-    const to = process.env.ADMIN_NOTIFICATION_EMAIL?.trim();
+    // Fall back to the platform's own inbox (SMTP_USER) — the confirmed
+    // intended recipient is that same Gmail account, and ADMIN_NOTIFICATION_EMAIL
+    // was never set on the server, so this email silently never fired.
+    const to =
+      process.env.ADMIN_NOTIFICATION_EMAIL?.trim() ||
+      process.env.SMTP_USER?.trim();
     if (!to) {
       this.logger.warn(
-        `shipping-details-submitted admin email skipped: ADMIN_NOTIFICATION_EMAIL is not set (order ${orderId}, seller ${seller.id})`,
+        `shipping-details-submitted admin email skipped: neither ADMIN_NOTIFICATION_EMAIL nor SMTP_USER is set (order ${orderId}, seller ${seller.id})`,
       );
       return;
     }
