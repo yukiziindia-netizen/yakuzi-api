@@ -20,6 +20,7 @@ import {
   ProductApprovalStatus,
   TicketStatus,
   Prisma,
+  Role,
 } from '@prisma/client';
 import { PrismaService } from '../../database/prisma.service';
 import { OrdersService } from '../orders/orders.service';
@@ -77,6 +78,80 @@ export class AdminService {
       .split(',')
       .map((phone) => phone.trim())
       .filter(Boolean);
+  }
+
+  /**
+   * The set of test-buyer orders a bulk cancel would actually attempt:
+   * not already in a terminal state, and not already carrying a confirmed
+   * payment (OrdersService.cancelOrder refuses those anyway - filtering
+   * them out here just skips a guaranteed-failure call per such order).
+   */
+  private cancellableTestOrdersWhere() {
+    const uncancelable: OrderStatus[] = [
+      OrderStatus.SHIPPED,
+      OrderStatus.DELIVERED,
+      OrderStatus.RETURNED,
+      OrderStatus.CANCELLED,
+    ];
+    return {
+      buyer: { phone: { in: this.getTestBuyerPhones() } },
+      orderStatus: { notIn: uncancelable },
+      paymentStatus: { notIn: [PaymentStatus.SUCCESS, PaymentStatus.PARTIAL] },
+    };
+  }
+
+  /**
+   * How many orders a call to cancelAllTestOrders() would attempt right
+   * now, so the admin UI can show a count before the admin confirms the
+   * bulk cancel rather than committing to it blind.
+   */
+  async countCancellableTestOrders(): Promise<number> {
+    return this.prisma.order.count({ where: this.cancellableTestOrdersWhere() });
+  }
+
+  /**
+   * Bulk-cancels every order placed by the internal test/QA buyer account(s)
+   * that isn't already in a terminal state, restoring stock for each. Reuses
+   * OrdersService.cancelOrder one order at a time (role ADMIN bypasses its
+   * buyer-ownership check) rather than writing a separate bulk query, so
+   * this gets the exact same guards for free - it will not touch an order
+   * whose payment has actually succeeded, and it restores stock the same
+   * way a manual cancel does.
+   *
+   * A one-off cleanup action, not a scheduled sweep: test orders are
+   * created deliberately for ongoing QA, so nothing should auto-cancel them
+   * while someone is mid-test - this only runs when an admin asks for it.
+   */
+  async cancelAllTestOrders(): Promise<{
+    cancelled: number;
+    failed: number;
+    total: number;
+  }> {
+    const testOrders = await this.prisma.order.findMany({
+      where: this.cancellableTestOrdersWhere(),
+      select: { id: true, buyerId: true },
+    });
+
+    let cancelled = 0;
+    let failed = 0;
+
+    for (const order of testOrders) {
+      try {
+        await this.ordersService.cancelOrder(order.buyerId, order.id, Role.ADMIN);
+        cancelled++;
+      } catch (error: any) {
+        failed++;
+        this.logger.warn(
+          `Could not cancel test order ${order.id} in bulk cleanup: ${error?.message}`,
+        );
+      }
+    }
+
+    this.logger.log(
+      `Bulk test-order cleanup: ${cancelled} cancelled, ${failed} failed, ${testOrders.length} total`,
+    );
+
+    return { cancelled, failed, total: testOrders.length };
   }
 
   // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
