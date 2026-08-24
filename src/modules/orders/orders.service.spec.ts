@@ -605,12 +605,18 @@ describe('OrdersService.checkout — price integrity', () => {
 
 describe('OrdersService.updateShippingDetails — auto-accept + Shiprocket push', () => {
   const ORIGINAL_ADMIN_EMAIL = process.env.ADMIN_NOTIFICATION_EMAIL;
+  const ORIGINAL_SMTP_USER = process.env.SMTP_USER;
 
   afterEach(() => {
     if (ORIGINAL_ADMIN_EMAIL === undefined) {
       delete process.env.ADMIN_NOTIFICATION_EMAIL;
     } else {
       process.env.ADMIN_NOTIFICATION_EMAIL = ORIGINAL_ADMIN_EMAIL;
+    }
+    if (ORIGINAL_SMTP_USER === undefined) {
+      delete process.env.SMTP_USER;
+    } else {
+      process.env.SMTP_USER = ORIGINAL_SMTP_USER;
     }
   });
 
@@ -739,8 +745,21 @@ describe('OrdersService.updateShippingDetails — auto-accept + Shiprocket push'
       );
     });
 
-    it('skips silently when ADMIN_NOTIFICATION_EMAIL is not set', async () => {
+    it('falls back to SMTP_USER when ADMIN_NOTIFICATION_EMAIL is not set', async () => {
       delete process.env.ADMIN_NOTIFICATION_EMAIL;
+      process.env.SMTP_USER = 'platform-inbox@yukizi.com';
+      const { service, mailService } = build();
+
+      await service.updateShippingDetails('user-1', 'order-1', dto);
+
+      expect(mailService.sendMail).toHaveBeenCalledWith(
+        expect.objectContaining({ to: 'platform-inbox@yukizi.com' }),
+      );
+    });
+
+    it('skips silently when neither ADMIN_NOTIFICATION_EMAIL nor SMTP_USER is set', async () => {
+      delete process.env.ADMIN_NOTIFICATION_EMAIL;
+      delete process.env.SMTP_USER;
       const { service, mailService } = build();
 
       await service.updateShippingDetails('user-1', 'order-1', dto);

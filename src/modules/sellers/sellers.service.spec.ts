@@ -28,8 +28,12 @@ const build = (existing: unknown = null) => {
 
 describe('SellersService.createProfile — admin notification email', () => {
   const originalEnv = process.env.ADMIN_NOTIFICATION_EMAIL;
+  const originalSmtpUser = process.env.SMTP_USER;
   afterEach(() => {
-    process.env.ADMIN_NOTIFICATION_EMAIL = originalEnv;
+    if (originalEnv === undefined) delete process.env.ADMIN_NOTIFICATION_EMAIL;
+    else process.env.ADMIN_NOTIFICATION_EMAIL = originalEnv;
+    if (originalSmtpUser === undefined) delete process.env.SMTP_USER;
+    else process.env.SMTP_USER = originalSmtpUser;
   });
 
   it('emails the configured admin address with the seller company name', async () => {
@@ -46,8 +50,21 @@ describe('SellersService.createProfile — admin notification email', () => {
     );
   });
 
-  it('does not email, and does not throw, when no admin address is configured', async () => {
+  it('falls back to SMTP_USER when ADMIN_NOTIFICATION_EMAIL is not set', async () => {
     delete process.env.ADMIN_NOTIFICATION_EMAIL;
+    process.env.SMTP_USER = 'platform-inbox@yukizi.com';
+    const { service, mailService } = build();
+
+    await service.createProfile('user-1', dto());
+
+    expect(mailService.sendMail).toHaveBeenCalledWith(
+      expect.objectContaining({ to: 'platform-inbox@yukizi.com' }),
+    );
+  });
+
+  it('does not email, and does not throw, when no admin address is configured at all', async () => {
+    delete process.env.ADMIN_NOTIFICATION_EMAIL;
+    delete process.env.SMTP_USER;
     const { service, mailService } = build();
 
     await expect(service.createProfile('user-1', dto())).resolves.toBeDefined();

@@ -93,13 +93,18 @@ export class SellersService {
    * this runs, so a mail failure here must never fail the signup.
    */
   private async emailAdminNewSeller(userId: string, companyName: string): Promise<void> {
-    const to = process.env.ADMIN_NOTIFICATION_EMAIL?.trim();
+    // Fall back to the platform's own inbox (SMTP_USER) — the confirmed
+    // intended recipient is that same Gmail account, and ADMIN_NOTIFICATION_EMAIL
+    // was never set on the server, so this email silently never fired.
+    const to =
+      process.env.ADMIN_NOTIFICATION_EMAIL?.trim() ||
+      process.env.SMTP_USER?.trim();
     if (!to) {
       // Silent no-op here means every new-seller signup goes completely
       // unnoticed with zero trace in the logs - this is the one config gap
       // that made this whole feature look like it was never built.
       this.logger.warn(
-        `new-seller-signup admin email skipped: ADMIN_NOTIFICATION_EMAIL is not set (user ${userId}, company "${companyName}")`,
+        `new-seller-signup admin email skipped: neither ADMIN_NOTIFICATION_EMAIL nor SMTP_USER is set (user ${userId}, company "${companyName}")`,
       );
       return;
     }
