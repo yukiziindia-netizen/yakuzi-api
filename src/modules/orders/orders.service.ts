@@ -1023,10 +1023,13 @@ export class OrdersService {
 
     const where: any = {
       sellerId: seller.id,
-      // A Razorpay-intent order that hasn't been paid for yet has no row
-      // here to notify the seller with - it must stay invisible on their
-      // dashboard too, or hiding the notification achieves nothing.
-      order: { sellersNotifiedAt: { not: null } },
+      // Product decision (Rishi, 2026-08-24): sellers see ALL their orders,
+      // including payment-pending ones, matching what admin sees. Payment-first
+      // safety is enforced where it matters instead: notifications stay
+      // deferred until payment succeeds (sellersNotifiedAt, unchanged), and
+      // updateShippingDetails rejects unpaid orders so one can never be
+      // accepted/shipped before the buyer pays.
+      order: {},
     };
 
     if (dateFrom || dateTo) {
@@ -1350,6 +1353,26 @@ export class OrdersService {
 
     if (sellerItems.length === 0) {
       throw new ForbiddenException('You do not have any items in this order');
+    }
+
+    // Sellers can now SEE unpaid orders in their portal (product decision,
+    // 2026-08-24) — but submitting shipping details is the acceptance signal
+    // that auto-advances the order and pushes it to Shiprocket, so it must
+    // stay impossible until the buyer has actually paid.
+    const orderRow = await this.prisma.order.findUnique({
+      where: { id: orderId },
+      select: { paymentStatus: true },
+    });
+    if (!orderRow) {
+      throw new NotFoundException('Order not found');
+    }
+    if (
+      orderRow.paymentStatus === PaymentStatus.PENDING ||
+      orderRow.paymentStatus === PaymentStatus.FAILED
+    ) {
+      throw new ForbiddenException(
+        'This order has not been paid yet — shipping details can be added once payment is received.',
+      );
     }
 
     // 3. Check if shipping is locked for this seller's items.

@@ -631,6 +631,7 @@ describe('OrdersService.updateShippingDetails — auto-accept + Shiprocket push'
         findUnique: jest.fn().mockResolvedValue({
           id: 'order-1',
           buyerId: 'buyer-1',
+          paymentStatus: 'SUCCESS',
           buyer: { email: 'b@x.com', phone: '9999999999' },
           address: null,
           items: [],
@@ -658,6 +659,17 @@ describe('OrdersService.updateShippingDetails — auto-accept + Shiprocket push'
   };
 
   const dto = { packageWeight: 2 } as never;
+
+  it('rejects shipping details on an unpaid order (sellers can see but not accept them)', async () => {
+    const { service, prisma } = build();
+    prisma.order.findUnique.mockResolvedValueOnce({ paymentStatus: 'PENDING' });
+
+    await expect(
+      service.updateShippingDetails('user-1', 'order-1', dto),
+    ).rejects.toThrow('has not been paid yet');
+    expect(prisma.orderItem.updateMany).not.toHaveBeenCalled();
+    expect(prisma.order.updateMany).not.toHaveBeenCalled();
+  });
 
   it('advances a PLACED order to ACCEPTED with a status-guarded write and notifies the buyer', async () => {
     const { service, prisma, notifySpy } = build();
