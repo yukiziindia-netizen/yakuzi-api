@@ -1674,13 +1674,45 @@ export class OrdersService {
       );
     }
 
+    // An order with a confirmed payment - fully paid (SUCCESS) or genuinely
+    // part-paid (PARTIAL, which per PaymentsService only happens once a real
+    // payment has been verified, not "not paid yet") - can never self-cancel
+    // through this endpoint, buyer or admin. This is a first-pass guard
+    // against the checkout page's Razorpay "payment cancelled" auto-cancel
+    // racing a payment that actually just succeeded (checkout.js's
+    // ondismiss can fire on/around a successful handler callback) -
+    // restocking and cancelling an order money was just collected for would
+    // be far worse than the phantom-order bug that auto-cancel exists to
+    // fix. Re-checked again below, inside the transaction, since a payment
+    // can be confirmed by a fully separate transaction in the gap between
+    // this read and that write. A paid order that genuinely needs
+    // cancelling is a refund, not a self-service cancel.
+    const paidStatuses: PaymentStatus[] = [
+      PaymentStatus.SUCCESS,
+      PaymentStatus.PARTIAL,
+    ];
+    if (paidStatuses.includes(order.paymentStatus)) {
+      throw new BadRequestException(
+        'This order has a confirmed payment and cannot be cancelled here. Contact support for a refund.',
+      );
+    }
+
     // 4. Update order and restore stock in a transaction
     const updated = await this.prisma.$transaction(async (tx) => {
-      // 4a. Update status
-      const cancelled = await tx.order.update({
-        where: { id: orderId },
+      // 4a. Update status - guarded on paymentStatus again (see comment
+      // above): if a payment was confirmed in the gap since the check
+      // above, this write matches zero rows and the whole cancel aborts
+      // before anything else in this transaction has run.
+      const guardedUpdate = await tx.order.updateMany({
+        where: { id: orderId, paymentStatus: { notIn: paidStatuses } },
         data: { orderStatus: OrderStatus.CANCELLED },
       });
+      if (guardedUpdate.count === 0) {
+        throw new BadRequestException(
+          'This order has a confirmed payment and cannot be cancelled here. Contact support for a refund.',
+        );
+      }
+      const cancelled = await tx.order.findUniqueOrThrow({ where: { id: orderId } });
 
       // 4b. Restore stock (to the earliest expiry batch)
       for (const item of order.items) {
