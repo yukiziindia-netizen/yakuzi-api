@@ -1,6 +1,6 @@
 import { OrdersService } from './orders.service';
 import type { CreateOrderDto } from './dto/create-order.dto';
-import { OrderStatus } from '@prisma/client';
+import { OrderStatus, PaymentStatus, Role } from '@prisma/client';
 
 const dto = (over: Partial<CreateOrderDto> = {}): CreateOrderDto =>
   ({
@@ -694,5 +694,109 @@ describe('OrdersService.updateShippingDetails — auto-accept + Shiprocket push'
     await expect(
       service.updateShippingDetails('user-1', 'order-1', dto),
     ).resolves.toEqual({ id: 'order-1' });
+  });
+});
+
+describe('OrdersService.cancelOrder', () => {
+  const build = (
+    order: {
+      buyerId?: string;
+      orderStatus?: OrderStatus;
+      paymentStatus?: PaymentStatus;
+    } = {},
+    // Lets a test simulate a payment confirming in the gap between the
+    // initial read and the guarded transactional write, by controlling how
+    // many rows the guarded updateMany reports as matched.
+    guardedUpdateCount = 1,
+  ) => {
+    const prisma = {
+      order: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: 'order-1',
+          buyerId: order.buyerId ?? 'buyer-1',
+          orderStatus: order.orderStatus ?? OrderStatus.PLACED,
+          paymentStatus: order.paymentStatus ?? PaymentStatus.PENDING,
+          items: [],
+        }),
+        updateMany: jest.fn().mockResolvedValue({ count: guardedUpdateCount }),
+        findUniqueOrThrow: jest
+          .fn()
+          .mockResolvedValue({ id: 'order-1', orderStatus: OrderStatus.CANCELLED }),
+      },
+      $transaction: jest.fn().mockImplementation((cb: any) => cb(prisma)),
+    };
+    const service = new OrdersService(
+      prisma as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+    );
+    return { service, prisma };
+  };
+
+  const paidGuardWhere = {
+    id: 'order-1',
+    paymentStatus: { notIn: [PaymentStatus.SUCCESS, PaymentStatus.PARTIAL] },
+  };
+
+  it('cancels an unpaid PLACED order and restores stock', async () => {
+    const { service, prisma } = build();
+
+    await service.cancelOrder('buyer-1', 'order-1', Role.BUYER);
+
+    expect(prisma.order.updateMany).toHaveBeenCalledWith({
+      where: paidGuardWhere,
+      data: { orderStatus: OrderStatus.CANCELLED },
+    });
+  });
+
+  it('refuses to cancel an order that has already been paid for, even for its own buyer', async () => {
+    const { service, prisma } = build({ paymentStatus: PaymentStatus.SUCCESS });
+
+    await expect(
+      service.cancelOrder('buyer-1', 'order-1', Role.BUYER),
+    ).rejects.toThrow('This order has a confirmed payment');
+    expect(prisma.order.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('refuses to cancel a paid order for an admin caller too', async () => {
+    const { service, prisma } = build({ paymentStatus: PaymentStatus.SUCCESS });
+
+    await expect(
+      service.cancelOrder('admin-1', 'order-1', Role.ADMIN),
+    ).rejects.toThrow('This order has a confirmed payment');
+    expect(prisma.order.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('refuses to cancel a PARTIAL-payment order — that represents real confirmed money, not "unpaid yet"', async () => {
+    const { service, prisma } = build({ paymentStatus: PaymentStatus.PARTIAL });
+
+    await expect(
+      service.cancelOrder('buyer-1', 'order-1', Role.BUYER),
+    ).rejects.toThrow('This order has a confirmed payment');
+    expect(prisma.order.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('still rejects an already-cancelled order before the payment check would even matter', async () => {
+    const { service } = build({ orderStatus: OrderStatus.CANCELLED });
+
+    await expect(
+      service.cancelOrder('buyer-1', 'order-1', Role.BUYER),
+    ).rejects.toThrow('Cannot cancel order in CANCELLED status');
+  });
+
+  it('aborts if the payment gets confirmed in the gap between the read and the guarded write', async () => {
+    // Initial read still sees PENDING (so it passes the first guard), but
+    // the guarded updateMany matches zero rows - as it would if a separate
+    // PaymentsService.confirmPayment transaction committed SUCCESS/PARTIAL
+    // in between. Nothing after the guarded write must run.
+    const { service, prisma } = build({ paymentStatus: PaymentStatus.PENDING }, 0);
+
+    await expect(
+      service.cancelOrder('buyer-1', 'order-1', Role.BUYER),
+    ).rejects.toThrow('This order has a confirmed payment');
+    expect(prisma.order.findUniqueOrThrow).not.toHaveBeenCalled();
   });
 });
