@@ -3,6 +3,7 @@ import { OrdersService } from './orders.service';
 import { OrdersController } from './orders.controller';
 import { ShiprocketService } from './shiprocket.service';
 import { ShiprocketSyncService } from './shiprocket-sync.service';
+import { CheckoutAbandonmentSweepService } from './checkout-abandonment-sweep.service';
 import { InvoiceService } from './invoice.service';
 import { InvoicePdfService } from './invoice-pdf.service';
 import { InvoiceEmailService } from './invoice-email.service';
@@ -17,6 +18,7 @@ import { AuthModule } from '../auth/auth.module';
     OrdersService,
     ShiprocketService,
     ShiprocketSyncService,
+    CheckoutAbandonmentSweepService,
     InvoiceService,
     InvoicePdfService,
     InvoiceEmailService,
