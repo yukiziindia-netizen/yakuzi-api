@@ -330,6 +330,30 @@ export class AdminController {
     return { message: 'Order status updated successfully', data };
   }
 
+  @Get('orders/test-orders-count')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      'Count how many test/QA buyer orders a cancel-test-orders call would attempt right now',
+  })
+  @ApiResponse({ status: 200, description: 'Count returned' })
+  async getTestOrdersCount() {
+    const data = await this.adminService.countCancellableTestOrders();
+    return { message: 'Test order count retrieved', data };
+  }
+
+  @Post('orders/cancel-test-orders')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      'Cancel every still-cancellable order placed by the internal test/QA buyer account(s), restoring stock',
+  })
+  @ApiResponse({ status: 200, description: 'Test orders cancelled' })
+  async cancelTestOrders() {
+    const data = await this.adminService.cancelAllTestOrders();
+    return { message: 'Test orders cancelled', data };
+  }
+
   // ═══════════════════════════════════════════════════
   // PAYMENT MANAGEMENT
   // ═══════════════════════════════════════════════════

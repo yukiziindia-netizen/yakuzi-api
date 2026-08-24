@@ -1,5 +1,5 @@
 import { AdminService } from './admin.service';
-import { OrderStatus, PaymentStatus } from '@prisma/client';
+import { OrderStatus, PaymentStatus, Role } from '@prisma/client';
 
 // Shared across every AdminService construction below. Returning undefined
 // for every key means callers fall through to their hardcoded defaults
@@ -685,6 +685,110 @@ describe('AdminService.getAllOrders — test-order exclusion', () => {
     const where = prisma.order.findMany.mock.calls[0][0].where;
     expect(where.orderStatus).toBe(OrderStatus.PLACED);
     expect(where.buyer).toEqual({ phone: { notIn: ['8500237151'] } });
+  });
+});
+
+const cancellableTestOrdersWhere = {
+  buyer: { phone: { in: ['8500237151'] } },
+  orderStatus: {
+    notIn: [
+      OrderStatus.SHIPPED,
+      OrderStatus.DELIVERED,
+      OrderStatus.RETURNED,
+      OrderStatus.CANCELLED,
+    ],
+  },
+  paymentStatus: { notIn: [PaymentStatus.SUCCESS, PaymentStatus.PARTIAL] },
+};
+
+describe('AdminService.countCancellableTestOrders', () => {
+  it('counts with the same filter cancelAllTestOrders uses to select orders', async () => {
+    const prisma = { order: { count: jest.fn().mockResolvedValue(7) } };
+    const service = new AdminService(
+      prisma as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      mockConfigService as never,
+    );
+
+    const result = await service.countCancellableTestOrders();
+
+    expect(prisma.order.count).toHaveBeenCalledWith({ where: cancellableTestOrdersWhere });
+    expect(result).toBe(7);
+  });
+});
+
+describe('AdminService.cancelAllTestOrders', () => {
+  const buildForCancel = (testOrders: { id: string; buyerId: string }[] = []) => {
+    const prisma = {
+      order: {
+        findMany: jest.fn().mockResolvedValue(testOrders),
+      },
+    };
+    const ordersService = {
+      cancelOrder: jest.fn().mockResolvedValue(undefined),
+    };
+    const service = new AdminService(
+      prisma as never,
+      {} as never,
+      ordersService as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      mockConfigService as never,
+    );
+    return { service, prisma, ordersService };
+  };
+
+  it('queries only test-buyer orders that are not terminal and not already paid for', async () => {
+    const { service, prisma } = buildForCancel();
+
+    await service.cancelAllTestOrders();
+
+    expect(prisma.order.findMany).toHaveBeenCalledWith({
+      where: cancellableTestOrdersWhere,
+      select: { id: true, buyerId: true },
+    });
+  });
+
+  it('cancels each matching order as ADMIN and reports the summary', async () => {
+    const { service, ordersService } = buildForCancel([
+      { id: 'order-1', buyerId: 'buyer-1' },
+      { id: 'order-2', buyerId: 'buyer-2' },
+    ]);
+
+    const result = await service.cancelAllTestOrders();
+
+    expect(ordersService.cancelOrder).toHaveBeenCalledWith('buyer-1', 'order-1', Role.ADMIN);
+    expect(ordersService.cancelOrder).toHaveBeenCalledWith('buyer-2', 'order-2', Role.ADMIN);
+    expect(result).toEqual({ cancelled: 2, failed: 0, total: 2 });
+  });
+
+  it('continues past a per-order failure and reports it in the summary', async () => {
+    const { service, ordersService } = buildForCancel([
+      { id: 'order-1', buyerId: 'buyer-1' },
+      { id: 'order-2', buyerId: 'buyer-2' },
+    ]);
+    ordersService.cancelOrder
+      .mockRejectedValueOnce(new Error('already paid'))
+      .mockResolvedValueOnce(undefined);
+
+    const result = await service.cancelAllTestOrders();
+
+    expect(ordersService.cancelOrder).toHaveBeenCalledTimes(2);
+    expect(result).toEqual({ cancelled: 1, failed: 1, total: 2 });
+  });
+
+  it('does nothing and reports zeroes when there are no test orders to cancel', async () => {
+    const { service, ordersService } = buildForCancel([]);
+
+    const result = await service.cancelAllTestOrders();
+
+    expect(ordersService.cancelOrder).not.toHaveBeenCalled();
+    expect(result).toEqual({ cancelled: 0, failed: 0, total: 0 });
   });
 });
 
