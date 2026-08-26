@@ -95,6 +95,7 @@ export class ShiprocketSyncService {
       await this.ordersService.syncTrackingFields(order.id, {
         awb_code: tracking.awb_code,
         courier: tracking.courier,
+        track_url: tracking.track_url,
       });
 
       // Conditional write guarded on the orderStatus snapshot read at the

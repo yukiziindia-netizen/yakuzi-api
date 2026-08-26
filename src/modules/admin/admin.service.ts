@@ -2634,6 +2634,30 @@ export class AdminService {
     return profile;
   }
 
+  /**
+   * Toggles self-ship fulfillment for a seller. Touches ONLY selfShipEnabled —
+   * existing orders keep the fulfillmentMode snapshotted at their creation.
+   */
+  async updateSellerSelfShip(
+    sellerId: string,
+    dto: { selfShipEnabled: boolean },
+  ) {
+    const seller = await this.prisma.sellerProfile.findUnique({
+      where: { id: sellerId },
+      select: { id: true },
+    });
+
+    if (!seller) {
+      throw new NotFoundException('Seller profile not found');
+    }
+
+    return this.prisma.sellerProfile.update({
+      where: { id: sellerId },
+      data: { selfShipEnabled: dto.selfShipEnabled },
+      select: { id: true, companyName: true, selfShipEnabled: true },
+    });
+  }
+
   async updateSellerGstPanStatus(
     sellerId: string,
     dto: {

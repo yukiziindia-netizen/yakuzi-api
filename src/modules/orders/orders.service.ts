@@ -9,6 +9,7 @@ import { PrismaService } from '../../database/prisma.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
 import { UpdateShippingDetailsDto } from './dto/update-shipping-details.dto';
+import { SelfShipTrackingDto } from './dto/self-ship-tracking.dto';
 import { OrderStatus, Role, PaymentStatus, Prisma } from '@prisma/client';
 import { ShiprocketService } from './shiprocket.service';
 import { calculateSellerPayout, buildPayoutInputFromOrderItem } from '../settlements/payout-calculator';
@@ -42,6 +43,13 @@ const ADMIN_SHIPPING_DOC_FIELDS = [
   'invoiceUrl',
 ] as const;
 
+/**
+ * Order.fulfillmentMode values. Snapshotted from the seller's selfShipEnabled
+ * flag at checkout; the two flows are mutually exclusive per order.
+ */
+export const FULFILLMENT_MODE_SHIPROCKET = 'shiprocket';
+export const FULFILLMENT_MODE_SELF_SHIP = 'self_ship';
+
 @Injectable()
 export class OrdersService {
   private readonly logger = new Logger(OrdersService.name);
@@ -72,6 +80,7 @@ export class OrdersService {
     totalAmount: unknown;
     paymentStatus: PaymentStatus;
     shiprocketOrderId: string | null;
+    fulfillmentMode?: string | null;
     packageLength?: number | null;
     packageBreadth?: number | null;
     packageHeight?: number | null;
@@ -101,6 +110,13 @@ export class OrdersService {
     courierName?: string;
   }> {
     if (order.shiprocketOrderId) {
+      return {};
+    }
+
+    // Self-ship orders are fulfilled by the seller's own courier and must
+    // never be pushed to Shiprocket, no matter which status-transition path
+    // triggered the push attempt.
+    if (order.fulfillmentMode === FULFILLMENT_MODE_SELF_SHIP) {
       return {};
     }
 
@@ -212,11 +228,17 @@ export class OrdersService {
    */
   async syncTrackingFields(
     orderId: string,
-    tracking: { awb_code?: string | null; courier?: string | null },
+    tracking: {
+      awb_code?: string | null;
+      courier?: string | null;
+      track_url?: string | null;
+    },
   ): Promise<void> {
-    const data: { awbCode?: string; courierName?: string } = {};
+    const data: { awbCode?: string; courierName?: string; trackingUrl?: string } =
+      {};
     if (tracking.awb_code) data.awbCode = tracking.awb_code;
     if (tracking.courier) data.courierName = tracking.courier;
+    if (tracking.track_url) data.trackingUrl = tracking.track_url;
     if (Object.keys(data).length === 0) return;
 
     try {
@@ -427,6 +449,7 @@ export class OrdersService {
                     id: true,
                     verificationStatus: true,
                     companyName: true,
+                    selfShipEnabled: true,
                   },
                 },
                 batches: {
@@ -508,6 +531,11 @@ export class OrdersService {
             buyerId: userId,
             totalAmount: sellerTotalAmount,
             orderStatus: OrderStatus.PLACED,
+            // Snapshot the seller's fulfillment preference at this moment -
+            // toggling selfShipEnabled later must not change existing orders.
+            fulfillmentMode: sellerItems[0].sellerOffer.seller.selfShipEnabled
+              ? FULFILLMENT_MODE_SELF_SHIP
+              : FULFILLMENT_MODE_SHIPROCKET,
             referralCodeId: buyerProfile?.referralCodeId || null,
             // Razorpay-intent checkouts ask to hold off telling sellers until
             // the payment actually succeeds (see Order.sellersNotifiedAt) -
@@ -1361,10 +1389,17 @@ export class OrdersService {
     // stay impossible until the buyer has actually paid.
     const orderRow = await this.prisma.order.findUnique({
       where: { id: orderId },
-      select: { paymentStatus: true },
+      select: { paymentStatus: true, fulfillmentMode: true },
     });
     if (!orderRow) {
       throw new NotFoundException('Order not found');
+    }
+    // Self-ship orders never go through the measurements/Shiprocket flow -
+    // the seller submits a tracking link via submitSelfShipTracking instead.
+    if (orderRow.fulfillmentMode === FULFILLMENT_MODE_SELF_SHIP) {
+      throw new ForbiddenException(
+        'This order uses self-ship fulfillment — submit your courier tracking link instead of shipping details.',
+      );
     }
     if (
       orderRow.paymentStatus === PaymentStatus.PENDING ||
@@ -1481,6 +1516,129 @@ export class OrdersService {
   }
 
   // ──────────────────────────────────────────────
+  // SELF-SHIP TRACKING (Seller)
+  // ──────────────────────────────────────────────
+
+  /**
+   * A self-ship seller submits (or later edits) the courier tracking link for
+   * their order. First submission stamps shippedAt and advances the order to
+   * SHIPPED — the same status the Shiprocket flow reaches via its sync — so
+   * everything downstream of "shipped" behaves identically for both modes.
+   * Later submissions only edit trackingUrl/courierName.
+   */
+  async submitSelfShipTracking(
+    userId: string,
+    orderId: string,
+    dto: SelfShipTrackingDto,
+  ) {
+    const seller = await this.prisma.sellerProfile.findUnique({
+      where: { userId },
+    });
+
+    if (!seller) {
+      throw new NotFoundException('Seller profile not found');
+    }
+
+    const sellerItems = await this.prisma.orderItem.findMany({
+      where: { orderId, sellerId: seller.id },
+      select: { id: true },
+    });
+
+    if (sellerItems.length === 0) {
+      throw new ForbiddenException('You do not have any items in this order');
+    }
+
+    const order = await this.prisma.order.findUnique({
+      where: { id: orderId },
+      select: {
+        id: true,
+        buyerId: true,
+        fulfillmentMode: true,
+        paymentStatus: true,
+        orderStatus: true,
+        shippedAt: true,
+        buyer: { select: { email: true, phone: true } },
+      },
+    });
+
+    if (!order) {
+      throw new NotFoundException('Order not found');
+    }
+
+    if (order.fulfillmentMode !== FULFILLMENT_MODE_SELF_SHIP) {
+      throw new ForbiddenException(
+        'This order is fulfilled via the platform shipping flow — self-ship tracking does not apply.',
+      );
+    }
+
+    // Same bar as updateShippingDetails: shipping anything before the buyer
+    // has paid must stay impossible.
+    if (
+      order.paymentStatus === PaymentStatus.PENDING ||
+      order.paymentStatus === PaymentStatus.FAILED
+    ) {
+      throw new ForbiddenException(
+        'This order has not been paid yet — tracking can be submitted once payment is received.',
+      );
+    }
+
+    if (
+      order.orderStatus === OrderStatus.CANCELLED ||
+      order.orderStatus === OrderStatus.RETURNED
+    ) {
+      throw new ForbiddenException('This order can no longer be shipped.');
+    }
+
+    const isFirstSubmit = order.shippedAt == null;
+
+    const updated = await this.prisma.order.update({
+      where: { id: orderId },
+      data: {
+        trackingUrl: dto.trackingUrl,
+        ...(dto.courierName !== undefined
+          ? { courierName: dto.courierName }
+          : {}),
+        ...(isFirstSubmit ? { shippedAt: new Date() } : {}),
+      },
+    });
+
+    if (isFirstSubmit) {
+      // Guarded on the not-yet-shipped statuses so a concurrent admin change
+      // (e.g. a cancellation between the read above and this write) always
+      // wins — mirrors updateShippingDetails' auto-accept updateMany.
+      const advanced = await this.prisma.order.updateMany({
+        where: {
+          id: orderId,
+          orderStatus: {
+            in: [
+              OrderStatus.PLACED,
+              OrderStatus.ACCEPTED,
+              OrderStatus.PAYMENT_RECEIVED,
+              OrderStatus.READY_TO_SHIP,
+              OrderStatus.DISPATCHED_FROM_SELLER,
+              OrderStatus.RECEIVED_AT_WAREHOUSE,
+            ],
+          },
+        },
+        data: { orderStatus: OrderStatus.SHIPPED },
+      });
+
+      if (advanced.count > 0) {
+        await this.notifyBuyerOfStatusChange(
+          { id: order.id, buyerId: order.buyerId, buyer: order.buyer },
+          OrderStatus.SHIPPED,
+        );
+      }
+    }
+
+    this.logger.log(
+      `Order ${orderId} self-ship tracking ${isFirstSubmit ? 'submitted' : 'updated'} by seller ${seller.id}`,
+    );
+
+    return updated;
+  }
+
+  // ──────────────────────────────────────────────
   // UPDATE ADMIN SHIPPING DOCS (Admin)
   // ──────────────────────────────────────────────
   async updateAdminShippingDocs(
@@ -1501,6 +1659,14 @@ export class OrdersService {
 
     if (!order) {
       throw new NotFoundException('Order not found');
+    }
+
+    // Self-ship orders have no Shiprocket label/manifest/invoice to manage -
+    // the seller ships with their own courier and documents.
+    if (order.fulfillmentMode === FULFILLMENT_MODE_SELF_SHIP) {
+      throw new ForbiddenException(
+        'This order uses self-ship fulfillment — shipping documents do not apply.',
+      );
     }
 
     const { sellerId, ...updateFields } = dto;

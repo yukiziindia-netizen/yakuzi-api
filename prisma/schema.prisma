@@ -98,6 +98,11 @@ model SellerProfile {
   state               String
   pincode             String
   isVacation          Boolean            @default(false)
+  /// When true, orders created for this seller are fulfilled by the seller's
+  /// own courier (self-ship) instead of the platform's Shiprocket flow.
+  /// Snapshotted onto Order.fulfillmentMode at checkout - toggling this
+  /// never changes existing orders.
+  selfShipEnabled     Boolean            @default(false)
   rating              Float              @default(0)
   verificationStatus  VerificationStatus @default(UNVERIFIED)
   createdAt           DateTime           @default(now())
@@ -373,6 +378,15 @@ model Order {
   shipmentId        String?
   awbCode           String?
   courierName       String?
+  // Self-ship fulfillment ('shiprocket' | 'self_ship'). Snapshotted from the
+  // seller's selfShipEnabled at checkout; never changed afterwards.
+  fulfillmentMode   String        @default("shiprocket")
+  // Courier tracking page for the buyer's "Track order" button. Shiprocket
+  // orders: written by syncTrackingFields once Shiprocket reports an AWB.
+  // Self-ship orders: entered by the seller.
+  trackingUrl       String?
+  // Set once, when a self-ship seller first submits their tracking link.
+  shippedAt         DateTime?
   address           OrderAddress?
   items             OrderItem[]
   buyer             User          @relation(fields: [buyerId], references: [id], onDelete: Cascade)

@@ -29,6 +29,7 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { OrdersService } from './orders.service';
 import { ShiprocketService } from './shiprocket.service';
+import { SelfShipTrackingDto } from './dto/self-ship-tracking.dto';
 import { InvoiceService } from './invoice.service';
 import { InvoiceEmailService } from './invoice-email.service';
 import { CreateOrderDto } from './dto/create-order.dto';
@@ -248,6 +249,30 @@ export class OrdersController {
     );
     return { message: 'Shipping details updated successfully', data };
   }
+
+  // ──────────────────────────────────────────────
+  // SELF-SHIP TRACKING (Seller)
+  // ──────────────────────────────────────────────
+  @Patch(':id/self-ship-tracking')
+  @Roles(Role.SELLER)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      'Submit or edit the courier tracking link for a self-ship order (seller)',
+  })
+  @ApiResponse({ status: 200, description: 'Self-ship tracking saved' })
+  async submitSelfShipTracking(
+    @CurrentUser('id') userId: string,
+    @Param('id', ParseUUIDPipe) orderId: string,
+    @Body() dto: SelfShipTrackingDto,
+  ) {
+    const data = await this.ordersService.submitSelfShipTracking(
+      userId,
+      orderId,
+      dto,
+    );
+    return { message: 'Self-ship tracking saved successfully', data };
+  }
   // ──────────────────────────────────────────────
   // ADMIN UPDATE SHIPPING DOCS
   // ──────────────────────────────────────────────
@@ -301,6 +326,7 @@ export class OrdersController {
     await this.ordersService.syncTrackingFields(orderId, {
       awb_code: data.awb_code,
       courier: data.courier,
+      track_url: data.track_url,
     });
     return { message: 'Tracking details retrieved successfully', data };
   }

@@ -973,3 +973,318 @@ describe('OrdersService.cancelOrder', () => {
     expect(prisma.order.findUniqueOrThrow).not.toHaveBeenCalled();
   });
 });
+
+describe('OrdersService.checkout — fulfillmentMode snapshot', () => {
+  const cartItem = (seller: Partial<any> = {}) => ({
+    id: 'cartitem-1',
+    sellerOfferId: 'offer-1',
+    quantity: 1,
+    unitPrice: 50,
+    sellerOffer: {
+      id: 'offer-1',
+      name: 'Test Product',
+      isActive: true,
+      deletedAt: null,
+      mrp: 100,
+      finalCustomerPayable: 80,
+      seller: {
+        id: 'seller-1',
+        verificationStatus: 'APPROVED',
+        companyName: 'Acme',
+        selfShipEnabled: false,
+        ...seller,
+      },
+      batches: [{ id: 'batch-1', stock: 10, expiryDate: new Date('2099-01-01') }],
+    },
+  });
+
+  const buildCheckout = (items: any[]) => {
+    const orderCreateCalls: any[] = [];
+    const tx = {
+      order: {
+        create: jest.fn().mockImplementation((args: any) => {
+          orderCreateCalls.push(args);
+          return Promise.resolve({ id: 'order-1' });
+        }),
+      },
+      orderItem: {
+        createMany: jest.fn().mockResolvedValue({ count: items.length }),
+      },
+      orderAddress: { create: jest.fn().mockResolvedValue({}) },
+      productBatch: { update: jest.fn().mockResolvedValue({}) },
+      cartItem: { deleteMany: jest.fn().mockResolvedValue({ count: items.length }) },
+    };
+    const prisma = {
+      cart: { findUnique: jest.fn().mockResolvedValue({ id: 'cart-1', items }) },
+      buyerProfile: { findUnique: jest.fn().mockResolvedValue({ referralCodeId: null }) },
+      $transaction: jest.fn().mockImplementation((cb: any) => cb(tx)),
+      order: { findUnique: jest.fn().mockResolvedValue({ id: 'order-1', items: [] }) },
+    };
+    const service = new OrdersService(
+      prisma as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+    );
+    return { service, orderCreateCalls };
+  };
+
+  const checkoutDto = () => dto({ deferSellerNotification: true } as never);
+
+  it("snapshots 'self_ship' when the seller has selfShipEnabled at checkout", async () => {
+    const { service, orderCreateCalls } = buildCheckout([
+      cartItem({ selfShipEnabled: true }),
+    ]);
+
+    await service.checkout('buyer-1', checkoutDto());
+
+    expect(orderCreateCalls[0].data.fulfillmentMode).toBe('self_ship');
+  });
+
+  it("defaults to 'shiprocket' when the seller flag is off", async () => {
+    const { service, orderCreateCalls } = buildCheckout([cartItem()]);
+
+    await service.checkout('buyer-1', checkoutDto());
+
+    expect(orderCreateCalls[0].data.fulfillmentMode).toBe('shiprocket');
+  });
+});
+
+describe('OrdersService self-ship guards on the Shiprocket flow', () => {
+  const buildService = (prisma: any = {}, shiprocket: any = {}) =>
+    new OrdersService(
+      prisma as never,
+      shiprocket as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+    );
+
+  it('pushOrderToShiprocketIfNeeded no-ops for a self_ship order', async () => {
+    const shiprocket = {
+      getPrimaryPickupLocation: jest.fn(),
+      createOrder: jest.fn(),
+    };
+    const service = buildService({}, shiprocket);
+
+    const result = await service.pushOrderToShiprocketIfNeeded({
+      id: 'order-1',
+      createdAt: new Date(),
+      totalAmount: 100,
+      paymentStatus: PaymentStatus.SUCCESS,
+      shiprocketOrderId: null,
+      fulfillmentMode: 'self_ship',
+      address: null,
+      buyer: {},
+      items: [],
+    });
+
+    expect(result).toEqual({});
+    expect(shiprocket.getPrimaryPickupLocation).not.toHaveBeenCalled();
+    expect(shiprocket.createOrder).not.toHaveBeenCalled();
+  });
+
+  it('updateShippingDetails rejects a self_ship order before writing anything', async () => {
+    const prisma = {
+      sellerProfile: { findUnique: jest.fn().mockResolvedValue({ id: 'seller-1' }) },
+      orderItem: {
+        findMany: jest.fn().mockResolvedValue([{ id: 'item-1', isShippingLocked: false }]),
+        updateMany: jest.fn(),
+      },
+      order: {
+        findUnique: jest.fn().mockResolvedValue({
+          paymentStatus: PaymentStatus.SUCCESS,
+          fulfillmentMode: 'self_ship',
+        }),
+        update: jest.fn(),
+      },
+    };
+    const service = buildService(prisma);
+
+    await expect(
+      service.updateShippingDetails('user-1', 'order-1', { packageWeight: 1 } as never),
+    ).rejects.toThrow('self-ship fulfillment');
+    expect(prisma.orderItem.updateMany).not.toHaveBeenCalled();
+    expect(prisma.order.update).not.toHaveBeenCalled();
+  });
+
+  it('updateAdminShippingDocs rejects a self_ship order before writing anything', async () => {
+    const prisma = {
+      order: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: 'order-1',
+          fulfillmentMode: 'self_ship',
+          items: [{ sellerId: 'seller-1', packageLength: 10 }],
+        }),
+        update: jest.fn(),
+      },
+      orderItem: { updateMany: jest.fn() },
+    };
+    const service = buildService(prisma);
+
+    await expect(
+      service.updateAdminShippingDocs('order-1', { adminShippingLabelUrl: 'https://x/label.pdf' }),
+    ).rejects.toThrow('self-ship fulfillment');
+    expect(prisma.order.update).not.toHaveBeenCalled();
+    expect(prisma.orderItem.updateMany).not.toHaveBeenCalled();
+  });
+});
+
+describe('OrdersService.syncTrackingFields — track_url', () => {
+  it('persists the Shiprocket tracking URL alongside awb/courier', async () => {
+    const prisma = { order: { update: jest.fn().mockResolvedValue({}) } };
+    const service = new OrdersService(
+      prisma as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+    );
+
+    await service.syncTrackingFields('order-1', {
+      awb_code: 'AWB123',
+      courier: 'Delhivery',
+      track_url: 'https://shiprocket.co/tracking/AWB123',
+    });
+
+    expect(prisma.order.update).toHaveBeenCalledWith({
+      where: { id: 'order-1' },
+      data: {
+        awbCode: 'AWB123',
+        courierName: 'Delhivery',
+        trackingUrl: 'https://shiprocket.co/tracking/AWB123',
+      },
+    });
+  });
+});
+
+describe('OrdersService.submitSelfShipTracking', () => {
+  const buildSubmit = (orderOver: Partial<any> = {}, opts: { sellerItems?: any[] } = {}) => {
+    const prisma = {
+      sellerProfile: { findUnique: jest.fn().mockResolvedValue({ id: 'seller-1' }) },
+      orderItem: {
+        findMany: jest.fn().mockResolvedValue(
+          opts.sellerItems ?? [{ id: 'item-1' }],
+        ),
+      },
+      order: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: 'order-1',
+          buyerId: 'buyer-1',
+          fulfillmentMode: 'self_ship',
+          paymentStatus: PaymentStatus.SUCCESS,
+          orderStatus: OrderStatus.PLACED,
+          shippedAt: null,
+          buyer: { email: 'b@x.com', phone: '9999999999' },
+          ...orderOver,
+        }),
+        update: jest.fn().mockResolvedValue({ id: 'order-1' }),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+      },
+    };
+    const service = new OrdersService(
+      prisma as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+    );
+    const notifySpy = jest
+      .spyOn(service, 'notifyBuyerOfStatusChange')
+      .mockResolvedValue(undefined);
+    return { service, prisma, notifySpy };
+  };
+
+  const trackingDto = { trackingUrl: 'https://courier.example/track/123' };
+
+  it('rejects an order whose mode is not self_ship', async () => {
+    const { service, prisma } = buildSubmit({ fulfillmentMode: 'shiprocket' });
+
+    await expect(
+      service.submitSelfShipTracking('user-1', 'order-1', trackingDto),
+    ).rejects.toThrow('self-ship tracking does not apply');
+    expect(prisma.order.update).not.toHaveBeenCalled();
+  });
+
+  it('rejects when the buyer has not paid yet', async () => {
+    const { service, prisma } = buildSubmit({ paymentStatus: PaymentStatus.PENDING });
+
+    await expect(
+      service.submitSelfShipTracking('user-1', 'order-1', trackingDto),
+    ).rejects.toThrow('has not been paid yet');
+    expect(prisma.order.update).not.toHaveBeenCalled();
+  });
+
+  it('rejects when the seller has no items in the order', async () => {
+    const { service, prisma } = buildSubmit({}, { sellerItems: [] });
+
+    await expect(
+      service.submitSelfShipTracking('user-1', 'order-1', trackingDto),
+    ).rejects.toThrow('do not have any items');
+    expect(prisma.order.update).not.toHaveBeenCalled();
+  });
+
+  it('rejects a cancelled order', async () => {
+    const { service } = buildSubmit({ orderStatus: OrderStatus.CANCELLED });
+
+    await expect(
+      service.submitSelfShipTracking('user-1', 'order-1', trackingDto),
+    ).rejects.toThrow('can no longer be shipped');
+  });
+
+  it('first submit saves the link, stamps shippedAt, advances to SHIPPED and notifies the buyer', async () => {
+    const { service, prisma, notifySpy } = buildSubmit();
+
+    await service.submitSelfShipTracking('user-1', 'order-1', {
+      ...trackingDto,
+      courierName: 'BlueDart',
+    });
+
+    const updateData = prisma.order.update.mock.calls[0][0].data;
+    expect(updateData.trackingUrl).toBe(trackingDto.trackingUrl);
+    expect(updateData.courierName).toBe('BlueDart');
+    expect(updateData.shippedAt).toBeInstanceOf(Date);
+
+    expect(prisma.order.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ id: 'order-1' }),
+        data: { orderStatus: OrderStatus.SHIPPED },
+      }),
+    );
+    expect(notifySpy).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'order-1', buyerId: 'buyer-1' }),
+      OrderStatus.SHIPPED,
+    );
+  });
+
+  it('later submits only edit the link — no re-stamp, no status change, no notification', async () => {
+    const { service, prisma, notifySpy } = buildSubmit({
+      shippedAt: new Date('2026-08-01'),
+      orderStatus: OrderStatus.SHIPPED,
+    });
+
+    await service.submitSelfShipTracking('user-1', 'order-1', {
+      trackingUrl: 'https://courier.example/track/456',
+    });
+
+    const updateData = prisma.order.update.mock.calls[0][0].data;
+    expect(updateData.trackingUrl).toBe('https://courier.example/track/456');
+    expect(updateData.shippedAt).toBeUndefined();
+    expect(prisma.order.updateMany).not.toHaveBeenCalled();
+    expect(notifySpy).not.toHaveBeenCalled();
+  });
+
+  it('does not notify when the guarded status advance loses to a concurrent change', async () => {
+    const { service, prisma, notifySpy } = buildSubmit();
+    prisma.order.updateMany.mockResolvedValue({ count: 0 });
+
+    await service.submitSelfShipTracking('user-1', 'order-1', trackingDto);
+
+    expect(notifySpy).not.toHaveBeenCalled();
+  });
+});
