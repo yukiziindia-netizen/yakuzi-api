@@ -234,8 +234,11 @@ export class OrdersService {
       track_url?: string | null;
     },
   ): Promise<void> {
-    const data: { awbCode?: string; courierName?: string; trackingUrl?: string } =
-      {};
+    const data: {
+      awbCode?: string;
+      courierName?: string;
+      trackingUrl?: string;
+    } = {};
     if (tracking.awb_code) data.awbCode = tracking.awb_code;
     if (tracking.courier) data.courierName = tracking.courier;
     if (tracking.track_url) data.trackingUrl = tracking.track_url;

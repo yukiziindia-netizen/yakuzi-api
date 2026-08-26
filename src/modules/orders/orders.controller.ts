@@ -326,7 +326,7 @@ export class OrdersController {
     await this.ordersService.syncTrackingFields(orderId, {
       awb_code: data.awb_code,
       courier: data.courier,
-      track_url: data.track_url,
+      track_url: data.track_url as string | null,
     });
     return { message: 'Tracking details retrieved successfully', data };
   }
