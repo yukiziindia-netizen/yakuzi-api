@@ -36,6 +36,7 @@ import { AdminUpdateTicketStatusDto } from './dto/admin-update-ticket-status.dto
 import { AdminReplyTicketDto } from './dto/admin-reply-ticket.dto';
 import { MarkPaidDto } from '../settlements/dto/mark-paid.dto';
 import { UpdateGstPanStatusDto } from './dto/update-gst-pan-status.dto';
+import { UpdateSelfShipDto } from './dto/update-self-ship.dto';
 import { AddMarketingProductDto } from './dto/add-marketing-product.dto';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { UploadedFile, UseInterceptors } from '@nestjs/common';
@@ -684,6 +685,22 @@ export class AdminController {
       dto,
     );
     return { message: 'Seller GST/PAN status updated', data };
+  }
+
+  @Patch('sellers/:id/self-ship')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      "Toggle a seller's self-ship fulfillment mode (affects new orders only)",
+  })
+  @ApiResponse({ status: 200, description: 'Seller self-ship flag updated' })
+  @ApiResponse({ status: 404, description: 'Seller profile not found' })
+  async updateSellerSelfShip(
+    @Param('id', ParseUUIDPipe) sellerId: string,
+    @Body() dto: UpdateSelfShipDto,
+  ) {
+    const data = await this.adminService.updateSellerSelfShip(sellerId, dto);
+    return { message: 'Seller self-ship flag updated', data };
   }
 
   @Patch('users/:id/seller-profile')

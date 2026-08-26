@@ -894,3 +894,51 @@ describe('AdminService.getAllProducts — other-sellers aggregation', () => {
     expect(result.data[0].sellers).toEqual([{ id: 'seller-1', companyName: 'Acme' }]);
   });
 });
+
+
+describe('AdminService.updateSellerSelfShip', () => {
+  const build = (seller: object | null) => {
+    const prisma = {
+      sellerProfile: {
+        findUnique: jest.fn().mockResolvedValue(seller),
+        update: jest.fn().mockResolvedValue({
+          id: 'seller-1',
+          companyName: 'Acme',
+          selfShipEnabled: true,
+        }),
+      },
+    };
+    const service = new AdminService(
+      prisma as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+    );
+    return { service, prisma };
+  };
+
+  it('updates ONLY the selfShipEnabled flag', async () => {
+    const { service, prisma } = build({ id: 'seller-1' });
+
+    await service.updateSellerSelfShip('seller-1', { selfShipEnabled: true });
+
+    expect(prisma.sellerProfile.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'seller-1' },
+        data: { selfShipEnabled: true },
+      }),
+    );
+  });
+
+  it('404s for an unknown seller profile', async () => {
+    const { service, prisma } = build(null);
+
+    await expect(
+      service.updateSellerSelfShip('nope', { selfShipEnabled: true }),
+    ).rejects.toThrow('Seller profile not found');
+    expect(prisma.sellerProfile.update).not.toHaveBeenCalled();
+  });
+});
