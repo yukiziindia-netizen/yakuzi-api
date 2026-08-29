@@ -202,3 +202,63 @@ describe('SellerOrderNotifierService.notifySellersDocsReady', () => {
     expect(prisma.sellerProfile.findMany).not.toHaveBeenCalled();
   });
 });
+
+describe('SellerOrderNotifierService — admin new-order email', () => {
+  const originalAdmin = process.env.ADMIN_NOTIFICATION_EMAIL;
+  const originalSmtp = process.env.SMTP_USER;
+  afterEach(() => {
+    if (originalAdmin === undefined) delete process.env.ADMIN_NOTIFICATION_EMAIL;
+    else process.env.ADMIN_NOTIFICATION_EMAIL = originalAdmin;
+    if (originalSmtp === undefined) delete process.env.SMTP_USER;
+    else process.env.SMTP_USER = originalSmtp;
+  });
+
+  const buildWithOrders = (orders: { id: string; totalAmount: number; buyer: { username: string | null; phone: string | null } }[]) => {
+    const prisma = {
+      sellerProfile: { findMany: jest.fn().mockResolvedValue([]) },
+      order: { findMany: jest.fn().mockResolvedValue(orders) },
+    };
+    const notificationsService = { notifySellerNewOrder: jest.fn().mockResolvedValue(undefined) };
+    const mailService = { sendMail: jest.fn().mockResolvedValue({ sent: true, retryable: false }) };
+    const service = new SellerOrderNotifierService(
+      prisma as never,
+      mailService as never,
+      notificationsService as never,
+    );
+    return { service, prisma, mailService };
+  };
+
+  it('emails the admin once per call, deduping order ids across seller pairs', async () => {
+    process.env.ADMIN_NOTIFICATION_EMAIL = 'admin@yukizi.com';
+    const { service, prisma, mailService } = buildWithOrders([
+      { id: 'aaaabbbb-1111', totalAmount: 500, buyer: { username: 'ravi', phone: null } },
+    ]);
+
+    await service.notifySellersOfNewOrder([
+      { orderId: 'aaaabbbb-1111', sellerId: 'seller-1' },
+      { orderId: 'aaaabbbb-1111', sellerId: 'seller-2' },
+    ]);
+
+    expect(prisma.order.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: { in: ['aaaabbbb-1111'] } } }),
+    );
+    expect(mailService.sendMail).toHaveBeenCalledTimes(1);
+    expect(mailService.sendMail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        to: 'admin@yukizi.com',
+        subject: expect.stringContaining('AAAABBBB'),
+      }),
+    );
+  });
+
+  it('skips the admin email without touching orders when no recipient is configured', async () => {
+    delete process.env.ADMIN_NOTIFICATION_EMAIL;
+    delete process.env.SMTP_USER;
+    const { service, prisma, mailService } = buildWithOrders([]);
+
+    await service.notifySellersOfNewOrder([{ orderId: 'order-1', sellerId: 'seller-1' }]);
+
+    expect(prisma.order.findMany).not.toHaveBeenCalled();
+    expect(mailService.sendMail).not.toHaveBeenCalled();
+  });
+});

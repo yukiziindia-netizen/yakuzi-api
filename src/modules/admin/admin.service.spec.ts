@@ -493,14 +493,17 @@ describe('AdminService.approveUser — seller approval email', () => {
     email: string | null;
     status: string;
     sellerProfile: { userId: string; email: string | null; companyName: string } | null;
-  }) => {
+  }, buyerProfile: { legalName: string | null; creditTier?: string | null } | null = null) => {
     const prisma = {
       user: {
         findUnique: jest.fn().mockResolvedValue(user),
         update: jest.fn().mockResolvedValue(user),
       },
       sellerProfile: { update: jest.fn().mockResolvedValue({}) },
-      buyerProfile: { findUnique: jest.fn().mockResolvedValue(null) },
+      buyerProfile: {
+        findUnique: jest.fn().mockResolvedValue(buyerProfile),
+        update: jest.fn().mockResolvedValue({}),
+      },
     };
     const notificationsService = { notifyUserVerified: jest.fn().mockResolvedValue(undefined) };
     const ordersService = {};
@@ -550,7 +553,7 @@ describe('AdminService.approveUser — seller approval email', () => {
     );
   });
 
-  it('does not email, and does not throw, when a buyer is approved', async () => {
+  it('does not email, and does not throw, when the approved user has no profile of either kind', async () => {
     const { service, mailService } = buildForApprove({
       id: 'user-2',
       role: 'BUYER',
@@ -558,6 +561,44 @@ describe('AdminService.approveUser — seller approval email', () => {
       status: 'PENDING',
       sellerProfile: null,
     });
+
+    await expect(service.approveUser('user-2')).resolves.toBeDefined();
+    expect(mailService.sendMail).not.toHaveBeenCalled();
+  });
+
+  it('emails the buyer their approval at the login address', async () => {
+    const { service, mailService } = buildForApprove(
+      {
+        id: 'user-2',
+        role: 'BUYER',
+        email: 'buyer@example.com',
+        status: 'PENDING',
+        sellerProfile: null,
+      },
+      { legalName: 'Ravi Kumar' },
+    );
+
+    await service.approveUser('user-2');
+
+    expect(mailService.sendMail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        to: 'buyer@example.com',
+        subject: expect.stringContaining('verified'),
+      }),
+    );
+  });
+
+  it('skips the buyer email, without throwing, when the buyer has no login email', async () => {
+    const { service, mailService } = buildForApprove(
+      {
+        id: 'user-2',
+        role: 'BUYER',
+        email: null,
+        status: 'PENDING',
+        sellerProfile: null,
+      },
+      { legalName: 'Ravi Kumar' },
+    );
 
     await expect(service.approveUser('user-2')).resolves.toBeDefined();
     expect(mailService.sendMail).not.toHaveBeenCalled();

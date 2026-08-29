@@ -19,6 +19,7 @@ describe('PaymentsService.notifyDeferredSellers', () => {
       {} as never,
       {} as never,
       sellerOrderNotifier as never,
+      { sendMail: jest.fn().mockResolvedValue({ sent: true }) } as never,
     );
     return { service, prisma, sellerOrderNotifier };
   };
@@ -110,5 +111,69 @@ describe('PaymentsService.notifyDeferredSellers', () => {
     expect(sellerOrderNotifier.notifySellersOfNewOrder).toHaveBeenCalledWith([
       { orderId: 'order-2', sellerId: 'seller-2' },
     ]);
+  });
+});
+
+describe('PaymentsService — admin email on buyer payment submission', () => {
+  const originalAdmin = process.env.ADMIN_NOTIFICATION_EMAIL;
+  const originalSmtp = process.env.SMTP_USER;
+  afterEach(() => {
+    if (originalAdmin === undefined) delete process.env.ADMIN_NOTIFICATION_EMAIL;
+    else process.env.ADMIN_NOTIFICATION_EMAIL = originalAdmin;
+    if (originalSmtp === undefined) delete process.env.SMTP_USER;
+    else process.env.SMTP_USER = originalSmtp;
+  });
+
+  const buildForProof = () => {
+    const payment = {
+      id: 'pay-1',
+      orderId: 'aaaabbbb-2222',
+      amount: { toNumber: () => 750 },
+      method: 'BANK_TRANSFER',
+      verificationStatus: 'PENDING',
+      order: { buyerId: 'buyer-1' },
+    };
+    const prisma = {
+      payment: {
+        findUnique: jest.fn().mockResolvedValue(payment),
+        update: jest.fn().mockResolvedValue(payment),
+      },
+    };
+    const config = { get: jest.fn().mockReturnValue('0.05') };
+    const mailService = { sendMail: jest.fn().mockResolvedValue({ sent: true, retryable: false }) };
+    const service = new PaymentsService(
+      prisma as never,
+      config as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      mailService as never,
+    );
+    return { service, mailService };
+  };
+
+  it('emails the admin when a buyer uploads payment proof', async () => {
+    process.env.ADMIN_NOTIFICATION_EMAIL = 'admin@yukizi.com';
+    const { service, mailService } = buildForProof();
+
+    await service.uploadProof('buyer-1', 'pay-1', { proofUrl: 'https://x/proof.png' } as never);
+
+    expect(mailService.sendMail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        to: 'admin@yukizi.com',
+        subject: expect.stringContaining('AAAABBBB'),
+      }),
+    );
+  });
+
+  it('proof upload still succeeds when no admin recipient is configured', async () => {
+    delete process.env.ADMIN_NOTIFICATION_EMAIL;
+    delete process.env.SMTP_USER;
+    const { service, mailService } = buildForProof();
+
+    await expect(
+      service.uploadProof('buyer-1', 'pay-1', { proofUrl: 'https://x/proof.png' } as never),
+    ).resolves.toBeDefined();
+    expect(mailService.sendMail).not.toHaveBeenCalled();
   });
 });

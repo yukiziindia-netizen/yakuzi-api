@@ -76,6 +76,74 @@ export class SellerOrderNotifierService {
     await Promise.allSettled(
       pairs.map((pair) => this.notifyOneSeller(pair, sellerById)),
     );
+
+    // Admin copy of the same event. This method is the single convergence
+    // point for "a real order exists": checkout calls it immediately for
+    // COD/bank/credit, and PaymentsService calls it for Razorpay-intent
+    // orders only after payment succeeds (sellersNotifiedAt claim) — so the
+    // admin gets exactly one email per real order and none for abandoned
+    // Razorpay checkouts. Best-effort like everything else here.
+    await this.emailAdminNewOrder([...new Set(pairs.map((p) => p.orderId))]);
+  }
+
+  /**
+   * One email per notifySellersOfNewOrder call, covering every order in the
+   * group (a multi-seller checkout creates one Order per seller in the same
+   * instant — the admin wants one email about the purchase, not N).
+   * Never throws: an admin-email failure must not affect order flow.
+   */
+  private async emailAdminNewOrder(orderIds: string[]): Promise<void> {
+    if (orderIds.length === 0) return;
+    const to =
+      process.env.ADMIN_NOTIFICATION_EMAIL?.trim() ||
+      process.env.SMTP_USER?.trim();
+    if (!to) {
+      this.logger.warn(
+        `new-order admin email skipped: neither ADMIN_NOTIFICATION_EMAIL nor SMTP_USER is set (orders ${orderIds.join(', ')})`,
+      );
+      return;
+    }
+    try {
+      const orders = await this.prisma.order.findMany({
+        where: { id: { in: orderIds } },
+        select: {
+          id: true,
+          totalAmount: true,
+          buyer: { select: { username: true, phone: true } },
+        },
+      });
+      if (orders.length === 0) return;
+      const buyer = orders[0].buyer;
+      const buyerLabel = buyer?.username?.trim() || buyer?.phone || 'a buyer';
+      const lines = orders.map(
+        (o) => `#${o.id.slice(0, 8).toUpperCase()} — ₹${String(o.totalAmount)}`,
+      );
+      const adminAppUrl =
+        process.env.ADMIN_APP_URL?.trim() || 'https://admin.yukizi.com';
+      const result = await this.mailService.sendMail({
+        to,
+        subject: `New order${orders.length > 1 ? 's' : ''} from ${buyerLabel}: ${lines.join(', ')}`,
+        text: `A new order has been placed on Yukizi.\n\nBuyer: ${buyerLabel}\n${lines.join('\n')}\n\nReview: ${adminAppUrl}/orders`,
+        html: `<p>A new order has been placed on Yukizi.</p><p>Buyer: <strong>${this.escapeHtml(buyerLabel)}</strong></p><p>${lines.map((l) => this.escapeHtml(l)).join('<br/>')}</p><p><a href="${adminAppUrl}/orders">Review orders</a></p>`,
+      });
+      if (!result.sent) {
+        this.logger.warn(
+          `new-order admin email not sent (retryable=${result.retryable}) for orders ${orderIds.join(', ')}`,
+        );
+      }
+    } catch (error) {
+      this.logger.warn(
+        `new-order admin email failed for orders ${orderIds.join(', ')}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+
+  private escapeHtml(value: string): string {
+    return String(value ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
   }
 
   /**

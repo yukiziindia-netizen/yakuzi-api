@@ -566,6 +566,9 @@ export class AdminService {
     if (user.sellerProfile) {
       await this.emailSellerApproved(user.sellerProfile, userId, updatedUser.email);
     }
+    if (buyerProfile) {
+      await this.emailBuyerApproved(buyerProfile, userId, updatedUser.email);
+    }
 
     return updatedUser;
   }
@@ -574,6 +577,38 @@ export class AdminService {
    * Best-effort — approval has already succeeded and been persisted by the
    * time this runs, so a mail failure here must never surface to the caller.
    */
+  /**
+   * Buyer-side counterpart of emailSellerApproved: the in-app notification
+   * (notifyUserVerified) already fires for buyers, but no email did.
+   * BuyerProfile has no contact-email field, so the login email is the only
+   * address; a buyer without one just skips the email channel.
+   */
+  private async emailBuyerApproved(
+    buyerProfile: { legalName: string | null },
+    userId: string,
+    loginEmail: string | null,
+  ): Promise<void> {
+    const to = loginEmail?.trim();
+    if (!to) return;
+
+    const name = buyerProfile.legalName?.trim() || 'there';
+    const result = await this.mailService.sendMail({
+      to,
+      subject: 'Your Yukizi account has been verified!',
+      text: `Hello ${name},
+
+Your Yukizi account has been verified. You can now log in and start ordering.
+
+Yukizi`,
+      html: `<p>Hello ${this.escape(name)},</p><p>Your Yukizi account has been verified. You can now log in and start ordering.</p><p>Yukizi</p>`,
+    });
+    if (!result.sent) {
+      this.logger.warn(
+        `Could not email buyer ${userId} about their approval (retryable=${result.retryable})`,
+      );
+    }
+  }
+
   private async emailSellerApproved(
     sellerProfile: { email: string | null; companyName: string },
     userId: string,

@@ -17,6 +17,7 @@ import { calculateSellerPayout } from '../settlements/payout-calculator';
 import { InvoiceEmailService } from '../orders/invoice-email.service';
 import { SellerOrderNotifierService } from '../orders/seller-order-notifier.service';
 import { WebAnalyticsService } from '../web-analytics/web-analytics.service';
+import { MailService } from '../mail/mail.service';
 
 @Injectable()
 export class PaymentsService {
@@ -29,6 +30,7 @@ export class PaymentsService {
     private readonly invoiceEmailService: InvoiceEmailService,
     private readonly webAnalytics: WebAnalyticsService,
     private readonly sellerOrderNotifier: SellerOrderNotifierService,
+    private readonly mailService: MailService,
   ) {
     this.commissionRate = parseFloat(
       this.config.get<string>('PLATFORM_COMMISSION_RATE', '0.05'),
@@ -106,6 +108,12 @@ export class PaymentsService {
       `Payment recorded: ${payment.id} — ₹${amount} via ${method} for order ${orderId} (part of group of ${relatedOrders.length} orders)`,
     );
 
+    await this.emailAdminPaymentSubmitted(orderId, {
+      amount,
+      method,
+      kind: 'Payment details submitted',
+    });
+
     return payment;
   }
 
@@ -139,6 +147,11 @@ export class PaymentsService {
     });
 
     this.logger.log(`Proof uploaded for payment ${paymentId}`);
+    await this.emailAdminPaymentSubmitted(payment.orderId, {
+      amount: payment.amount.toNumber(),
+      method: payment.method,
+      kind: 'Payment proof uploaded',
+    });
     return updated;
   }
 
@@ -181,6 +194,11 @@ export class PaymentsService {
     this.logger.log(
       `Proof uploaded for order ${orderId} — payment ${payment.id}`,
     );
+    await this.emailAdminPaymentSubmitted(orderId, {
+      amount: payment.amount.toNumber(),
+      method: payment.method,
+      kind: 'Payment proof uploaded',
+    });
     return payment;
   }
 
@@ -407,6 +425,55 @@ export class PaymentsService {
       totalPaid: result.confirmedTotalPaid,
       totalAmount: payment.order.totalAmount.toNumber(),
     };
+  }
+
+  /**
+   * Tells the admin a buyer submitted manual payment details or proof —
+   * these rows sit at PaymentVerificationStatus.PENDING until an admin
+   * confirms them, and nothing surfaced the event before. Only the manual
+   * flow reaches here; Razorpay's pre-popup PENDING row is created in
+   * RazorpayService and deliberately does not email (it would fire on every
+   * checkout popup). Best-effort — never throws into the payment flow.
+   */
+  private async emailAdminPaymentSubmitted(
+    orderId: string,
+    details: { amount: number; method: string; kind: string },
+  ): Promise<void> {
+    const to =
+      process.env.ADMIN_NOTIFICATION_EMAIL?.trim() ||
+      process.env.SMTP_USER?.trim();
+    if (!to) {
+      this.logger.warn(
+        `payment-submitted admin email skipped: neither ADMIN_NOTIFICATION_EMAIL nor SMTP_USER is set (order ${orderId})`,
+      );
+      return;
+    }
+    const shortId = orderId.slice(0, 8).toUpperCase();
+    const adminAppUrl =
+      process.env.ADMIN_APP_URL?.trim() || 'https://admin.yukizi.com';
+    try {
+      const result = await this.mailService.sendMail({
+        to,
+        subject: `${details.kind} for order #${shortId} — ₹${details.amount} (${details.method})`,
+        text: `${details.kind} on Yukizi.
+
+Order: #${shortId}
+Amount: ₹${details.amount}
+Method: ${details.method}
+
+Verify: ${adminAppUrl}/settlements`,
+        html: `<p>${details.kind} on Yukizi.</p><p>Order: <strong>#${shortId}</strong><br/>Amount: <strong>₹${details.amount}</strong><br/>Method: ${details.method}</p><p><a href="${adminAppUrl}/settlements">Verify this payment</a></p>`,
+      });
+      if (!result.sent) {
+        this.logger.warn(
+          `payment-submitted admin email not sent for order ${orderId} (retryable=${result.retryable})`,
+        );
+      }
+    } catch (error) {
+      this.logger.warn(
+        `payment-submitted admin email failed for order ${orderId}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
   }
 
   /**

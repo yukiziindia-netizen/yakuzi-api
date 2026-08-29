@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { IdfyService } from '../verification/idfy.service';
+import { MailService } from '../mail/mail.service';
 import { CreateBuyerProfileDto } from './dto/create-buyer-profile.dto';
 import { UpdateBuyerProfileDto } from './dto/update-buyer-profile.dto';
 import * as bcrypt from 'bcrypt';
@@ -18,7 +19,62 @@ export class BuyersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly idfyService: IdfyService,
+    private readonly mailService: MailService,
   ) {}
+
+  /**
+   * Tells the admin a buyer has submitted their profile for verification
+   * (verificationStatus just became PENDING). Mirrors the seller-side
+   * emailAdminNewSeller convention: ADMIN_NOTIFICATION_EMAIL with SMTP_USER
+   * fallback, best-effort — a mail failure must never fail the submission.
+   */
+  private async emailAdminNewBuyer(
+    userId: string,
+    displayName: string | null | undefined,
+  ): Promise<void> {
+    const to =
+      process.env.ADMIN_NOTIFICATION_EMAIL?.trim() ||
+      process.env.SMTP_USER?.trim();
+    if (!to) {
+      this.logger.warn(
+        `new-buyer-verification admin email skipped: neither ADMIN_NOTIFICATION_EMAIL nor SMTP_USER is set (user ${userId})`,
+      );
+      return;
+    }
+    const name = displayName?.trim() || `user ${userId}`;
+    const adminAppUrl =
+      process.env.ADMIN_APP_URL?.trim() || 'https://admin.yukizi.com';
+    const reviewUrl = `${adminAppUrl}/users/${userId}`;
+    try {
+      const result = await this.mailService.sendMail({
+        to,
+        subject: `New buyer verification request: ${name}`,
+        text: `A buyer has submitted their profile for verification.
+
+Buyer: ${name}
+
+Review: ${reviewUrl}`,
+        html: `<p>A buyer has submitted their profile for verification.</p><p>Buyer: <strong>${this.escapeHtml(name)}</strong></p><p><a href="${reviewUrl}">Review this buyer</a></p>`,
+      });
+      if (!result.sent) {
+        this.logger.warn(
+          `Could not email admin about buyer verification for user ${userId} (retryable=${result.retryable})`,
+        );
+      }
+    } catch (error) {
+      this.logger.warn(
+        `new-buyer-verification admin email failed for user ${userId}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+
+  private escapeHtml(value: string): string {
+    return String(value ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
 
   /**
    * Create a new buyer profile for an authenticated BUYER user.
@@ -153,6 +209,7 @@ export class BuyersService {
     });
 
     this.logger.log(`Buyer profile created for user ${userId}`);
+    await this.emailAdminNewBuyer(userId, dto.legalName);
     return profile;
   }
 
@@ -507,6 +564,7 @@ export class BuyersService {
         where: { id: userId },
         data: { status: 'PENDING' },
       });
+      await this.emailAdminNewBuyer(userId, dto.legalName ?? profile.legalName);
     }
 
     this.logger.log(`Buyer profile updated for user ${userId}`);
