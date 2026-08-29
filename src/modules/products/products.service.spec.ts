@@ -360,3 +360,63 @@ describe('ProductsService.notifyWaitlistedUsers', () => {
     expect(prisma.productWaitlist.updateMany).not.toHaveBeenCalled();
   });
 });
+
+describe('ProductsService.findOne — reviewSummary on the detail payload', () => {
+  const master = {
+    id: 'master-1',
+    name: 'Test Figurine',
+    slug: 'test-figurine',
+    mrp: 100,
+    images: [],
+    category: { name: 'Figurines' },
+    subCategory: null,
+    sellerOffers: [],
+    productVariants: [],
+    options: [],
+  };
+
+  const buildForFindOne = (reviewAggregate: {
+    _avg: { rating: number | null };
+    _count: number;
+  }) => {
+    const prisma = {
+      sellerOffer: { findFirst: jest.fn().mockResolvedValue(null) },
+      catalogProduct: { findFirst: jest.fn().mockResolvedValue(master) },
+      review: { aggregate: jest.fn().mockResolvedValue(reviewAggregate) },
+    };
+    const analyticsService = { recordView: jest.fn() };
+    const service = new ProductsService(
+      prisma as never,
+      {} as never,
+      {} as never,
+      analyticsService as never,
+      {} as never,
+    );
+    return { service, prisma };
+  };
+
+  it('includes average and count when the product has reviews', async () => {
+    const { service, prisma } = buildForFindOne({ _avg: { rating: 4.3333333 }, _count: 6 });
+
+    const result = (await service.findOne('test-figurine')) as {
+      reviewSummary: { average: number; count: number } | null;
+    };
+
+    expect(prisma.review.aggregate).toHaveBeenCalledWith({
+      where: { catalogProductId: 'master-1' },
+      _avg: { rating: true },
+      _count: true,
+    });
+    expect(result.reviewSummary).toEqual({ average: 4.3, count: 6 });
+  });
+
+  it('returns reviewSummary: null when the product has no reviews', async () => {
+    const { service } = buildForFindOne({ _avg: { rating: null }, _count: 0 });
+
+    const result = (await service.findOne('test-figurine')) as {
+      reviewSummary: { average: number; count: number } | null;
+    };
+
+    expect(result.reviewSummary).toBeNull();
+  });
+});
