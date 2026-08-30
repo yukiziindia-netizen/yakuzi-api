@@ -1250,7 +1250,11 @@ export class ProductsService {
         });
         if (master) {
           this.analyticsService.recordView(master.id);
-          return this.formatMasterDetail(master, listing);
+          return this.formatMasterDetail(
+            master,
+            listing,
+            await this.getReviewSummary(master.id),
+          );
         }
       }
       
@@ -1322,7 +1326,28 @@ export class ProductsService {
     // record analytics view for the master item
     this.analyticsService.recordView(master.id);
 
-    return this.formatMasterDetail(master);
+    return this.formatMasterDetail(
+      master,
+      undefined,
+      await this.getReviewSummary(master.id),
+    );
+  }
+
+  // Aggregate rating for the buyer PDP / its Product JSON-LD (schema.org
+  // AggregateRating). Reviews are keyed by catalogProductId, so this is
+  // per master product across all of its listings. Null when unreviewed —
+  // the frontend's schema builder only emits aggregateRating for a real count.
+  private async getReviewSummary(
+    catalogProductId: string,
+  ): Promise<{ average: number; count: number } | null> {
+    const agg = await this.prisma.review.aggregate({
+      where: { catalogProductId },
+      _avg: { rating: true },
+      _count: true,
+    });
+    const count = typeof agg._count === 'number' ? agg._count : 0;
+    if (!count || agg._avg.rating == null) return null;
+    return { average: Math.round(agg._avg.rating * 10) / 10, count };
   }
 
   private calculateFinalCustomerPayable(
@@ -1463,7 +1488,11 @@ export class ProductsService {
     };
   }
 
-  private formatMasterDetail(m: any, sellerListing?: any) {
+  private formatMasterDetail(
+    m: any,
+    sellerListing?: any,
+    reviewSummary: { average: number; count: number } | null = null,
+  ) {
     const allListings = this.collectListings(m);
     const bestListing =
       allListings.length > 0
@@ -1503,6 +1532,7 @@ export class ProductsService {
       isYukiziChoice: m.isYukiziChoice || false,
       isBestSeller: m.isBestSeller || false,
       isAd: m.isAd || false,
+      reviewSummary,
       commissionPercent: m.commissionPercent,
       fixedFee: m.fixedFee,
       commissionGstPercent: m.commissionGstPercent,
