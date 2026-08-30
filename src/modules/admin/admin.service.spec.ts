@@ -942,3 +942,42 @@ describe('AdminService.updateSellerSelfShip', () => {
     expect(prisma.sellerProfile.update).not.toHaveBeenCalled();
   });
 });
+
+describe('AdminService.getPublicSettings — SEO verification tokens', () => {
+  const buildForSettings = (rows: { key: string; value: string }[]) => {
+    const prisma = {
+      systemSetting: { findMany: jest.fn().mockResolvedValue(rows) },
+    };
+    const service = new AdminService(
+      prisma as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      mockConfigService as never,
+    );
+    return { service };
+  };
+
+  it('exposes stored Google/Bing verification tokens publicly', async () => {
+    const { service } = buildForSettings([
+      { key: 'googleSiteVerification', value: 'gsc-token-123' },
+      { key: 'bingSiteVerification', value: 'bing-token-456' },
+    ]);
+
+    const settings = await service.getPublicSettings();
+
+    expect(settings.googleSiteVerification).toBe('gsc-token-123');
+    expect(settings.bingSiteVerification).toBe('bing-token-456');
+  });
+
+  it('defaults both tokens to empty strings when never configured', async () => {
+    const { service } = buildForSettings([]);
+
+    const settings = await service.getPublicSettings();
+
+    expect(settings.googleSiteVerification).toBe('');
+    expect(settings.bingSiteVerification).toBe('');
+  });
+});

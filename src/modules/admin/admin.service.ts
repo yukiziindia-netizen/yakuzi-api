@@ -3858,6 +3858,12 @@ export class AdminService {
       creditLineOrders: true,
       maintenanceMode: false,
       comingSoonMode: true,
+      // Search-engine ownership verification tokens (Google Search Console /
+      // Bing Webmaster Tools). Public-by-nature — they are rendered into
+      // every page's <head> as meta tags; storing them here lets an admin
+      // connect GSC/Bing without touching Vercel env vars or redeploying.
+      googleSiteVerification: '',
+      bingSiteVerification: '',
     };
 
     try {
@@ -3913,6 +3919,8 @@ export class AdminService {
       platformName: settings.platformName,
       supportEmail: settings.supportEmail,
       supportPhone: settings.supportPhone,
+      googleSiteVerification: String(settings.googleSiteVerification ?? ''),
+      bingSiteVerification: String(settings.bingSiteVerification ?? ''),
     };
   }
 }
