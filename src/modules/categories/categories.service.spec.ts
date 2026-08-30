@@ -114,3 +114,65 @@ describe('CategoriesService.replaceSubCategoryBanners', () => {
     expect(prisma.category.update).not.toHaveBeenCalled();
   });
 });
+
+describe('CategoriesService.updateCategory — rename creates a category URL redirect', () => {
+  const buildForRename = () => {
+    const prisma = {
+      category: {
+        findUnique: jest.fn().mockResolvedValue({ id: 'cat-1', name: 'Figurines', slug: 'figurines' }),
+        findFirst: jest.fn().mockResolvedValue(null),
+        update: jest.fn().mockResolvedValue({}),
+      },
+      seoRedirect: {
+        deleteMany: jest.fn().mockResolvedValue({}),
+        updateMany: jest.fn().mockResolvedValue({}),
+        upsert: jest.fn().mockResolvedValue({}),
+      },
+      $transaction: jest.fn(async (fn: (tx: unknown) => Promise<unknown>) => fn(prisma)),
+    };
+    const service = new CategoriesService(prisma as never);
+    return { service, prisma };
+  };
+
+  it('301s the old category URL when a rename changes the slug', async () => {
+    const { service, prisma } = buildForRename();
+
+    await service.updateCategory('cat-1', { name: 'Figures' } as never);
+
+    const upsert = prisma.seoRedirect.upsert.mock.calls[0][0] as {
+      where: { fromPath: string };
+      create: { toPath: string; statusCode: number };
+    };
+    expect(upsert.where).toEqual({ fromPath: '/category/figurines' });
+    expect(upsert.create.toPath).toBe('/category/figures');
+    expect(upsert.create.statusCode).toBe(301);
+    expect(prisma.category.update).toHaveBeenCalled();
+  });
+
+  it('skips only the 301 when slugRedirect is false', async () => {
+    const { service, prisma } = buildForRename();
+
+    await service.updateCategory('cat-1', { name: 'Figures', slugRedirect: false } as never);
+
+    expect(prisma.seoRedirect.upsert).not.toHaveBeenCalled();
+    expect(prisma.category.update).toHaveBeenCalled();
+  });
+
+  it('creates no redirect when only the image changes (slug untouched)', async () => {
+    const { service, prisma } = buildForRename();
+
+    await service.updateCategory('cat-1', { image: 'x.png' } as never);
+
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+    expect(prisma.seoRedirect.upsert).not.toHaveBeenCalled();
+  });
+
+  it('rejects a rename whose slug collides with another collection', async () => {
+    const { service, prisma } = buildForRename();
+    prisma.category.findFirst.mockResolvedValue({ id: 'cat-2' });
+
+    await expect(service.updateCategory('cat-1', { name: 'Books' } as never)).rejects.toThrow(
+      'already uses the URL',
+    );
+  });
+});
