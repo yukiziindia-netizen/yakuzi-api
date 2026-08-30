@@ -17,6 +17,7 @@ import { UsersModule } from './modules/users/users.module';
 import { BuyersModule } from './modules/buyers/buyers.module';
 import { SellersModule } from './modules/sellers/sellers.module';
 import { ProductsModule } from './modules/products/products.module';
+import { FeedsModule } from './modules/feeds/feeds.module';
 import { CartModule } from './modules/cart/cart.module';
 import { OrdersModule } from './modules/orders/orders.module';
 import { PaymentsModule } from './modules/payments/payments.module';
@@ -121,6 +122,7 @@ import { WebAnalyticsModule } from './modules/web-analytics/web-analytics.module
     BuyersModule,
     SellersModule,
     ProductsModule,
+    FeedsModule,
     CartModule,
     OrdersModule,
     PaymentsModule,
