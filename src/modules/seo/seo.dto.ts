@@ -260,4 +260,9 @@ export class UpdateProductSlugDto {
   @IsString()
   @IsNotEmpty()
   slug!: string;
+
+  /** 301 the old URL to the new one. Default true. */
+  @IsOptional()
+  @IsBoolean()
+  createRedirect?: boolean;
 }

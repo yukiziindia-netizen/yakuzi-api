@@ -906,7 +906,7 @@ export class AdminService {
       throw new NotFoundException('This listing has no catalog product to edit');
     }
 
-    const { slug, ...rest } = dto;
+    const { slug, slugRedirect, ...rest } = dto;
     const fields = Object.fromEntries(
       Object.entries(rest).filter(([, v]) => v !== undefined),
     );
@@ -914,7 +914,9 @@ export class AdminService {
       await this.prisma.catalogProduct.update({ where: { id: master.id }, data: fields });
     }
     if (slug !== undefined) {
-      await applySlugChange(this.prisma as unknown as SlugPrisma, master, slug);
+      await applySlugChange(this.prisma as unknown as SlugPrisma, master, slug, {
+        createRedirect: slugRedirect,
+      });
     }
     return this.getProductById(sellerOfferId);
   }
@@ -3856,6 +3858,12 @@ export class AdminService {
       creditLineOrders: true,
       maintenanceMode: false,
       comingSoonMode: true,
+      // Search-engine ownership verification tokens (Google Search Console /
+      // Bing Webmaster Tools). Public-by-nature — they are rendered into
+      // every page's <head> as meta tags; storing them here lets an admin
+      // connect GSC/Bing without touching Vercel env vars or redeploying.
+      googleSiteVerification: '',
+      bingSiteVerification: '',
     };
 
     try {
@@ -3911,6 +3919,8 @@ export class AdminService {
       platformName: settings.platformName,
       supportEmail: settings.supportEmail,
       supportPhone: settings.supportPhone,
+      googleSiteVerification: String(settings.googleSiteVerification ?? ''),
+      bingSiteVerification: String(settings.bingSiteVerification ?? ''),
     };
   }
 }

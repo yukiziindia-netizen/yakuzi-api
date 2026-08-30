@@ -57,6 +57,44 @@ export interface SlugPrisma {
   $transaction<T>(fn: (tx: SlugPrisma) => Promise<T>): Promise<T>;
 }
 
+export interface SlugChangeOptions {
+  /**
+   * Create the old-URL -> new-URL 301 (step 3). Default true. Opting out is
+   * an explicit editor choice ("I never shared the old URL"); the shadow
+   * cleanup and chain repointing (steps 1-2) always run regardless — those
+   * are correctness, not preference.
+   */
+  createRedirect?: boolean;
+}
+
+/**
+ * seoRedirect bookkeeping for ANY public path change (products, blog posts):
+ * kill rules shadowing the new URL, collapse chains pointing at the old one,
+ * and (unless opted out) 301 the old URL to the new. Runs on the caller's
+ * transaction client.
+ */
+export async function swapPathRedirects(
+  tx: Pick<SlugPrisma, 'seoRedirect'>,
+  oldPath: string | null,
+  newPath: string,
+  note: string,
+  options: SlugChangeOptions = {},
+): Promise<void> {
+  const createRedirect = options.createRedirect !== false;
+  // 1. Nothing may redirect AWAY from the URL that is about to go live.
+  await tx.seoRedirect.deleteMany({ where: { fromPath: newPath } });
+  if (!oldPath || oldPath === newPath) return;
+  // 2. Rules that pointed at the old URL now point at the new one.
+  await tx.seoRedirect.updateMany({ where: { toPath: oldPath }, data: { toPath: newPath } });
+  if (!createRedirect) return;
+  // 3. The old URL 301s to the new one (upsert: re-renaming reuses the row).
+  await tx.seoRedirect.upsert({
+    where: { fromPath: oldPath },
+    create: { fromPath: oldPath, toPath: newPath, statusCode: 301, isActive: true, note },
+    update: { toPath: newPath, statusCode: 301, isActive: true },
+  });
+}
+
 /**
  * Applies a slug change for a product. No-op when the normalized slug equals
  * the current one. Returns the slug that is now live.
@@ -65,6 +103,7 @@ export async function applySlugChange(
   prisma: SlugPrisma,
   product: { id: string; slug: string | null },
   requestedSlug: string,
+  options: SlugChangeOptions = {},
 ): Promise<string> {
   const next = normalizeSlug(requestedSlug);
   assertValidSlug(next);
@@ -80,27 +119,14 @@ export async function applySlugChange(
   const oldPath = product.slug ? `/products/${product.slug}` : null;
 
   await prisma.$transaction(async (tx) => {
-    // 1. Nothing may redirect AWAY from the URL that is about to go live.
-    await tx.seoRedirect.deleteMany({ where: { fromPath: newPath } });
-
-    if (oldPath && oldPath !== newPath) {
-      // 2. Rules that pointed at the old URL now point at the new one.
-      await tx.seoRedirect.updateMany({ where: { toPath: oldPath }, data: { toPath: newPath } });
-      // 3. The old URL 301s to the new one (upsert: re-renaming reuses the row).
-      await tx.seoRedirect.upsert({
-        where: { fromPath: oldPath },
-        create: {
-          fromPath: oldPath,
-          toPath: newPath,
-          statusCode: 301,
-          isActive: true,
-          note: `auto: product slug change (${product.id})`,
-        },
-        update: { toPath: newPath, statusCode: 301, isActive: true },
-      });
-    }
-
-    // 4. The slug itself.
+    await swapPathRedirects(
+      tx,
+      oldPath,
+      newPath,
+      `auto: product slug change (${product.id})`,
+      options,
+    );
+    // The slug itself.
     await tx.catalogProduct.update({ where: { id: product.id }, data: { slug: next } });
   });
 

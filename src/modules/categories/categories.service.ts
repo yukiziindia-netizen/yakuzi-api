@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../database/prisma.service';
+import { swapPathRedirects } from '../admin/product-slug';
 import { CreateCategoryDto } from './dto/create-category.dto';
 import { UpdateCategoryDto } from './dto/update-category.dto';
 import { CreateSubCategoryDto } from './dto/create-subcategory.dto';
@@ -101,6 +102,34 @@ export class CategoriesService {
     // falls back to `image`.
     if (dto.mobileImage !== undefined) {
       data.mobileImage = dto.mobileImage.trim() || null;
+    }
+
+    // Renaming changes the slug, which changes the public /category/<slug>
+    // URL. Old category URLs don't even 404 — they render an empty grid (a
+    // soft-404) — so a rename without a redirect quietly strands the old URL.
+    // Same machinery as product/blog slug changes; slugRedirect=false skips
+    // only the 301 (shadow cleanup and chain repointing always run).
+    const newSlug = typeof data.slug === 'string' ? data.slug : null;
+    if (newSlug && newSlug !== existing.slug) {
+      const taken = await this.prisma.category.findFirst({
+        where: { slug: newSlug, id: { not: id } },
+        select: { id: true },
+      });
+      if (taken) {
+        throw new ConflictException(
+          `Another collection already uses the URL "${newSlug}"`,
+        );
+      }
+      return this.prisma.$transaction(async (tx) => {
+        await swapPathRedirects(
+          tx as never,
+          `/category/${existing.slug}`,
+          `/category/${newSlug}`,
+          `auto: category rename (${id})`,
+          { createRedirect: dto.slugRedirect },
+        );
+        return tx.category.update({ where: { id }, data });
+      });
     }
 
     try {
