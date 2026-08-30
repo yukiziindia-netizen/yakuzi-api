@@ -1,4 +1,4 @@
-import { IsString, IsOptional, MaxLength } from 'class-validator';
+import { IsString, IsOptional, MaxLength, IsBoolean } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 
 export class UpdateCategoryDto {
@@ -21,4 +21,13 @@ export class UpdateCategoryDto {
   @IsString()
   @IsOptional()
   mobileImage?: string;
+
+  /**
+   * Renaming a category regenerates its slug, changing the public
+   * /category/<slug> URL. When that happens, 301 the old URL to the new one.
+   * Default true; false skips only the redirect creation.
+   */
+  @IsOptional()
+  @IsBoolean()
+  slugRedirect?: boolean;
 }

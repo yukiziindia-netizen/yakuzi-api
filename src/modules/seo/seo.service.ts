@@ -47,7 +47,11 @@ export class SeoService {
     return product;
   }
 
-  async updateProductSlug(id: string, requestedSlug: string) {
+  async updateProductSlug(
+    id: string,
+    requestedSlug: string,
+    options: { createRedirect?: boolean } = {},
+  ) {
     const product = await this.prisma.catalogProduct.findUnique({
       where: { id },
       select: { id: true, slug: true },
@@ -57,6 +61,7 @@ export class SeoService {
       this.prisma as unknown as SlugPrisma,
       product,
       requestedSlug,
+      options,
     );
     return { id: product.id, slug };
   }

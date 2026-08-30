@@ -906,7 +906,7 @@ export class AdminService {
       throw new NotFoundException('This listing has no catalog product to edit');
     }
 
-    const { slug, ...rest } = dto;
+    const { slug, slugRedirect, ...rest } = dto;
     const fields = Object.fromEntries(
       Object.entries(rest).filter(([, v]) => v !== undefined),
     );
@@ -914,7 +914,9 @@ export class AdminService {
       await this.prisma.catalogProduct.update({ where: { id: master.id }, data: fields });
     }
     if (slug !== undefined) {
-      await applySlugChange(this.prisma as unknown as SlugPrisma, master, slug);
+      await applySlugChange(this.prisma as unknown as SlugPrisma, master, slug, {
+        createRedirect: slugRedirect,
+      });
     }
     return this.getProductById(sellerOfferId);
   }
