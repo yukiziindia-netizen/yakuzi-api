@@ -2,8 +2,10 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  ConflictException,
 } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
+import { swapPathRedirects } from '../admin/product-slug';
 import { BlogStatus, BlogCategory, BlogAuthor, BlogPost } from '@prisma/client';
 import {
   CreateBlogPostDto,
@@ -195,7 +197,8 @@ export class BlogService {
     const existing = await this.prisma.blogPost.findUnique({ where: { id } });
     if (!existing) throw new NotFoundException('Blog post not found');
 
-    const { status } = dto;
+    // Not a BlogPost column — consumed here, never persisted.
+    const { status, createRedirect, ...fields } = dto;
 
     let publishedAt = existing.publishedAt;
     if (
@@ -207,10 +210,45 @@ export class BlogService {
       publishedAt = null;
     }
 
+    // Changing the slug changes the post's public URL — mirror the product
+    // pipeline: uniqueness check, shadow cleanup, chain repointing, and
+    // (unless the editor opted out) a 301 from the old URL. All in one
+    // transaction with the update itself.
+    const slugChanged =
+      typeof fields.slug === 'string' &&
+      fields.slug.trim() !== '' &&
+      fields.slug !== existing.slug;
+    if (slugChanged) {
+      const taken = await this.prisma.blogPost.findFirst({
+        where: { slug: fields.slug, id: { not: id } },
+        select: { id: true },
+      });
+      if (taken) {
+        throw new ConflictException(
+          'A blog post with this slug already exists',
+        );
+      }
+      return this.prisma.$transaction(async (tx) => {
+        await swapPathRedirects(
+          tx as never,
+          `/blogs/${existing.slug}`,
+          `/blogs/${fields.slug}`,
+          `auto: blog slug change (${id})`,
+          { createRedirect },
+        );
+        return tx.blogPost.update({
+          where: { id },
+          data: { ...fields, status, publishedAt },
+          include: { author: true, category: true },
+        });
+      });
+    }
+
     return this.prisma.blogPost.update({
       where: { id },
       data: {
-        ...dto,
+        ...fields,
+        status,
         publishedAt,
       },
       include: {

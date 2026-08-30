@@ -1,5 +1,5 @@
 import { Type } from 'class-transformer';
-import { IsNumber, IsOptional, IsString, MaxLength, Min } from 'class-validator';
+import { IsNumber, IsOptional, IsString, MaxLength, Min, IsBoolean } from 'class-validator';
 
 /**
  * Admin edit of a catalog product. Every field optional — only sent fields
@@ -17,6 +17,15 @@ export class AdminUpdateProductDto {
   @IsString()
   @MaxLength(200)
   slug?: string;
+
+  /**
+   * When the slug changes, also 301 the old URL to the new one. Defaults to
+   * true; sending false skips only the redirect creation (shadow cleanup and
+   * chain repointing still run).
+   */
+  @IsOptional()
+  @IsBoolean()
+  slugRedirect?: boolean;
 
   @IsOptional()
   @IsString()

@@ -69,7 +69,9 @@ export class AdminSeoController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateProductSlugDto,
   ) {
-    const data = await this.seoService.updateProductSlug(id, dto.slug);
+    const data = await this.seoService.updateProductSlug(id, dto.slug, {
+      createRedirect: dto.createRedirect,
+    });
     return { message: 'Product slug updated successfully', data };
   }
 

@@ -1,5 +1,5 @@
 import { BadRequestException, ConflictException } from '@nestjs/common';
-import { applySlugChange, assertValidSlug, normalizeSlug, SlugPrisma } from './product-slug';
+import { applySlugChange, swapPathRedirects, assertValidSlug, normalizeSlug, SlugPrisma } from './product-slug';
 
 describe('normalizeSlug', () => {
   it.each([
@@ -98,5 +98,58 @@ describe('applySlugChange', () => {
       where: { id: 'prod-2' },
       data: { slug: 'brand-new' },
     });
+  });
+});
+
+describe('applySlugChange — createRedirect opt-out', () => {
+  const product = { id: 'prod-1', slug: 'dragon-ball-goku' };
+
+  it('skips ONLY the 301 creation when createRedirect is false', async () => {
+    const prisma = makePrisma();
+
+    await applySlugChange(prisma, product, 'goku-figure', { createRedirect: false });
+
+    // Correctness steps still run:
+    expect(prisma.seoRedirect.deleteMany).toHaveBeenCalledWith({
+      where: { fromPath: '/products/goku-figure' },
+    });
+    expect(prisma.seoRedirect.updateMany).toHaveBeenCalledWith({
+      where: { toPath: '/products/dragon-ball-goku' },
+      data: { toPath: '/products/goku-figure' },
+    });
+    // The preference step does not:
+    expect(prisma.seoRedirect.upsert).not.toHaveBeenCalled();
+    expect(prisma.catalogProduct.update).toHaveBeenCalled();
+  });
+
+  it('creates the 301 by default (options omitted)', async () => {
+    const prisma = makePrisma();
+
+    await applySlugChange(prisma, product, 'goku-figure');
+
+    expect(prisma.seoRedirect.upsert).toHaveBeenCalled();
+  });
+});
+
+describe('swapPathRedirects — shared path-change bookkeeping', () => {
+  it('handles a blog-style path swap with a 301 by default', async () => {
+    const prisma = makePrisma();
+
+    await swapPathRedirects(prisma, '/blogs/old-post', '/blogs/new-post', 'auto: test');
+
+    const upsert = prisma.seoRedirect.upsert.mock.calls[0][0];
+    expect(upsert.where).toEqual({ fromPath: '/blogs/old-post' });
+    expect(upsert.create.toPath).toBe('/blogs/new-post');
+    expect(upsert.create.statusCode).toBe(301);
+  });
+
+  it('does nothing beyond shadow cleanup when old and new paths match', async () => {
+    const prisma = makePrisma();
+
+    await swapPathRedirects(prisma, '/blogs/same', '/blogs/same', 'auto: test');
+
+    expect(prisma.seoRedirect.deleteMany).toHaveBeenCalled();
+    expect(prisma.seoRedirect.updateMany).not.toHaveBeenCalled();
+    expect(prisma.seoRedirect.upsert).not.toHaveBeenCalled();
   });
 });
