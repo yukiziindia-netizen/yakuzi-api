@@ -1523,10 +1523,10 @@ export class ProductsService {
       images: m.images,
       category: m.category,
       subCategory: m.subCategory,
-      therapeuticClass: m.therapeuticClass,
-      sideEffects: m.sideEffects,
-      directionsForUse: m.directionsForUse,
-      safetyAdvice: m.safetyAdvice,
+      // therapeuticClass/sideEffects/directionsForUse/safetyAdvice were
+      // pharma-fork leftovers exposed on every public product payload —
+      // removed 2026-08-30 (zero consumers in any frontend app; columns kept
+      // in the DB untouched).
       packSize: m.packSize,
       storageAndHandling: m.storageAndHandling,
       isYukiziChoice: m.isYukiziChoice || false,
