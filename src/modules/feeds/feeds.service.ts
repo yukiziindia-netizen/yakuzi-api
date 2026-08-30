@@ -45,11 +45,14 @@ export class FeedsService {
     // Page through the storefront's own list endpoint logic.
     const products: any[] = [];
     for (let page = 1; page <= 50; page++) {
-      const res: any = await this.productsService.findAll({
+      const res = (await this.productsService.findAll({
         page,
         limit: FeedsService.PAGE_SIZE,
-      } as never);
-      const batch: any[] = res?.products ?? res?.data ?? [];
+      } as never)) as { products?: unknown[]; data?: unknown[] };
+      const batch = (res?.products ?? res?.data ?? []) as Record<
+        string,
+        any
+      >[];
       products.push(...batch);
       if (batch.length < FeedsService.PAGE_SIZE) break;
     }

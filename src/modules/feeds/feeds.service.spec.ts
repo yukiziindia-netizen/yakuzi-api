@@ -16,12 +16,17 @@ describe('FeedsService.googleMerchantFeed', () => {
     ...over,
   });
 
-  const build = (products: unknown[], descriptions: { id: string; description: string | null }[] = []) => {
+  const build = (
+    products: unknown[],
+    descriptions: { id: string; description: string | null }[] = [],
+  ) => {
     const prisma = {
       catalogProduct: { findMany: jest.fn().mockResolvedValue(descriptions) },
     };
     const productsService = {
-      findAll: jest.fn().mockResolvedValue({ products, total: products.length }),
+      findAll: jest
+        .fn()
+        .mockResolvedValue({ products, total: products.length }),
     };
     const service = new FeedsService(prisma as never, productsService as never);
     return { service, prisma, productsService };
@@ -41,8 +46,12 @@ describe('FeedsService.googleMerchantFeed', () => {
     expect(xml).toContain('/products/goku-scale-figure</g:link>');
     expect(xml).toContain('<g:identifier_exists>false</g:identifier_exists>');
     expect(xml).toContain('<g:brand>Bandai</g:brand>');
-    expect(xml).toContain('<g:description>A detailed 1/7 scale figure.</g:description>');
-    expect(xml).toContain('<g:product_type>Figurines &gt; Scale Figures</g:product_type>');
+    expect(xml).toContain(
+      '<g:description>A detailed 1/7 scale figure.</g:description>',
+    );
+    expect(xml).toContain(
+      '<g:product_type>Figurines &gt; Scale Figures</g:product_type>',
+    );
   });
 
   it('marks zero-stock products out_of_stock instead of dropping them', async () => {
