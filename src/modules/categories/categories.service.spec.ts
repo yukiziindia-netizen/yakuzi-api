@@ -114,3 +114,38 @@ describe('CategoriesService.replaceSubCategoryBanners', () => {
     expect(prisma.category.update).not.toHaveBeenCalled();
   });
 });
+
+describe('CategoriesService.updateCategory — description intro copy', () => {
+  it('trims and stores the description', async () => {
+    const { service, prisma } = build();
+
+    await service.updateCategory('cat-1', {
+      description: '  Authentic figurines from verified sellers.  ',
+    } as never);
+
+    expect(prisma.category.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'cat-1' },
+        data: expect.objectContaining({
+          description: 'Authentic figurines from verified sellers.',
+        }),
+      }),
+    );
+  });
+
+  it('clears the description on empty string, leaves it untouched when omitted', async () => {
+    const { service, prisma } = build();
+
+    await service.updateCategory('cat-1', { description: '' } as never);
+    const cleared = prisma.category.update.mock.calls[0][0] as {
+      data: Record<string, unknown>;
+    };
+    expect(cleared.data.description).toBeNull();
+
+    await service.updateCategory('cat-1', { image: 'x.png' } as never);
+    const untouched = prisma.category.update.mock.calls[1][0] as {
+      data: Record<string, unknown>;
+    };
+    expect('description' in untouched.data).toBe(false);
+  });
+});

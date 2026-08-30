@@ -21,4 +21,14 @@ export class UpdateCategoryDto {
   @IsString()
   @IsOptional()
   mobileImage?: string;
+
+  @ApiPropertyOptional({
+    example: 'Authentic anime figurines from verified sellers across India.',
+    description:
+      'Intro copy shown on the buyer category page (also used as its meta description). Send an empty string to clear; omit to leave untouched.',
+  })
+  @IsString()
+  @IsOptional()
+  @MaxLength(5000)
+  description?: string;
 }

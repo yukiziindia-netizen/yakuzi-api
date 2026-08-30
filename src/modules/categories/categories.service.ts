@@ -93,6 +93,10 @@ export class CategoriesService {
     if (dto.image !== undefined) {
       data.image = dto.image;
     }
+    // Same omit/clear semantics as mobileImage.
+    if (dto.description !== undefined) {
+      data.description = dto.description.trim() || null;
+    }
     // Omitted leaves the phone banner alone; an empty string clears it and
     // falls back to `image`.
     if (dto.mobileImage !== undefined) {
