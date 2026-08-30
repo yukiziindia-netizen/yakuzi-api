@@ -115,6 +115,41 @@ describe('CategoriesService.replaceSubCategoryBanners', () => {
   });
 });
 
+describe('CategoriesService.updateCategory — description intro copy', () => {
+  it('trims and stores the description', async () => {
+    const { service, prisma } = build();
+
+    await service.updateCategory('cat-1', {
+      description: '  Authentic figurines from verified sellers.  ',
+    } as never);
+
+    expect(prisma.category.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'cat-1' },
+        data: expect.objectContaining({
+          description: 'Authentic figurines from verified sellers.',
+        }),
+      }),
+    );
+  });
+
+  it('clears the description on empty string, leaves it untouched when omitted', async () => {
+    const { service, prisma } = build();
+
+    await service.updateCategory('cat-1', { description: '' } as never);
+    const cleared = prisma.category.update.mock.calls[0][0] as {
+      data: Record<string, unknown>;
+    };
+    expect(cleared.data.description).toBeNull();
+
+    await service.updateCategory('cat-1', { image: 'x.png' } as never);
+    const untouched = prisma.category.update.mock.calls[1][0] as {
+      data: Record<string, unknown>;
+    };
+    expect('description' in untouched.data).toBe(false);
+  });
+});
+
 describe('CategoriesService.updateCategory — rename creates a category URL redirect', () => {
   const buildForRename = () => {
     const prisma = {
@@ -174,5 +209,38 @@ describe('CategoriesService.updateCategory — rename creates a category URL red
     await expect(service.updateCategory('cat-1', { name: 'Books' } as never)).rejects.toThrow(
       'already uses the URL',
     );
+  });
+});
+
+describe('CategoriesService.updateCategory — rename combined with other edits', () => {
+  it('carries description/image edits into the rename transaction (no silent drop)', async () => {
+    const prisma = {
+      category: {
+        findUnique: jest.fn().mockResolvedValue({ id: 'cat-1', name: 'Figurines', slug: 'figurines' }),
+        findFirst: jest.fn().mockResolvedValue(null),
+        update: jest.fn().mockResolvedValue({}),
+      },
+      seoRedirect: {
+        deleteMany: jest.fn().mockResolvedValue({}),
+        updateMany: jest.fn().mockResolvedValue({}),
+        upsert: jest.fn().mockResolvedValue({}),
+      },
+      $transaction: jest.fn(async (fn: (tx: unknown) => Promise<unknown>) => fn(prisma)),
+    };
+    const service = new CategoriesService(prisma as never);
+
+    await service.updateCategory('cat-1', {
+      name: 'Figures',
+      description: 'New intro copy.',
+      image: 'new.png',
+    } as never);
+
+    const update = prisma.category.update.mock.calls[0][0] as {
+      data: Record<string, unknown>;
+    };
+    expect(update.data.slug).toBe('figures');
+    expect(update.data.description).toBe('New intro copy.');
+    expect(update.data.image).toBe('new.png');
+    expect(prisma.seoRedirect.upsert).toHaveBeenCalled();
   });
 });

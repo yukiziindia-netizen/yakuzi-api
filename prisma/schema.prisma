@@ -207,6 +207,9 @@ model Category {
   image                String?
   /// Optional portrait-friendly banner for phones. Null means "use image".
   mobileImage          String?
+  /// Visible intro copy on the buyer category page; also feeds its meta
+  /// description. Admin-editable from the Collections modal.
+  description          String?
   createdAt            DateTime          @default(now())
   masterProducts       CatalogProduct[]
   extraOfProducts      CatalogProduct[]  @relation("ProductExtraCategories")

@@ -91,6 +91,19 @@ export class CategoriesService {
       data.name = dto.name.trim();
       data.slug = this.generateSlug(dto.name);
     }
+    if (dto.image !== undefined) {
+      data.image = dto.image;
+    }
+    // Same omit/clear semantics as mobileImage.
+    if (dto.description !== undefined) {
+      data.description = dto.description.trim() || null;
+    }
+    // Omitted leaves the phone banner alone; an empty string clears it and
+    // falls back to `image`.
+    if (dto.mobileImage !== undefined) {
+      data.mobileImage = dto.mobileImage.trim() || null;
+    }
+
     // Renaming changes the slug, which changes the public /category/<slug>
     // URL. Old category URLs don't even 404 — they render an empty grid (a
     // soft-404) — so a rename without a redirect quietly strands the old URL.
@@ -117,14 +130,6 @@ export class CategoriesService {
         );
         return tx.category.update({ where: { id }, data });
       });
-    }
-    if (dto.image !== undefined) {
-      data.image = dto.image;
-    }
-    // Omitted leaves the phone banner alone; an empty string clears it and
-    // falls back to `image`.
-    if (dto.mobileImage !== undefined) {
-      data.mobileImage = dto.mobileImage.trim() || null;
     }
 
     try {

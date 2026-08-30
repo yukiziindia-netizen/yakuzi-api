@@ -22,6 +22,16 @@ export class UpdateCategoryDto {
   @IsOptional()
   mobileImage?: string;
 
+  @ApiPropertyOptional({
+    example: 'Authentic anime figurines from verified sellers across India.',
+    description:
+      'Intro copy shown on the buyer category page (also used as its meta description). Send an empty string to clear; omit to leave untouched.',
+  })
+  @IsString()
+  @IsOptional()
+  @MaxLength(5000)
+  description?: string;
+
   /**
    * Renaming a category regenerates its slug, changing the public
    * /category/<slug> URL. When that happens, 301 the old URL to the new one.
