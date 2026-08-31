@@ -981,3 +981,35 @@ describe('AdminService.getPublicSettings — SEO verification tokens', () => {
     expect(settings.bingSiteVerification).toBe('');
   });
 });
+
+describe('AdminService.getPublicSettings — storefront SEO defaults', () => {
+  const build = (rows: { key: string; value: string }[]) => {
+    const prisma = { systemSetting: { findMany: jest.fn().mockResolvedValue(rows) } };
+    return new AdminService(
+      prisma as never, {} as never, {} as never, {} as never,
+      {} as never, {} as never, mockConfigService as never,
+    );
+  };
+
+  it('exposes admin-set SEO defaults to the storefront', async () => {
+    const service = build([
+      { key: 'seoTitleTemplate', value: '%s | Yukizi India' },
+      { key: 'seoTwitterHandle', value: '@yukizi' },
+      { key: 'seoNoindexOutOfStock', value: 'true' },
+    ]);
+
+    const s = await service.getPublicSettings();
+
+    expect(s.seoTitleTemplate).toBe('%s | Yukizi India');
+    expect(s.seoTwitterHandle).toBe('@yukizi');
+    expect(s.seoNoindexOutOfStock).toBe(true);
+  });
+
+  it('defaults every SEO field to blank/false when unset', async () => {
+    const s = await build([]).getPublicSettings();
+
+    expect(s.seoTitleTemplate).toBe('');
+    expect(s.seoDefaultOgImage).toBe('');
+    expect(s.seoNoindexOutOfStock).toBe(false);
+  });
+});
