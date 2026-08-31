@@ -1045,3 +1045,36 @@ describe('AdminService.getPublicSettings — social profiles', () => {
     expect(s.socialFacebook).toBe('');
   });
 });
+
+describe('AdminService.getPublicSettings — support contact', () => {
+  const build = (rows: { key: string; value: string }[]) => {
+    const mockPrisma = {
+      systemSetting: { findMany: jest.fn().mockResolvedValue(rows) },
+    };
+    const mockConfigService = { get: jest.fn() };
+    return new AdminService(
+      mockPrisma as never, {} as never, {} as never, {} as never,
+      {} as never, {} as never, mockConfigService as never,
+    );
+  };
+
+  it('exposes admin-set support contact details to the storefront', async () => {
+    const s = await build([
+      { key: 'supportEmail', value: 'help@yukizi.com' },
+      { key: 'supportPhone', value: '+91 90000 00000' },
+    ]).getPublicSettings();
+
+    expect(s.supportEmail).toBe('help@yukizi.com');
+    expect(s.supportPhone).toBe('+91 90000 00000');
+  });
+
+  // Blank must mean "use the storefront's own constants". The old defaults
+  // were placeholders (support@yukizi.in, +91 1800-XXX-XXXX) that would have
+  // been published as real contact details the moment anything read them.
+  it('defaults both to blank so the storefront falls back to its own details', async () => {
+    const s = await build([]).getPublicSettings();
+
+    expect(s.supportEmail).toBe('');
+    expect(s.supportPhone).toBe('');
+  });
+});

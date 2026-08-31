@@ -3845,8 +3845,12 @@ export class AdminService {
   async getPlatformSettings() {
     const DEFAULT_SETTINGS: Record<string, any> = {
       platformName: 'Yukizi',
-      supportEmail: 'support@yukizi.in',
-      supportPhone: '+91 1800-XXX-XXXX',
+      // Blank means "use the storefront's built-in contact details", matching
+      // how the SEO defaults behave. These used to default to
+      // support@yukizi.in and +91 1800-XXX-XXXX — placeholders nothing ever
+      // read, so nobody noticed they were not real contact details.
+      supportEmail: '',
+      supportPhone: '',
       sessionTimeout: 60,
       maxLoginAttempts: 5,
       otpExpiry: 120,
@@ -3935,8 +3939,8 @@ export class AdminService {
       comingSoonMode: Boolean(settings.comingSoonMode),
       maintenanceMode: Boolean(settings.maintenanceMode),
       platformName: settings.platformName,
-      supportEmail: settings.supportEmail,
-      supportPhone: settings.supportPhone,
+      supportEmail: String(settings.supportEmail ?? ''),
+      supportPhone: String(settings.supportPhone ?? ''),
       googleSiteVerification: String(settings.googleSiteVerification ?? ''),
       bingSiteVerification: String(settings.bingSiteVerification ?? ''),
       seoTitleTemplate: String(settings.seoTitleTemplate ?? ''),
