@@ -172,6 +172,29 @@ export class StorageService implements OnModuleInit {
     return `https://storage.googleapis.com/${this.gcsProductImagesBucket}/${actualKey}`;
   }
 
+  /**
+   * Copies an object within the product-images bucket (SEO renames). Returns
+   * the new public URL, or null when unsupported/failed. makePublic() mirrors
+   * the upload path so ACL-mode buckets serve the copy publicly too.
+   */
+  async copyObject(oldKey: string, newKey: string): Promise<string | null> {
+    if (this.provider !== 'gcs' || !this.gcs) return null;
+    try {
+      const bucket = this.gcs.bucket(this.gcsProductImagesBucket);
+      const [copied] = await bucket.file(oldKey).copy(bucket.file(newKey));
+      try {
+        await copied.makePublic();
+      } catch {
+        // Uniform bucket-level access forbids per-object ACLs; the bucket
+        // policy already makes it public there.
+      }
+      return `https://storage.googleapis.com/${this.gcsProductImagesBucket}/${newKey}`;
+    } catch (err) {
+      this.logger.warn(`copyObject ${oldKey} -> ${newKey} failed: ${err instanceof Error ? err.message : String(err)}`);
+      return null;
+    }
+  }
+
   async generateUploadUrl(
     productId: string | undefined,
     filename: string,
