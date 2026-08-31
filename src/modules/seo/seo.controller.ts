@@ -49,8 +49,12 @@ export class SeoController {
   @HttpCode(HttpStatus.OK)
   @Header('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=600')
   async getRedirectMap() {
-    const data = await this.redirectsService.getMap();
-    return { message: 'Redirect map retrieved successfully', data };
+    const { exact, wildcards } = await this.redirectsService.getMap();
+    // `data` stays the flat exact-match map it has always been, and wildcards
+    // ride alongside it. A storefront deployed before this change reads `data`
+    // and simply does not see the wildcard rules, so the two can ship in
+    // either order without a window where redirects break.
+    return { message: 'Redirect map retrieved successfully', data: exact, wildcards };
   }
 
   /**
