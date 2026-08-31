@@ -1013,3 +1013,24 @@ describe('AdminService.getPublicSettings — storefront SEO defaults', () => {
     expect(s.seoNoindexOutOfStock).toBe(false);
   });
 });
+
+describe('AdminService.getPublicSettings — social profiles', () => {
+  const build = (rows: { key: string; value: string }[]) => {
+    const prisma = { systemSetting: { findMany: jest.fn().mockResolvedValue(rows) } };
+    return new AdminService(
+      prisma as never, {} as never, {} as never, {} as never,
+      {} as never, {} as never, mockConfigService as never,
+    );
+  };
+
+  it('exposes configured social URLs to the storefront', async () => {
+    const s = await build([
+      { key: 'socialInstagram', value: 'https://instagram.com/yukizi' },
+      { key: 'socialDiscord', value: 'https://discord.gg/yukizi' },
+    ]).getPublicSettings();
+
+    expect(s.socialInstagram).toBe('https://instagram.com/yukizi');
+    expect(s.socialDiscord).toBe('https://discord.gg/yukizi');
+    expect(s.socialFacebook).toBe('');
+  });
+});
