@@ -115,8 +115,16 @@ export class SeoService {
     const page = Math.max(1, query.page ?? 1);
     const limit = Math.min(100, Math.max(1, query.limit ?? 20));
 
+    // Types edited at their SOURCE pages (products, collections, blogs) are
+    // hidden from the SEO tab's list by default — a row with an Edit button
+    // here would contradict the one-editing-surface rule. Their records still
+    // exist (the source pages read/write them) and remain reachable by an
+    // explicit ?type= query.
+    const SOURCE_EDITED = ['PRODUCT', 'CATEGORY', 'SUB_CATEGORY', 'BLOG_POST'] as const;
     const where: Prisma.SeoMetaWhereInput = {
-      ...(query.type && { entityType: query.type }),
+      ...(query.type
+        ? { entityType: query.type }
+        : { entityType: { notIn: [...SOURCE_EDITED] } }),
       ...(query.missing && { [query.missing]: null }),
       ...(query.search && {
         OR: [
