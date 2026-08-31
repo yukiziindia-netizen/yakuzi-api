@@ -1288,3 +1288,74 @@ describe('OrdersService.submitSelfShipTracking', () => {
     expect(notifySpy).not.toHaveBeenCalled();
   });
 });
+
+describe('OrdersService.submitSelfShipTracking — admin email', () => {
+  const originalAdmin = process.env.ADMIN_NOTIFICATION_EMAIL;
+  afterEach(() => {
+    if (originalAdmin === undefined) delete process.env.ADMIN_NOTIFICATION_EMAIL;
+    else process.env.ADMIN_NOTIFICATION_EMAIL = originalAdmin;
+  });
+
+  const build = (mailOverrides: Record<string, unknown> = {}) => {
+    const order = {
+      id: 'aaaabbbb-1111-2222-3333-444444444444',
+      buyerId: 'buyer-1',
+      fulfillmentMode: 'self_ship',
+      paymentStatus: 'SUCCESS',
+      orderStatus: 'ACCEPTED',
+      shippedAt: null,
+      buyer: { email: null, phone: null },
+    };
+    const prisma = {
+      sellerProfile: { findUnique: jest.fn().mockResolvedValue({ id: 'seller-1', companyName: 'Acme Collectibles' }) },
+      orderItem: { findMany: jest.fn().mockResolvedValue([{ id: 'oi-1' }]) },
+      order: {
+        findUnique: jest.fn().mockResolvedValue(order),
+        update: jest.fn().mockResolvedValue({ ...order, trackingUrl: 'https://track/1' }),
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+      },
+    };
+    const mailService = {
+      sendMail: jest.fn().mockResolvedValue({ sent: true, retryable: false }),
+      resolveAdminRecipient: jest.fn().mockResolvedValue('admin@yukizi.com'),
+      ...mailOverrides,
+    };
+    // mailService is the THIRD constructor arg (prisma, shiprocket, mail, …).
+    const service = new OrdersService(
+      prisma as never,
+      {} as never,
+      mailService as never,
+      {} as never,
+      {} as never,
+      {} as never,
+    );
+    return { service, mailService, prisma };
+  };
+
+  it('emails the admin when a self-ship seller submits tracking', async () => {
+    const { service, mailService } = build();
+
+    await service.submitSelfShipTracking('user-1', 'aaaabbbb-1111-2222-3333-444444444444', {
+      trackingUrl: 'https://track/1',
+      courierName: 'Delhivery',
+    } as never);
+
+    expect(mailService.sendMail).toHaveBeenCalledWith(
+      expect.objectContaining({ to: 'admin@yukizi.com' }),
+    );
+    const arg = mailService.sendMail.mock.calls[0][0] as { subject: string };
+    expect(arg.subject).toContain('AAAABBBB');
+  });
+
+  it('never fails the tracking submission when the admin email throws', async () => {
+    const { service } = build({
+      sendMail: jest.fn().mockRejectedValue(new Error('smtp down')),
+    });
+
+    await expect(
+      service.submitSelfShipTracking('user-1', 'aaaabbbb-1111-2222-3333-444444444444', {
+        trackingUrl: 'https://track/1',
+      } as never),
+    ).resolves.toBeDefined();
+  });
+});

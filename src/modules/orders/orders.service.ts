@@ -1536,6 +1536,7 @@ export class OrdersService {
   ) {
     const seller = await this.prisma.sellerProfile.findUnique({
       where: { userId },
+      select: { id: true, companyName: true },
     });
 
     if (!seller) {
@@ -1638,7 +1639,62 @@ export class OrdersService {
       `Order ${orderId} self-ship tracking ${isFirstSubmit ? 'submitted' : 'updated'} by seller ${seller.id}`,
     );
 
+    // Admin needs to know a self-ship seller has dispatched — there is no
+    // Shiprocket record for these, so this email is the only signal. Awaited
+    // but never allowed to throw: a mail failure must not fail the seller's
+    // tracking submission (same contract as the shipping-details email).
+    await this.emailAdminSelfShipTracking(orderId, seller, dto.trackingUrl, dto.courierName, isFirstSubmit).catch(
+      (error: unknown) => {
+        this.logger.warn(
+          `self-ship admin email failed for order ${orderId}: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      },
+    );
+
     return updated;
+  }
+
+  /**
+   * Tells the admin a self-ship seller submitted (or updated) a tracking
+   * link. Same recipient chain as every other admin email — Admin Alert
+   * Email from platform settings first (see
+   * MailService.resolveAdminRecipient).
+   */
+  private async emailAdminSelfShipTracking(
+    orderId: string,
+    seller: { id: string; companyName: string },
+    trackingUrl: string,
+    courierName: string | undefined,
+    isFirstSubmit: boolean,
+  ): Promise<void> {
+    const to = await this.mailService.resolveAdminRecipient();
+    if (!to) {
+      this.logger.warn(
+        `self-ship-tracking admin email skipped: no Admin Alert Email in settings and neither ADMIN_NOTIFICATION_EMAIL nor SMTP_USER is set (order ${orderId}, seller ${seller.id})`,
+      );
+      return;
+    }
+
+    const orderRef = orderId.slice(0, 8).toUpperCase();
+    const safeCompany = this.escape(seller.companyName);
+    const safeUrl = this.escape(trackingUrl);
+    const courierLine = courierName ? `\nCourier: ${courierName}` : '';
+    const safeCourier = courierName
+      ? `<br/>Courier: <strong>${this.escape(courierName)}</strong>`
+      : '';
+    const verb = isFirstSubmit ? 'submitted' : 'updated';
+
+    const result = await this.mailService.sendMail({
+      to,
+      subject: `Self-ship tracking ${verb} for order ${orderRef}`,
+      text: `${seller.companyName} has ${verb} a self-ship tracking link for order ${orderRef}.${courierLine}\nTracking: ${trackingUrl}`,
+      html: `<p><strong>${safeCompany}</strong> has ${verb} a self-ship tracking link for order <strong>${orderRef}</strong>.${safeCourier}</p><p>Tracking: <a href="${safeUrl}">${safeUrl}</a></p>`,
+    });
+    if (!result.sent) {
+      this.logger.warn(
+        `Could not email admin about self-ship tracking for order ${orderId} (retryable=${result.retryable})`,
+      );
+    }
   }
 
   // ──────────────────────────────────────────────
