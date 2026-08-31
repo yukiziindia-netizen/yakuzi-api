@@ -18,6 +18,28 @@ import { CreateProductRequestDto } from './dto/create-product-request.dto';
 import { BulkCreateProductDto } from './dto/bulk-create-product.dto';
 import { MailService } from '../mail/mail.service';
 
+/**
+ * Match a catalog product by a condition on its seller offers.
+ *
+ * An offer reaches a product two ways — `catalogProductId` directly (simple
+ * products) or `variantId` through a ProductVariant. Every storefront filter
+ * that looks at offers traversed the variant path alone, so products whose
+ * sellers listed against them directly were invisible to it: the price
+ * slider, ships-from, discount and new-arrivals each returned a small
+ * fraction of the catalogue. AdminService.getAllProducts already resolves
+ * both paths; this applies the same rule on the buyer side.
+ */
+export function offersMatch(
+  where: Prisma.SellerOfferWhereInput,
+): Prisma.CatalogProductWhereInput {
+  return {
+    OR: [
+      { sellerOffers: { some: where } },
+      { productVariants: { some: { sellerOffers: { some: where } } } },
+    ],
+  };
+}
+
 @Injectable()
 export class ProductsService {
   private readonly logger = new Logger(ProductsService.name);
@@ -983,19 +1005,13 @@ export class ProductsService {
     if (query.isNew) {
       const thirtyDaysAgo = new Date();
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-      andConditions.push({
-        productVariants: {
-          some: {
-            sellerOffers: {
-              some: {
-                isActive: true,
-                deletedAt: null,
-                createdAt: { gte: thirtyDaysAgo },
-              },
-            },
-          },
-        },
-      });
+      andConditions.push(
+        offersMatch({
+          isActive: true,
+          deletedAt: null,
+          createdAt: { gte: thirtyDaysAgo },
+        }),
+      );
     }
 
     // Yukizi Choice is a curated admin flag on the product itself, distinct
@@ -1053,11 +1069,7 @@ export class ProductsService {
     }
 
     if (productConditions.length > 1) {
-      andConditions.push({
-        productVariants: {
-          some: { sellerOffers: { some: { AND: productConditions } } },
-        },
-      });
+      andConditions.push(offersMatch({ AND: productConditions }));
     }
 
     if (andConditions.length > 0) {
