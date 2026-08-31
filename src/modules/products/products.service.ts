@@ -1001,17 +1001,18 @@ export class ProductsService {
       });
     }
 
-    // New Items (Only those having a new seller listing in last 30 days)
+    // New Items.
+    //
+    // This meant "some seller listed this in the last 30 days" — a fact about
+    // supplier activity, not about the product. The catalogue was loaded in
+    // one go, so the filter matched 66 of 67 products and told a shopper
+    // nothing. It now means what the label says: the product itself is new to
+    // the catalogue. Matches the other list endpoint, which already used the
+    // product's own createdAt.
     if (query.isNew) {
       const thirtyDaysAgo = new Date();
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-      andConditions.push(
-        offersMatch({
-          isActive: true,
-          deletedAt: null,
-          createdAt: { gte: thirtyDaysAgo },
-        }),
-      );
+      andConditions.push({ createdAt: { gte: thirtyDaysAgo } });
     }
 
     // Yukizi Choice is a curated admin flag on the product itself, distinct
@@ -1525,7 +1526,13 @@ export class ProductsService {
       name: m.name,
       slug: m.slug,
       manufacturer: m.manufacturer,
-      sku: sellerListing?.sku || sellerListing?.variant?.sku || m.sku || '',
+      // Falls back to the catalog id, which is exactly what the Merchant
+      // Centre feed emits as <g:id>. Every product carries a real sku or that
+      // id, so Product.sku on the page and the feed item always agree and
+      // Google can treat them as one product rather than two descriptions of
+      // it. Previously this resolved to '' for every product, so the page
+      // emitted no identifier at all.
+      sku: sellerListing?.sku || sellerListing?.variant?.sku || m.sku || m.id,
       serialNo: sellerListing?.serialNo || sellerListing?.variant?.serialNo || m.serialNo || '',
       specifications: sellerListing?.specifications || m.specifications || '',
       description: m.description,
