@@ -1489,6 +1489,13 @@ export class ProductsService {
       hasSellers,
       sellerCount: listings.length,
       image: m.images?.[0]?.url || null,
+      // Every image, not just the primary one. The image sitemap could only
+      // ever list one picture per product because this was the sole image the
+      // list exposed — on a visual catalogue that left most of the imagery
+      // undiscoverable in Google Images.
+      images: (m.images ?? [])
+        .map((i: { url?: string }) => i?.url)
+        .filter((u: string | undefined): u is string => !!u),
       category: m.category,
       subCategory: m.subCategory,
       isYukiziChoice: m.isYukiziChoice || false,
@@ -1533,6 +1540,11 @@ export class ProductsService {
       finalShippingPrice: sellerListing?.finalShippingPrice ?? bestListing?.finalShippingPrice ?? m.finalShippingPrice ?? null,
       shippingGstPercent: m.shippingGstPercent,
       images: m.images,
+      // The storefront emits schema.org dateModified from this. It was absent
+      // from the payload, so the field was built (web#216) and could never
+      // render — assistants and search engines weigh recency, and a page that
+      // cannot prove when it changed loses to one that can.
+      updatedAt: m.updatedAt,
       category: m.category,
       subCategory: m.subCategory,
       // therapeuticClass/sideEffects/directionsForUse/safetyAdvice were
