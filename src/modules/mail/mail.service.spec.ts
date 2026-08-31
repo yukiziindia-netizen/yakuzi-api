@@ -325,3 +325,66 @@ describe('MailService', () => {
     });
   });
 });
+
+describe('MailService.resolveAdminRecipient', () => {
+  const originalAdmin = process.env.ADMIN_NOTIFICATION_EMAIL;
+  const originalSmtp = process.env.SMTP_USER;
+  afterEach(() => {
+    if (originalAdmin === undefined) delete process.env.ADMIN_NOTIFICATION_EMAIL;
+    else process.env.ADMIN_NOTIFICATION_EMAIL = originalAdmin;
+    if (originalSmtp === undefined) delete process.env.SMTP_USER;
+    else process.env.SMTP_USER = originalSmtp;
+  });
+
+  const build = (settingValue: string | null) => {
+    const prisma = {
+      systemSetting: {
+        findUnique: jest.fn().mockResolvedValue(
+          settingValue === null ? null : { key: 'adminAlertEmail', value: settingValue },
+        ),
+      },
+    };
+    return { service: new MailService(prisma as never), prisma };
+  };
+
+  it('prefers the Admin Alert Email from platform settings', async () => {
+    process.env.ADMIN_NOTIFICATION_EMAIL = 'env@yukizi.com';
+    const { service, prisma } = build('settings@yukizi.com');
+
+    await expect(service.resolveAdminRecipient()).resolves.toBe('settings@yukizi.com');
+    expect(prisma.systemSetting.findUnique).toHaveBeenCalledWith({
+      where: { key: 'adminAlertEmail' },
+    });
+  });
+
+  it('falls back to ADMIN_NOTIFICATION_EMAIL when the setting is blank', async () => {
+    process.env.ADMIN_NOTIFICATION_EMAIL = 'env@yukizi.com';
+    const { service } = build('   ');
+
+    await expect(service.resolveAdminRecipient()).resolves.toBe('env@yukizi.com');
+  });
+
+  it('falls back to SMTP_USER when neither is set', async () => {
+    delete process.env.ADMIN_NOTIFICATION_EMAIL;
+    process.env.SMTP_USER = 'platform@yukizi.com';
+    const { service } = build(null);
+
+    await expect(service.resolveAdminRecipient()).resolves.toBe('platform@yukizi.com');
+  });
+
+  it('falls back to env when the settings read throws', async () => {
+    process.env.ADMIN_NOTIFICATION_EMAIL = 'env@yukizi.com';
+    const { service, prisma } = build(null);
+    prisma.systemSetting.findUnique.mockRejectedValue(new Error('db down'));
+
+    await expect(service.resolveAdminRecipient()).resolves.toBe('env@yukizi.com');
+  });
+
+  it('returns undefined when nothing is configured anywhere', async () => {
+    delete process.env.ADMIN_NOTIFICATION_EMAIL;
+    delete process.env.SMTP_USER;
+    const { service } = build(null);
+
+    await expect(service.resolveAdminRecipient()).resolves.toBeUndefined();
+  });
+});

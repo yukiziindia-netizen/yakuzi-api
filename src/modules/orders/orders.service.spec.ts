@@ -328,7 +328,7 @@ describe('OrdersService.syncTrackingFields', () => {
 
 describe('OrdersService.notifyBuyerOfStatusChange', () => {
   const buildNotifyDeps = () => {
-    const mailService = { sendMail: jest.fn().mockResolvedValue({ sent: true, retryable: false }) };
+    const mailService = { sendMail: jest.fn().mockResolvedValue({ sent: true, retryable: false }), resolveAdminRecipient: jest.fn(async () => process.env.ADMIN_NOTIFICATION_EMAIL?.trim() || process.env.SMTP_USER?.trim() || undefined) };
     const notificationsService = {
       notifyOrderDispatched: jest.fn().mockResolvedValue(undefined),
       notifyOrderShipped: jest.fn().mockResolvedValue(undefined),
@@ -645,7 +645,7 @@ describe('OrdersService.updateShippingDetails — auto-accept + Shiprocket push'
       },
     };
     const mailService = {
-      sendMail: jest.fn().mockResolvedValue({ sent: true, retryable: false }),
+      sendMail: jest.fn().mockResolvedValue({ sent: true, retryable: false }), resolveAdminRecipient: jest.fn(async () => process.env.ADMIN_NOTIFICATION_EMAIL?.trim() || process.env.SMTP_USER?.trim() || undefined),
     };
     const service = new OrdersService(
       prisma as never,
