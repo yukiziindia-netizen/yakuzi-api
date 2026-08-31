@@ -9,9 +9,10 @@ import {
   IsString,
   MaxLength,
   Min,
+  ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
-import { KeywordType, SeoEntityType } from '@prisma/client';
+import { KeywordType, SeoEntityType, SeoNotFoundStatus } from '@prisma/client';
 
 export class UpsertSeoMetaDto {
   @IsEnum(SeoEntityType)
@@ -265,4 +266,76 @@ export class UpdateProductSlugDto {
   @IsOptional()
   @IsBoolean()
   createRedirect?: boolean;
+}
+
+// ── Redirect tool ──────────────────────────────────────────────
+
+/** One row of a CSV/pasted import. */
+export class BulkRedirectRowDto {
+  @IsString()
+  @IsNotEmpty()
+  fromPath!: string;
+
+  @IsString()
+  @IsNotEmpty()
+  toPath!: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsIn([301, 302, 308, 410])
+  statusCode?: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  note?: string;
+}
+
+export class BulkCreateRedirectsDto {
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => BulkRedirectRowDto)
+  rows!: BulkRedirectRowDto[];
+}
+
+export class BulkRedirectIdsDto {
+  @IsArray()
+  @IsString({ each: true })
+  ids!: string[];
+
+  /** Only read by the activate/deactivate route. */
+  @IsOptional()
+  @IsBoolean()
+  isActive?: boolean;
+}
+
+/** Public: the storefront reporting that a rule fired. */
+export class RecordRedirectHitDto {
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(2000)
+  path!: string;
+}
+
+/** Public: the storefront reporting a 404. */
+export class RecordNotFoundDto {
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(2000)
+  path!: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  referrer?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(300)
+  userAgent?: string;
+}
+
+export class UpdateNotFoundStatusDto {
+  @IsEnum(SeoNotFoundStatus)
+  status!: SeoNotFoundStatus;
 }

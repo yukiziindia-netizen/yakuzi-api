@@ -106,3 +106,143 @@ describe('SeoRedirectsService', () => {
     });
   });
 });
+
+describe('SeoRedirectsService — hit tracking, tester and bulk ops', () => {
+  const prisma = {
+    seoRedirect: {
+      findUnique: jest.fn(),
+      findMany: jest.fn(),
+      create: jest.fn(),
+      update: jest.fn(),
+      updateMany: jest.fn(),
+      delete: jest.fn(),
+      deleteMany: jest.fn(),
+      count: jest.fn(),
+    },
+    $transaction: jest.fn(),
+  };
+  const service = new SeoRedirectsService(prisma as never);
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    prisma.$transaction.mockImplementation((ops: Promise<unknown>[]) => Promise.all(ops));
+    prisma.seoRedirect.findMany.mockResolvedValue([]);
+    prisma.seoRedirect.findUnique.mockResolvedValue(null);
+    prisma.seoRedirect.updateMany.mockResolvedValue({ count: 1 });
+    prisma.seoRedirect.deleteMany.mockResolvedValue({ count: 0 });
+  });
+
+  describe('recordHit', () => {
+    it('increments the counter for the normalized path', async () => {
+      await service.recordHit('/Old-Page/');
+
+      expect(prisma.seoRedirect.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { fromPath: '/old-page' } }),
+      );
+      const call = prisma.seoRedirect.updateMany.mock.calls[0][0];
+      expect(call.data.hits).toEqual({ increment: 1 });
+      expect(call.data.lastHitAt).toBeInstanceOf(Date);
+    });
+
+    it('never throws when the path is unusable', async () => {
+      await expect(service.recordHit('   ')).resolves.toBeUndefined();
+      expect(prisma.seoRedirect.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('never throws when the database fails — the visitor was already redirected', async () => {
+      prisma.seoRedirect.updateMany.mockRejectedValue(new Error('db down'));
+      await expect(service.recordHit('/old')).resolves.toBeUndefined();
+    });
+  });
+
+  describe('resolve', () => {
+    it('reports no-redirect for an unmatched path', async () => {
+      const res = await service.resolve('/nothing-here');
+      expect(res.outcome).toBe('no-redirect');
+      expect(res.finalPath).toBe('/nothing-here');
+    });
+
+    it('reports a single hop', async () => {
+      prisma.seoRedirect.findMany.mockResolvedValue([
+        { fromPath: '/a', toPath: '/b', statusCode: 301, isActive: true },
+      ]);
+      const res = await service.resolve('/a');
+      expect(res.outcome).toBe('redirect');
+      expect(res.finalPath).toBe('/b');
+      expect(res.chain).toHaveLength(1);
+    });
+
+    it('follows a multi-hop chain and reports every hop', async () => {
+      prisma.seoRedirect.findMany.mockResolvedValue([
+        { fromPath: '/a', toPath: '/b', statusCode: 301, isActive: true },
+        { fromPath: '/b', toPath: '/c', statusCode: 301, isActive: true },
+      ]);
+      const res = await service.resolve('/a');
+      expect(res.outcome).toBe('chain');
+      expect(res.finalPath).toBe('/c');
+      expect(res.chain.map((h) => h.from)).toEqual(['/a', '/b']);
+    });
+
+    it('calls out a switched-off rule instead of pretending nothing exists', async () => {
+      prisma.seoRedirect.findMany.mockResolvedValue([
+        { fromPath: '/a', toPath: '/b', statusCode: 301, isActive: false },
+      ]);
+      const res = await service.resolve('/a');
+      expect(res.outcome).toBe('inactive');
+      expect(res.finalPath).toBe('/a');
+    });
+
+    it('detects a loop rather than walking forever', async () => {
+      prisma.seoRedirect.findMany.mockResolvedValue([
+        { fromPath: '/a', toPath: '/b', statusCode: 301, isActive: true },
+        { fromPath: '/b', toPath: '/a', statusCode: 301, isActive: true },
+      ]);
+      const res = await service.resolve('/a');
+      expect(res.outcome).toBe('loop');
+    });
+
+    it('stops at an external target instead of trying to follow it', async () => {
+      prisma.seoRedirect.findMany.mockResolvedValue([
+        { fromPath: '/a', toPath: 'https://example.com/x', statusCode: 301, isActive: true },
+      ]);
+      const res = await service.resolve('/a');
+      expect(res.finalPath).toBe('https://example.com/x');
+      expect(res.chain).toHaveLength(1);
+    });
+  });
+
+  describe('bulkCreate', () => {
+    it('applies the good rows and reports only the bad ones', async () => {
+      // Second row duplicates an existing rule; the others are fine.
+      prisma.seoRedirect.findUnique.mockImplementation(({ where }: any) =>
+        Promise.resolve(where.fromPath === '/dupe' ? { id: 'x' } : null),
+      );
+      prisma.seoRedirect.create.mockImplementation(({ data }: any) =>
+        Promise.resolve({ ...data, id: 'new' }),
+      );
+
+      const res = await service.bulkCreate([
+        { fromPath: '/one', toPath: '/1' },
+        { fromPath: '/dupe', toPath: '/2' },
+        { fromPath: '/three', toPath: '/3' },
+      ]);
+
+      expect(res.created).toBe(2);
+      expect(res.createdPaths).toEqual(['/one', '/three']);
+      expect(res.failed).toHaveLength(1);
+      expect(res.failed[0].fromPath).toBe('/dupe');
+    });
+  });
+
+  describe('bulk activate / delete', () => {
+    it('reports how many rows changed', async () => {
+      prisma.seoRedirect.updateMany.mockResolvedValue({ count: 3 });
+      await expect(service.bulkSetActive(['a', 'b', 'c'], false)).resolves.toEqual({
+        updated: 3,
+      });
+
+      prisma.seoRedirect.deleteMany.mockResolvedValue({ count: 2 });
+      await expect(service.bulkRemove(['a', 'b'])).resolves.toEqual({ deleted: 2 });
+    });
+  });
+});
