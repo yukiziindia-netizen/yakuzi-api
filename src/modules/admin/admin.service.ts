@@ -3864,6 +3864,15 @@ export class AdminService {
       // connect GSC/Bing without touching Vercel env vars or redeploying.
       googleSiteVerification: '',
       bingSiteVerification: '',
+      // Storefront-wide SEO defaults, admin-editable so these never need a
+      // developer again. Blank means "use the built-in default".
+      seoTitleTemplate: '',        // e.g. "%s | Yukizi"
+      seoDefaultDescription: '',   // fallback meta description
+      seoDefaultOgImage: '',       // fallback share image URL
+      seoTwitterHandle: '',        // @handle for twitter:site
+      seoThemeColor: '',           // browser chrome colour
+      seoProductTitleSuffix: '',   // appended to generated product titles
+      seoNoindexOutOfStock: false, // keep OOS products out of the index
     };
 
     try {
@@ -3921,6 +3930,13 @@ export class AdminService {
       supportPhone: settings.supportPhone,
       googleSiteVerification: String(settings.googleSiteVerification ?? ''),
       bingSiteVerification: String(settings.bingSiteVerification ?? ''),
+      seoTitleTemplate: String(settings.seoTitleTemplate ?? ''),
+      seoDefaultDescription: String(settings.seoDefaultDescription ?? ''),
+      seoDefaultOgImage: String(settings.seoDefaultOgImage ?? ''),
+      seoTwitterHandle: String(settings.seoTwitterHandle ?? ''),
+      seoThemeColor: String(settings.seoThemeColor ?? ''),
+      seoProductTitleSuffix: String(settings.seoProductTitleSuffix ?? ''),
+      seoNoindexOutOfStock: Boolean(settings.seoNoindexOutOfStock),
     };
   }
 }
