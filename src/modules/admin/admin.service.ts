@@ -3872,7 +3872,6 @@ export class AdminService {
       seoTwitterHandle: '',        // @handle for twitter:site
       seoThemeColor: '',           // browser chrome colour
       seoProductTitleSuffix: '',   // appended to generated product titles
-      seoNoindexOutOfStock: false, // keep OOS products out of the index
       // Social profile URLs. Rendered in the storefront footer AND emitted as
       // schema.org sameAs on the Organization — the link that lets Google and
       // AI assistants connect this site to the brand's presence elsewhere.
@@ -3946,7 +3945,6 @@ export class AdminService {
       seoTwitterHandle: String(settings.seoTwitterHandle ?? ''),
       seoThemeColor: String(settings.seoThemeColor ?? ''),
       seoProductTitleSuffix: String(settings.seoProductTitleSuffix ?? ''),
-      seoNoindexOutOfStock: Boolean(settings.seoNoindexOutOfStock),
       socialInstagram: String(settings.socialInstagram ?? ''),
       socialFacebook: String(settings.socialFacebook ?? ''),
       socialYoutube: String(settings.socialYoutube ?? ''),
