@@ -1,5 +1,5 @@
 import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
-import { SeoRedirectsService, normalizePath } from './seo-redirects.service';
+import { SeoRedirectsService, normalizePath, applyWildcard } from './seo-redirects.service';
 
 describe('normalizePath', () => {
   it('lowercases, adds the leading slash, strips the trailing slash', () => {
@@ -91,16 +91,17 @@ describe('SeoRedirectsService', () => {
   });
 
   describe('getMap', () => {
-    it('returns only active redirects as a flat map', async () => {
+    it('returns only active redirects, exact matches keyed by path', async () => {
       prisma.seoRedirect.findMany.mockResolvedValue([
         { fromPath: '/a', toPath: '/b', statusCode: 301 },
         { fromPath: '/gone', toPath: '/', statusCode: 410 },
       ]);
-      const map = await service.getMap();
-      expect(map).toEqual({
+      const { exact, wildcards } = await service.getMap();
+      expect(exact).toEqual({
         '/a': { to: '/b', code: 301 },
         '/gone': { to: '/', code: 410 },
       });
+      expect(wildcards).toEqual([]);
       const where = prisma.seoRedirect.findMany.mock.calls[0][0].where;
       expect(where.isActive).toBe(true);
     });
@@ -243,6 +244,91 @@ describe('SeoRedirectsService — hit tracking, tester and bulk ops', () => {
 
       prisma.seoRedirect.deleteMany.mockResolvedValue({ count: 2 });
       await expect(service.bulkRemove(['a', 'b'])).resolves.toEqual({ deleted: 2 });
+    });
+  });
+});
+
+describe('wildcard redirects', () => {
+  describe('applyWildcard', () => {
+    it('keeps the tail when both sides are wildcards', () => {
+      expect(applyWildcard({ fromPath: '/old/*', toPath: '/new/*' }, '/old/a/b')).toBe('/new/a/b');
+    });
+
+    it('collapses onto one page when the target has no wildcard', () => {
+      expect(applyWildcard({ fromPath: '/old/*', toPath: '/new' }, '/old/a/b')).toBe('/new');
+    });
+
+    it('does not match the prefix itself — /old belongs to an exact rule', () => {
+      expect(applyWildcard({ fromPath: '/old/*', toPath: '/new/*' }, '/old')).toBeNull();
+    });
+
+    it('does not match a path that merely starts with the same letters', () => {
+      expect(applyWildcard({ fromPath: '/old/*', toPath: '/new/*' }, '/older/thing')).toBeNull();
+    });
+
+    it('handles a root wildcard target', () => {
+      expect(applyWildcard({ fromPath: '/shop/*', toPath: '/*' }, '/shop/manga')).toBe('/manga');
+    });
+  });
+
+  describe('getMap', () => {
+    const prisma = {
+      seoRedirect: { findMany: jest.fn() },
+    };
+    const service = new SeoRedirectsService(prisma as never);
+
+    it('separates wildcards and orders them longest-prefix first', async () => {
+      prisma.seoRedirect.findMany.mockResolvedValue([
+        { fromPath: '/shop/*', toPath: '/c/*', statusCode: 301 },
+        { fromPath: '/a', toPath: '/b', statusCode: 301 },
+        { fromPath: '/shop/manga/*', toPath: '/c/manga/*', statusCode: 301 },
+      ]);
+
+      const { exact, wildcards } = await service.getMap();
+
+      expect(exact).toEqual({ '/a': { to: '/b', code: 301 } });
+      // Longest first, so a manga URL is not swallowed by the broader rule.
+      expect(wildcards.map((w) => w.from)).toEqual(['/shop/manga/*', '/shop/*']);
+    });
+  });
+
+  describe('validation', () => {
+    const prisma = {
+      seoRedirect: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        findMany: jest.fn().mockResolvedValue([]),
+        create: jest.fn().mockImplementation(({ data }: any) => Promise.resolve(data)),
+      },
+    };
+    const service = new SeoRedirectsService(prisma as never);
+    const make = (fromPath: string, toPath: string) =>
+      service.create({ fromPath, toPath } as never);
+
+    beforeEach(() => jest.clearAllMocks());
+
+    it('accepts a whole-section move', async () => {
+      await expect(make('/old-shop/*', '/shop/*')).resolves.toMatchObject({
+        fromPath: '/old-shop/*',
+        toPath: '/shop/*',
+      });
+    });
+
+    it('refuses a wildcard destination without a wildcard source', async () => {
+      await expect(make('/one-page', '/new/*')).rejects.toThrow(BadRequestException);
+    });
+
+    it('refuses a * anywhere but the end', async () => {
+      await expect(make('/shop/*/manga', '/x')).rejects.toThrow(BadRequestException);
+    });
+
+    it('refuses a section redirecting to itself', async () => {
+      await expect(make('/shop/*', '/shop/*')).rejects.toThrow(ConflictException);
+    });
+
+    // The dangerous one: /shop/a -> /shop/manga/a, which the same rule then
+    // matches again. A flat chain walk cannot see it — neither path is a key.
+    it('refuses a wildcard that sends a section inside itself', async () => {
+      await expect(make('/shop/*', '/shop/manga/*')).rejects.toThrow(ConflictException);
     });
   });
 });

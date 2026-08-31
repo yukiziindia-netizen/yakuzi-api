@@ -41,6 +41,81 @@ function normalizeTarget(input: string): string {
   return normalizePath(t);
 }
 
+/**
+ * Wildcard rules, for moving a whole section at once.
+ *
+ *   /old-section/*  ->  /new-section/*     keeps the tail: /old-section/a/b
+ *                                          becomes /new-section/a/b
+ *   /old-section/*  ->  /new-section       collapses everything onto one page
+ *
+ * Without these, retiring a section means one row per URL, which nobody does,
+ * so the URLs quietly 404 instead.
+ */
+export const WILDCARD_SUFFIX = '/*';
+
+export function isWildcardPath(path: string): boolean {
+  return path.endsWith(WILDCARD_SUFFIX);
+}
+
+/** "/old/*" -> "/old". The prefix a request path must start with. */
+export function wildcardPrefix(path: string): string {
+  return path.slice(0, -WILDCARD_SUFFIX.length) || '/';
+}
+
+/**
+ * Resolve a wildcard rule against a concrete path. Returns null when the rule
+ * does not apply, so callers can keep looking.
+ */
+export function applyWildcard(
+  rule: { fromPath: string; toPath: string },
+  path: string,
+): string | null {
+  const prefix = wildcardPrefix(rule.fromPath);
+  // The prefix itself must not match: /old/* covers what is under /old, and a
+  // separate exact rule should own /old.
+  if (!path.startsWith(prefix + '/')) return null;
+  const tail = path.slice(prefix.length); // includes the leading slash
+  if (!isWildcardPath(rule.toPath)) return rule.toPath;
+  const targetPrefix = wildcardPrefix(rule.toPath);
+  return targetPrefix === '/' ? tail : `${targetPrefix}${tail}`;
+}
+
+/**
+ * A wildcard source needs a sane target, and must not swallow its own
+ * destination. `/shop/*` -> `/shop/manga/*` would send /shop/a to /shop/manga/a,
+ * which the wildcard then matches again — a loop the flat chain walk cannot
+ * see, because neither path is a literal key.
+ */
+function assertWildcardShape(fromPath: string, toPath: string): void {
+  const fromWild = isWildcardPath(fromPath);
+  const toWild = isWildcardPath(toPath);
+
+  if (!fromWild && toWild) {
+    throw new BadRequestException(
+      'Only a wildcard source can have a wildcard destination. Use /old/* -> /new/* to move a whole section.',
+    );
+  }
+  if (fromPath.includes('*') && !fromWild) {
+    throw new BadRequestException(
+      'A * is only allowed at the end, as /section/*. Partial matches are not supported.',
+    );
+  }
+  if (!fromWild) return;
+
+  const fromPrefix = wildcardPrefix(fromPath);
+  const toPrefix = toWild ? wildcardPrefix(toPath) : toPath;
+  if (/^https?:\/\//i.test(toPath)) return; // off-site, cannot loop back here
+
+  if (toPrefix === fromPrefix) {
+    throw new ConflictException('A wildcard cannot redirect a section to itself');
+  }
+  if (toPrefix.startsWith(fromPrefix + '/')) {
+    throw new ConflictException(
+      `This sends ${fromPrefix} into ${toPrefix}, which the same rule would then match again — an endless redirect.`,
+    );
+  }
+}
+
 const MAX_CHAIN_HOPS = 20;
 
 @Injectable()
@@ -57,6 +132,7 @@ export class SeoRedirectsService {
     if (duplicate) {
       throw new ConflictException(`A redirect from ${fromPath} already exists`);
     }
+    assertWildcardShape(fromPath, toPath);
     await this.assertNoLoop(fromPath, toPath);
 
     return this.prisma.seoRedirect.create({
@@ -87,6 +163,7 @@ export class SeoRedirectsService {
         throw new ConflictException(`A redirect from ${fromPath} already exists`);
       }
     }
+    assertWildcardShape(fromPath, toPath);
     await this.assertNoLoop(fromPath, toPath, id);
 
     return this.prisma.seoRedirect.update({
@@ -195,8 +272,25 @@ export class SeoRedirectsService {
     });
     const byPath = new Map(rows.map((r) => [r.fromPath, r]));
 
+    // Wildcards, longest prefix first — the storefront resolves them the same
+    // way, and the tester is worthless if it disagrees with production.
+    const activeWildcards = rows
+      .filter((r) => r.isActive && isWildcardPath(r.fromPath))
+      .sort((a, b) => wildcardPrefix(b.fromPath).length - wildcardPrefix(a.fromPath).length);
+
+    /** Exact rule wins; otherwise the first covering wildcard. */
+    const ruleFor = (p: string) => {
+      const exact = byPath.get(p);
+      if (exact) return { rule: exact, target: exact.toPath };
+      for (const w of activeWildcards) {
+        const target = applyWildcard(w, p);
+        if (target) return { rule: w, target };
+      }
+      return null;
+    };
+
     const first = byPath.get(path);
-    if (!first) {
+    if (!first && !ruleFor(path)) {
       return {
         path,
         outcome: 'no-redirect' as const,
@@ -204,7 +298,7 @@ export class SeoRedirectsService {
         finalPath: path,
       };
     }
-    if (!first.isActive) {
+    if (first && !first.isActive && !this.hasActiveWildcard(activeWildcards, path)) {
       return {
         path,
         outcome: 'inactive' as const,
@@ -219,10 +313,11 @@ export class SeoRedirectsService {
     let current = path;
 
     for (let hops = 0; hops < MAX_CHAIN_HOPS; hops++) {
-      const rule = byPath.get(current);
-      if (!rule || !rule.isActive) break;
-      chain.push({ from: rule.fromPath, to: rule.toPath, statusCode: rule.statusCode });
-      current = rule.toPath;
+      const match = ruleFor(current);
+      if (!match || !match.rule.isActive) break;
+      const { rule, target } = match;
+      chain.push({ from: rule.fromPath, to: target, statusCode: rule.statusCode });
+      current = target;
       if (seen.has(current)) {
         return { path, outcome: 'loop' as const, chain, finalPath: current };
       }
@@ -285,16 +380,45 @@ export class SeoRedirectsService {
   }
 
   /** Flat map consumed by the buyer middleware, active rules only. */
-  async getMap(): Promise<Record<string, { to: string; code: number }>> {
+  async getMap(): Promise<{
+    exact: Record<string, { to: string; code: number }>;
+    wildcards: { from: string; to: string; code: number }[];
+  }> {
     const rows = await this.prisma.seoRedirect.findMany({
       where: { isActive: true },
       select: { fromPath: true, toPath: true, statusCode: true },
     });
-    const map: Record<string, { to: string; code: number }> = {};
+    const exact: Record<string, { to: string; code: number }> = {};
+    const wildcards: { from: string; to: string; code: number }[] = [];
     for (const row of rows) {
-      map[row.fromPath] = { to: row.toPath, code: row.statusCode };
+      if (isWildcardPath(row.fromPath)) {
+        wildcards.push({ from: row.fromPath, to: row.toPath, code: row.statusCode });
+      } else {
+        exact[row.fromPath] = { to: row.toPath, code: row.statusCode };
+      }
     }
-    return map;
+    // Longest prefix first, so /shop/manga/* beats /shop/* for a manga URL.
+    wildcards.sort((a, b) => wildcardPrefix(b.from).length - wildcardPrefix(a.from).length);
+    return { exact, wildcards };
+  }
+
+  /** First wildcard rule that covers `path`, or null. */
+  private matchWildcard(
+    wildcards: { from: string; to: string; code: number }[],
+    path: string,
+  ): { rule: { from: string; to: string; code: number }; target: string } | null {
+    for (const rule of wildcards) {
+      const target = applyWildcard({ fromPath: rule.from, toPath: rule.to }, path);
+      if (target) return { rule, target };
+    }
+    return null;
+  }
+
+  private hasActiveWildcard(
+    wildcards: { fromPath: string; toPath: string }[],
+    path: string,
+  ): boolean {
+    return wildcards.some((w) => applyWildcard(w, path) !== null);
   }
 
   /** Walk the chain starting at toPath; adding this rule must never reach fromPath. */
