@@ -1,4 +1,6 @@
 import { Module } from '@nestjs/common';
+import { StorageModule } from '../storage/storage.module';
+import { ImageRenameService } from './image-rename.service';
 import { DatabaseModule } from '../../database/database.module';
 import { SeoController } from './seo.controller';
 import { AdminSeoController } from './seo-admin.controller';
@@ -7,9 +9,9 @@ import { SeoRedirectsService } from './seo-redirects.service';
 import { SeoKeywordsService } from './seo-keywords.service';
 
 @Module({
-  imports: [DatabaseModule],
+  imports: [DatabaseModule, StorageModule],
   controllers: [SeoController, AdminSeoController],
-  providers: [SeoService, SeoRedirectsService, SeoKeywordsService],
+  providers: [SeoService, SeoRedirectsService, SeoKeywordsService, ImageRenameService],
   exports: [SeoService],
 })
 export class SeoModule {}

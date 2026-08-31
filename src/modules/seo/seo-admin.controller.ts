@@ -15,6 +15,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { KeywordType, Role, SeoEntityType } from '@prisma/client';
+import { ImageRenameService } from './image-rename.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -50,6 +51,7 @@ export class AdminSeoController {
     private readonly seoService: SeoService,
     private readonly redirectsService: SeoRedirectsService,
     private readonly keywordsService: SeoKeywordsService,
+    private readonly imageRenameService: ImageRenameService,
   ) {}
 
   // ── product URL slug ──────────────────────────────────────
@@ -238,5 +240,16 @@ export class AdminSeoController {
       entityId,
     );
     return { message: 'Keyword unlinked successfully', data };
+  }
+
+  // One-click batched SEO rename of EXISTING product images (copy-not-move;
+  // old URLs stay alive). Re-runnable: already-renamed files are skipped via
+  // the "-yukizi-" marker. The admin UI loops until remaining === 0.
+  @Post('rename-product-images')
+  @HttpCode(HttpStatus.OK)
+  async renameProductImages(@Body('limit') limit?: number) {
+    const capped = Math.min(Math.max(Number(limit) || 20, 1), 50);
+    const data = await this.imageRenameService.renameProductImages(capped);
+    return { message: 'Image rename batch complete', data };
   }
 }
