@@ -99,3 +99,55 @@ describe('ImageRenameService.renameProductImages', () => {
     expect(Object.keys(updated.data.imageAltOverrides)[0]).toContain('goku-yukizi-1.png');
   });
 });
+
+describe('ImageRenameService.renameSingleImage', () => {
+  const build = () => {
+    const prisma = {
+      catalogProduct: { findMany: jest.fn(), count: jest.fn() },
+      catalogProductImage: {
+        findFirst: jest.fn().mockResolvedValue({ id: 'img-1' }),
+        update: jest.fn().mockResolvedValue({}),
+      },
+      seoMeta: { findFirst: jest.fn().mockResolvedValue(null), update: jest.fn() },
+    };
+    const storage = {
+      copyObject: jest.fn(async (_o: string, newKey: string) =>
+        `https://storage.googleapis.com/yukiz-bucket/${newKey}`),
+    };
+    const service = new ImageRenameService(prisma as never, storage as never);
+    return { service, prisma, storage };
+  };
+  const url = 'https://storage.googleapis.com/yukiz-bucket/media/images/x/old-name.png';
+
+  it('slugifies the typed name, keeps the extension, updates the row', async () => {
+    const { service, prisma, storage } = build();
+
+    const res = await service.renameSingleImage('prod-1', url, 'Iron Man Helmet Front View!');
+
+    expect(storage.copyObject).toHaveBeenCalledWith(
+      'media/images/x/old-name.png',
+      'media/images/x/iron-man-helmet-front-view.png',
+    );
+    expect(prisma.catalogProductImage.update).toHaveBeenCalled();
+    expect(res.newUrl).toContain('iron-man-helmet-front-view.png');
+  });
+
+  it('refuses images that are not on the product', async () => {
+    const { service, prisma, storage } = build();
+    prisma.catalogProductImage.findFirst.mockResolvedValue(null);
+
+    const res = await service.renameSingleImage('prod-1', url, 'x');
+
+    expect(res.newUrl).toBeNull();
+    expect(storage.copyObject).not.toHaveBeenCalled();
+  });
+
+  it('no-ops when the computed name equals the current one', async () => {
+    const { service, storage } = build();
+
+    const res = await service.renameSingleImage('prod-1', url, 'Old Name');
+
+    expect(storage.copyObject).not.toHaveBeenCalled();
+    expect(res.newUrl).toBe(url);
+  });
+});

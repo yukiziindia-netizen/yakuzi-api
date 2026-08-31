@@ -117,6 +117,50 @@ export class ImageRenameService {
     return { processedProducts: products.length, renamed, skipped, failed, remaining };
   }
 
+  /**
+   * Manual, single-image rename (admin types the name). Same copy-not-move
+   * contract as the bulk pass; the extension is preserved from the old key
+   * and the name is slugified. Returns the new public URL, or null when the
+   * URL isn't ours / the name is unusable / the copy failed.
+   */
+  async renameSingleImage(
+    catalogProductId: string,
+    imageUrl: string,
+    requestedName: string,
+  ) {
+    const row = await this.prisma.catalogProductImage.findFirst({
+      where: { masterProductId: catalogProductId, url: imageUrl },
+      select: { id: true },
+    });
+    if (!row) return { newUrl: null, reason: 'image not found on this product' };
+
+    const key = this.keyFromUrl(imageUrl);
+    if (!key) return { newUrl: null, reason: 'external image URLs cannot be renamed' };
+
+    const slug = this.slugify(requestedName);
+    if (!slug) return { newUrl: null, reason: 'name is empty after cleanup' };
+
+    const dir = key.includes('/') ? key.slice(0, key.lastIndexOf('/')) : '';
+    const oldFile = key.slice(key.lastIndexOf('/') + 1);
+    const dot = oldFile.lastIndexOf('.');
+    const ext = dot > -1 ? oldFile.slice(dot).toLowerCase() : '';
+    const newKey = `${dir ? `${dir}/` : ''}${slug}${ext}`;
+    if (newKey === key) return { newUrl: imageUrl, reason: null };
+
+    const newUrl = await this.storage.copyObject(key, newKey);
+    if (!newUrl) return { newUrl: null, reason: 'storage copy failed' };
+
+    await this.prisma.catalogProductImage.update({
+      where: { id: row.id },
+      data: { url: newUrl },
+    });
+    await this.migrateAltOverrideKeys(
+      catalogProductId,
+      new Map([[imageUrl, newUrl]]),
+    );
+    return { newUrl, reason: null };
+  }
+
   private async migrateAltOverrideKeys(
     catalogProductId: string,
     urlMap: Map<string, string>,
