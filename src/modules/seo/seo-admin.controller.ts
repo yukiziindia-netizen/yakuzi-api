@@ -245,6 +245,26 @@ export class AdminSeoController {
   // One-click batched SEO rename of EXISTING product images (copy-not-move;
   // old URLs stay alive). Re-runnable: already-renamed files are skipped via
   // the "-yukizi-" marker. The admin UI loops until remaining === 0.
+  // Manual single-image rename (per-image control in the product SEO card).
+  @Post('rename-product-image')
+  @HttpCode(HttpStatus.OK)
+  async renameProductImage(
+    @Body('catalogProductId') catalogProductId: string,
+    @Body('imageUrl') imageUrl: string,
+    @Body('newName') newName: string,
+  ) {
+    if (!catalogProductId || !imageUrl || !newName?.trim()) {
+      throw new BadRequestException('catalogProductId, imageUrl and newName are required');
+    }
+    const data = await this.imageRenameService.renameSingleImage(
+      catalogProductId,
+      imageUrl,
+      newName,
+    );
+    if (!data.newUrl) throw new BadRequestException(data.reason ?? 'rename failed');
+    return { message: 'Image renamed', data };
+  }
+
   @Post('rename-product-images')
   @HttpCode(HttpStatus.OK)
   async renameProductImages(@Body('limit') limit?: number) {
