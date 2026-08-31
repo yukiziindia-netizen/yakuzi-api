@@ -1246,7 +1246,39 @@ model SeoRedirect {
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
 
+  @@index([hits])
   @@map("seo_redirects")
+}
+
+/// A URL that returned 404, recorded so broken links surface here instead of
+/// in Search Console weeks later. One row per path with a hit counter — not a
+/// request log, so it cannot grow unbounded. `status` is always how an admin
+/// dealt with it, never a guess by the system.
+model SeoNotFound {
+  id            String            @id @default(uuid())
+  path          String            @unique
+  hits          Int               @default(1)
+  /// Referrer on the most recent hit. Off-site ones matter most: somebody
+  /// else is linking to a URL we broke.
+  lastReferrer  String?
+  /// Tells a crawler sweep apart from real people hitting a dead link.
+  lastUserAgent String?
+  status        SeoNotFoundStatus @default(NEW)
+  firstSeenAt   DateTime          @default(now())
+  lastSeenAt    DateTime          @default(now())
+
+  @@index([status, hits])
+  @@index([lastSeenAt])
+  @@map("seo_not_found")
+}
+
+enum SeoNotFoundStatus {
+  /// Nobody has looked at it yet.
+  NEW
+  /// A redirect now covers this path — set automatically when one is created.
+  FIXED
+  /// Deliberately left as a 404: spam probe, scanner, or genuinely gone.
+  IGNORED
 }
 
 model KeywordEntity {

@@ -14,7 +14,7 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { KeywordType, Role, SeoEntityType } from '@prisma/client';
+import { KeywordType, Role, SeoEntityType, SeoNotFoundStatus } from '@prisma/client';
 import { ImageRenameService } from './image-rename.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
@@ -23,6 +23,7 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { SeoService } from './seo.service';
 import { SeoRedirectsService } from './seo-redirects.service';
 import { SeoKeywordsService } from './seo-keywords.service';
+import { SeoNotFoundService } from './seo-not-found.service';
 import {
   CreateKeywordDto,
   CreateRedirectDto,
@@ -32,6 +33,9 @@ import {
   UpdateProductSlugDto,
   UpdateRedirectDto,
   UpsertSeoMetaDto,
+  BulkCreateRedirectsDto,
+  BulkRedirectIdsDto,
+  UpdateNotFoundStatusDto,
 } from './seo.dto';
 
 function parseEntityType(value: string): SeoEntityType {
@@ -51,6 +55,7 @@ export class AdminSeoController {
     private readonly seoService: SeoService,
     private readonly redirectsService: SeoRedirectsService,
     private readonly keywordsService: SeoKeywordsService,
+    private readonly notFoundService: SeoNotFoundService,
     private readonly imageRenameService: ImageRenameService,
   ) {}
 
@@ -130,19 +135,48 @@ export class AdminSeoController {
     @Query('search') search?: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
+    @Query('isActive') isActive?: string,
+    @Query('statusCode') statusCode?: string,
+    @Query('sort') sort?: 'recent' | 'hits' | 'path',
   ) {
     const data = await this.redirectsService.list({
       search,
       page: page ? Number(page) : undefined,
       limit: limit ? Number(limit) : undefined,
+      isActive: isActive === undefined ? undefined : isActive === 'true',
+      statusCode: statusCode ? Number(statusCode) : undefined,
+      sort,
     });
     return { message: 'Redirects retrieved successfully', data };
+  }
+
+  /** Every rule, unpaginated — the admin turns this into a CSV download. */
+  @Get('redirects/export')
+  @HttpCode(HttpStatus.OK)
+  async exportRedirects() {
+    const data = await this.redirectsService.exportAll();
+    return { message: 'Redirects exported successfully', data };
+  }
+
+  /**
+   * "What happens if I visit this URL?" Walks the chain the way the storefront
+   * does and reports the outcome: no rule, a switched-off rule, a single hop,
+   * a multi-hop chain, or a loop.
+   */
+  @Get('redirects/resolve')
+  @HttpCode(HttpStatus.OK)
+  async resolveRedirect(@Query('path') path: string) {
+    const data = await this.redirectsService.resolve(path);
+    return { message: 'Resolved successfully', data };
   }
 
   @Post('redirects')
   @HttpCode(HttpStatus.CREATED)
   async createRedirect(@Body() dto: CreateRedirectDto) {
     const data = await this.redirectsService.create(dto);
+    // Fixing a URL should clear it from the 404 worklist without anyone
+    // having to remember to tick it off.
+    await this.notFoundService.markFixed([data.fromPath]);
     return { message: 'Redirect created successfully', data };
   }
 
@@ -161,6 +195,86 @@ export class AdminSeoController {
   async deleteRedirect(@Param('id', ParseUUIDPipe) id: string) {
     const data = await this.redirectsService.remove(id);
     return { message: 'Redirect deleted successfully', data };
+  }
+
+  /**
+   * Import. Deliberately not transactional: a 300-row paste with two bad
+   * lines applies the 298 good ones and reports the two, instead of rejecting
+   * everything and leaving someone to find the typo.
+   */
+  @Post('redirects/bulk')
+  @HttpCode(HttpStatus.OK)
+  async bulkCreateRedirects(@Body() dto: BulkCreateRedirectsDto) {
+    const data = await this.redirectsService.bulkCreate(dto.rows);
+    // Anything now covered by a rule stops being an open 404.
+    await this.notFoundService.markFixed(data.createdPaths);
+    return { message: `Imported ${data.created} redirect(s)`, data };
+  }
+
+  @Post('redirects/bulk/active')
+  @HttpCode(HttpStatus.OK)
+  async bulkSetRedirectActive(@Body() dto: BulkRedirectIdsDto) {
+    const data = await this.redirectsService.bulkSetActive(dto.ids, dto.isActive ?? true);
+    return { message: 'Redirects updated successfully', data };
+  }
+
+  @Post('redirects/bulk/delete')
+  @HttpCode(HttpStatus.OK)
+  async bulkDeleteRedirects(@Body() dto: BulkRedirectIdsDto) {
+    const data = await this.redirectsService.bulkRemove(dto.ids);
+    return { message: 'Redirects deleted successfully', data };
+  }
+
+  // ── 404 log ───────────────────────────────────────────────
+
+  @Get('not-found')
+  @HttpCode(HttpStatus.OK)
+  async listNotFound(
+    @Query('status') status?: SeoNotFoundStatus,
+    @Query('search') search?: string,
+    @Query('sort') sort?: 'hits' | 'recent' | 'oldest',
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const data = await this.notFoundService.list({
+      status,
+      search,
+      sort,
+      page: page ? Number(page) : undefined,
+      limit: limit ? Number(limit) : undefined,
+    });
+    return { message: '404s retrieved successfully', data };
+  }
+
+  @Get('not-found/summary')
+  @HttpCode(HttpStatus.OK)
+  async notFoundSummary() {
+    const data = await this.notFoundService.summary();
+    return { message: '404 summary retrieved successfully', data };
+  }
+
+  @Patch('not-found/:id')
+  @HttpCode(HttpStatus.OK)
+  async updateNotFoundStatus(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateNotFoundStatusDto,
+  ) {
+    const data = await this.notFoundService.setStatus(id, dto.status);
+    return { message: '404 updated successfully', data };
+  }
+
+  @Delete('not-found/:id')
+  @HttpCode(HttpStatus.OK)
+  async deleteNotFound(@Param('id', ParseUUIDPipe) id: string) {
+    const data = await this.notFoundService.remove(id);
+    return { message: '404 deleted successfully', data };
+  }
+
+  @Post('not-found/clear-resolved')
+  @HttpCode(HttpStatus.OK)
+  async clearResolvedNotFound() {
+    const data = await this.notFoundService.clearResolved();
+    return { message: `Cleared ${data.deleted} resolved 404(s)`, data };
   }
 
   // ── keywords ──────────────────────────────────────────────
