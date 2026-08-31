@@ -3873,6 +3873,16 @@ export class AdminService {
       seoThemeColor: '',           // browser chrome colour
       seoProductTitleSuffix: '',   // appended to generated product titles
       seoNoindexOutOfStock: false, // keep OOS products out of the index
+      // Social profile URLs. Rendered in the storefront footer AND emitted as
+      // schema.org sameAs on the Organization — the link that lets Google and
+      // AI assistants connect this site to the brand's presence elsewhere.
+      socialInstagram: '',
+      socialFacebook: '',
+      socialYoutube: '',
+      socialX: '',
+      socialDiscord: '',
+      socialLinkedin: '',
+      socialWhatsapp: '',
     };
 
     try {
@@ -3937,6 +3947,13 @@ export class AdminService {
       seoThemeColor: String(settings.seoThemeColor ?? ''),
       seoProductTitleSuffix: String(settings.seoProductTitleSuffix ?? ''),
       seoNoindexOutOfStock: Boolean(settings.seoNoindexOutOfStock),
+      socialInstagram: String(settings.socialInstagram ?? ''),
+      socialFacebook: String(settings.socialFacebook ?? ''),
+      socialYoutube: String(settings.socialYoutube ?? ''),
+      socialX: String(settings.socialX ?? ''),
+      socialDiscord: String(settings.socialDiscord ?? ''),
+      socialLinkedin: String(settings.socialLinkedin ?? ''),
+      socialWhatsapp: String(settings.socialWhatsapp ?? ''),
     };
   }
 }
