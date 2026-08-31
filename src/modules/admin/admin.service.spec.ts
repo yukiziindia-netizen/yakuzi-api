@@ -995,22 +995,33 @@ describe('AdminService.getPublicSettings — storefront SEO defaults', () => {
     const service = build([
       { key: 'seoTitleTemplate', value: '%s | Yukizi India' },
       { key: 'seoTwitterHandle', value: '@yukizi' },
-      { key: 'seoNoindexOutOfStock', value: 'true' },
+      { key: 'seoProductTitleSuffix', value: ' — Buy Online in India' },
     ]);
 
     const s = await service.getPublicSettings();
 
     expect(s.seoTitleTemplate).toBe('%s | Yukizi India');
     expect(s.seoTwitterHandle).toBe('@yukizi');
-    expect(s.seoNoindexOutOfStock).toBe(true);
+    expect(s.seoProductTitleSuffix).toBe(' — Buy Online in India');
   });
 
-  it('defaults every SEO field to blank/false when unset', async () => {
+  it('defaults every SEO field to blank when unset', async () => {
     const s = await build([]).getPublicSettings();
 
     expect(s.seoTitleTemplate).toBe('');
     expect(s.seoDefaultOgImage).toBe('');
-    expect(s.seoNoindexOutOfStock).toBe(false);
+    expect(s.seoProductTitleSuffix).toBe('');
+  });
+
+  // The out-of-stock noindex setting was removed: the storefront never read it,
+  // and noindexing a product that is only temporarily between sellers would
+  // discard the ranking the permanent product URL exists to protect.
+  it('no longer exposes the out-of-stock noindex setting', async () => {
+    const s = await build([
+      { key: 'seoNoindexOutOfStock', value: 'true' },
+    ]).getPublicSettings();
+
+    expect(s).not.toHaveProperty('seoNoindexOutOfStock');
   });
 });
 
