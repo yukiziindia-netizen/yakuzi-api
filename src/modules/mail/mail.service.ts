@@ -189,6 +189,37 @@ export class MailService implements OnModuleDestroy {
   }
 
   /**
+   * Where admin notifications go, in priority order:
+   *   1. the Admin Alert Email in platform settings (admin-editable, live)
+   *   2. ADMIN_NOTIFICATION_EMAIL env var (previous behaviour)
+   *   3. SMTP_USER — the platform's own inbox, so an unconfigured install
+   *      still surfaces notifications somewhere rather than silently dropping
+   *      them.
+   * Read fresh on every send for the same reason as the From address: an
+   * admin changing it should take effect immediately, not after a restart.
+   */
+  async resolveAdminRecipient(): Promise<string | undefined> {
+    if (this.prisma) {
+      try {
+        const setting = await this.prisma.systemSetting.findUnique({
+          where: { key: 'adminAlertEmail' },
+        });
+        const configured = setting?.value?.trim();
+        if (configured) return configured;
+      } catch (error) {
+        this.logger.warn(
+          `Could not read adminAlertEmail setting, falling back to env: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        );
+      }
+    }
+    return (
+      process.env.ADMIN_NOTIFICATION_EMAIL?.trim() ||
+      process.env.SMTP_USER?.trim() ||
+      undefined
+    );
+  }
+
+  /**
    * 4xx SMTP replies are temporary and worth another attempt. 5xx replies and
    * authentication failures are permanent — retrying them only burns the daily
    * quota. EENVELOPE/EMESSAGE with no responseCode are nodemailer's own

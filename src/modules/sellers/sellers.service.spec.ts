@@ -21,7 +21,7 @@ const build = (existing: unknown = null) => {
     },
   };
   const idfyService = { isConfigured: jest.fn().mockReturnValue(false), verifyGst: jest.fn() };
-  const mailService = { sendMail: jest.fn().mockResolvedValue({ sent: true, retryable: false }) };
+  const mailService = { sendMail: jest.fn().mockResolvedValue({ sent: true, retryable: false }), resolveAdminRecipient: jest.fn(async () => process.env.ADMIN_NOTIFICATION_EMAIL?.trim() || process.env.SMTP_USER?.trim() || undefined) };
   const service = new SellersService(prisma as never, idfyService as never, mailService as never);
   return { service, prisma, mailService, createdProfile };
 };
@@ -115,7 +115,7 @@ describe('SellersService.getWaitlist', () => {
       productWaitlist: { findMany: jest.fn() },
     };
     const idfyService = { isConfigured: jest.fn().mockReturnValue(false), verifyGst: jest.fn() };
-    const mailService = { sendMail: jest.fn().mockResolvedValue({ sent: true, retryable: false }) };
+    const mailService = { sendMail: jest.fn().mockResolvedValue({ sent: true, retryable: false }), resolveAdminRecipient: jest.fn(async () => process.env.ADMIN_NOTIFICATION_EMAIL?.trim() || process.env.SMTP_USER?.trim() || undefined) };
     const service = new SellersService(prisma as never, idfyService as never, mailService as never);
     return { service, prisma };
   };
