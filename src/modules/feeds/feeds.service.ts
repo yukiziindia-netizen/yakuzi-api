@@ -103,7 +103,10 @@ export class FeedsService {
         [
           '<item>',
           `<g:id>${this.esc(String(p.id))}</g:id>`,
-          `<g:title>${this.esc(String(p.name ?? ''))}</g:title>`,
+          // Trimmed: 12 of 67 product names carry a trailing space, and
+          // Merchant Centre compares titles between the feed and the landing
+          // page. A stray space is a needless way to look like a mismatch.
+          `<g:title>${this.esc(String(p.name ?? '').replace(/\s+/g, ' ').trim())}</g:title>`,
           `<g:description>${this.esc(this.truncate(description, 4900))}</g:description>`,
           `<g:link>${this.esc(link)}</g:link>`,
           `<g:image_link>${this.esc(String(p.image))}</g:image_link>`,

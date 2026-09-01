@@ -29,6 +29,19 @@ import { MailService } from '../mail/mail.service';
  * fraction of the catalogue. AdminService.getAllProducts already resolves
  * both paths; this applies the same rule on the buyer side.
  */
+/**
+ * Product names as typed by whoever created them, tidied.
+ *
+ * 12 of 67 live products carry a trailing space, so the storefront rendered
+ * "Levi  | Yukizi" with a double gap, and the same stray space reached the
+ * schema.org name, the image alt text and the Merchant Centre feed title.
+ * Trimming here fixes every one of those at once, rather than asking someone
+ * to re-edit a dozen products by hand.
+ */
+function cleanName(name?: string | null): string {
+  return (name ?? '').replace(/\s+/g, ' ').trim();
+}
+
 export function offersMatch(
   where: Prisma.SellerOfferWhereInput,
 ): Prisma.CatalogProductWhereInput {
@@ -1473,7 +1486,7 @@ export class ProductsService {
 
     return {
       id: m.id,
-      name: m.name,
+      name: cleanName(m.name),
       slug: m.slug,
       manufacturer: m.manufacturer,
 
@@ -1523,7 +1536,7 @@ export class ProductsService {
     return {
       id: sellerListing?.id || m.id,
       masterProductId: m.id,
-      name: m.name,
+      name: cleanName(m.name),
       slug: m.slug,
       manufacturer: m.manufacturer,
       // Falls back to the catalog id, which is exactly what the Merchant
