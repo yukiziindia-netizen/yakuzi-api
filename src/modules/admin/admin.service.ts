@@ -49,6 +49,12 @@ import { AdminCreateProductDto } from './dto/admin-create-product.dto';
 // stuck in git history forever with no way to rotate it without a deploy.
 const DEFAULT_TEST_BUYER_PHONES = '8500237151';
 
+// Settings are a flat key/value store and most of it is harmless copy, but the
+// Instagram token is a credential. It is masked on the way out and the mask is
+// ignored on the way back in; see getPlatformSettings/updatePlatformSettings.
+const INSTAGRAM_TOKEN_KEY = 'instagramAccessToken';
+const MASKED_SECRET = '••••••••';
+
 @Injectable()
 export class AdminService {
   private readonly logger = new Logger(AdminService.name);
@@ -3904,6 +3910,12 @@ export class AdminService {
             result[item.key] = item.value;
           }
         }
+        // The Instagram token is a live credential — it reads the connected
+        // account's media. This endpoint hands settings to a browser, so the
+        // value never goes back out; the UI only needs to know one is saved.
+        if (result[INSTAGRAM_TOKEN_KEY]) {
+          result[INSTAGRAM_TOKEN_KEY] = MASKED_SECRET;
+        }
         return result;
       }
     } catch (error) {
@@ -3916,7 +3928,12 @@ export class AdminService {
   async updatePlatformSettings(payload: Record<string, any>) {
     try {
       if ((this.prisma as any).systemSetting) {
-        const updates = Object.entries(payload).map(([key, value]) => {
+        const updates = Object.entries(payload)
+          // The settings form reads back a masked token, so saving any other
+          // field would post the mask straight over the real credential and
+          // silently disconnect the feed. Only a genuinely new value counts.
+          .filter(([key, value]) => !(key === INSTAGRAM_TOKEN_KEY && String(value) === MASKED_SECRET))
+          .map(([key, value]) => {
           const strVal = typeof value === 'object' ? JSON.stringify(value) : String(value);
           return (this.prisma as any).systemSetting.upsert({
             where: { key },
