@@ -1773,19 +1773,43 @@ export class ProductsService {
       orderBy: [{ order: 'asc' as const }, { id: 'asc' as const }],
       select: { id: true, image: true, mobileImage: true, order: true },
     };
+    // How many products a shopper would actually find. Four of seven
+    // categories and 38 of 45 sub-collections currently hold nothing, and the
+    // storefront menu linked to every one of them — each a "No products
+    // available" dead end reached from primary navigation. The menu can only
+    // avoid that if it knows the counts, and the same rule the manufacturer
+    // filter already follows applies: never offer an option that leads to
+    // zero results.
+    const visible = { isActive: true, deletedAt: null };
     const categories = await this.prisma.category.findMany({
       include: {
         bannerImages: bannerInclude,
-        subCategories: { include: { bannerImages: bannerInclude } },
+        subCategories: {
+          include: {
+            bannerImages: bannerInclude,
+            _count: { select: { masterProducts: { where: visible } } },
+          },
+        },
+        _count: { select: { masterProducts: { where: visible } } },
       },
       orderBy: { name: 'asc' },
     });
     return categories.map((cat) => {
       const first = cat.bannerImages[0];
+      const { _count, subCategories, ...rest } = cat as typeof cat & {
+        _count: { masterProducts: number };
+      };
       return {
-        ...cat,
+        ...rest,
         image: first?.image ?? cat.image,
         mobileImage: first ? first.mobileImage : cat.mobileImage,
+        productCount: _count.masterProducts,
+        subCategories: subCategories.map((sub) => {
+          const { _count: subCount, ...subRest } = sub as typeof sub & {
+            _count: { masterProducts: number };
+          };
+          return { ...subRest, productCount: subCount.masterProducts };
+        }),
       };
     });
   }
