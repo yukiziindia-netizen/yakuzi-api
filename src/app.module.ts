@@ -105,8 +105,13 @@ import { WebAnalyticsModule } from './modules/web-analytics/web-analytics.module
     }),
 
     // ─── Rate limiting ───────────────────────────────
+    // Generic per-IP backstop only. Sensitive routes (OTP/login, order
+    // creation, payments) keep their own much tighter @Throttle overrides.
+    // 100/min starved legitimate use: one open portal tab fans out enough
+    // requests that a second tab (or a storefront build prerendering every
+    // page) hits 429s that surface as phantom "not found" errors.
     ThrottlerModule.forRoot({
-      throttlers: [{ ttl: 60000, limit: 100 }],
+      throttlers: [{ ttl: 60000, limit: 300 }],
     }),
 
     // ─── Scheduled jobs (Shiprocket status sync, etc.) ─
