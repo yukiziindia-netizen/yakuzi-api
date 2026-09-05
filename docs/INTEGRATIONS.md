@@ -180,24 +180,93 @@ future re-wrapping migration can be written instead.
 
 ---
 
+## Product import and SKU mapping (phase 2)
+
+### The matching rule
+
+In order, and nothing else:
+
+1. **An existing mapping.** A mapping the seller made by hand is never
+   overwritten by a later import.
+2. **Exact SKU match** against the seller's own listings (`SellerOffer.sku`).
+3. **Exact variant SKU match** (`ProductVariant.sku`).
+4. **Otherwise, leave it for the seller.**
+
+Comparison is case-insensitive and trims whitespace. **Product names are never
+used.** Two products called "Naruto Figure" on two channels are not evidence
+they are the same thing, and merging them silently would corrupt a seller's
+stock in a way that is very hard to notice afterwards.
+
+Where the answer is genuinely ambiguous the row becomes `CONFLICT` with a
+reason, and Yukizi does not choose:
+
+| `conflictReason` | Meaning |
+|---|---|
+| `SKU_MATCHES_MULTIPLE_PRODUCTS` | One channel SKU matches several Yukizi listings |
+| `SKU_SHARED_BY_EXTERNAL_LISTINGS` | Several channel listings share one SKU |
+| `NO_SKU` | The listing has no SKU at all (`MISSING_SKU`) |
+
+### Inventory import
+
+Quantities are pulled only for `MAPPED`, merchant-fulfilled rows. When Yukizi
+and the channel disagree:
+
+- If the seller made **that channel** the source of truth, the channel quantity
+  is applied.
+- Otherwise the difference is **flagged and nothing is written**. The seller
+  resolves it per listing on the mapping screen ("Keep Yukizi 12" / "Use
+  Shopify 7").
+
+Stock is written through `InventoryService.updateDefaultBatch()` — the same path
+the seller portal itself uses — so imported stock behaves identically to stock
+typed into the UI, including low-stock alerts. Every write is recorded in
+`inventory_events` as PENDING first and marked PROCESSED only after it lands, so
+a crash halfway leaves an auditable row rather than a silent discrepancy.
+
+**Amazon FBA is excluded from the write path entirely.** MFN and FBA
+availability arrive as separate rows with different `fulfillmentChannel` values;
+FBA quantities are imported for display and never treated as seller-controlled
+stock.
+
+### The job runner
+
+`IntegrationJobRunnerService` runs every minute (`@Cron`), following the repo's
+existing background-work pattern. Notable properties:
+
+- Jobs are claimed by **compare-and-swap** (`updateMany` on `status: PENDING`),
+  so two API instances cannot run the same job twice.
+- A catalogue larger than one run's page budget (20 pages) **re-queues itself
+  with a cursor**, so a large store makes steady progress instead of timing out.
+- Requests are serial with a pause between pages. Bursting parallel requests at
+  a seller's store is how integrations get rate-limited or firewalled.
+- Retries back off quadratically (1m, 4m, 9m, …, capped at 30m). **429 is
+  retried** — that is what backoff is for. **401/403 are permanent**: no number
+  of attempts fixes a revoked token, and repeating it looks like an attack. The
+  connection is flipped to *Action required* instead.
+- Stored errors carry the HTTP status only, never a provider response body.
+
+---
+
 ## What is implemented, and what is not
 
-**Phase 1 — complete and real:**
+**Phases 1 and 2 — complete and real:**
 Integrations UI; the full data model; Shopify OAuth; WooCommerce
 `/wc-auth/v1/authorize`; Amazon LWA/SP-API; encrypted credential storage;
 connection health with an hourly probe; disconnect with remote webhook cleanup;
-setup wizard; sync activity log; manual product mapping; signature-verified
-webhook receivers with idempotency and loop protection.
+setup wizard; sync activity log; signature-verified webhook receivers with
+idempotency and loop protection; catalogue import for all three channels; SKU
+matching with explicit conflict states; manual mapping; inventory import with
+seller-resolved conflicts; and the background job runner with retry/backoff.
 
-**Not yet implemented** (schema and endpoints exist; no job runs them):
-bulk product import, automatic SKU matching, inventory pull/push execution,
-reconciliation sweeps, and the sync job runner. `POST /:id/sync` enqueues a real
-job row that currently has no worker — the UI reports it as queued, which is
-accurate.
+**Not yet implemented (phase 3):** pushing Yukizi quantities outward to
+channels, automatic webhook registration at connect time, and scheduled
+reconciliation sweeps. `SyncJobType.INVENTORY_PUSH` and `WEBHOOK_REGISTRATION`
+are rejected by the runner rather than silently marked complete.
 
-Two-way sync is deliberately refused by the API
-(`supportsTwoWaySync()` returns `false`) until the inventory processor and its
-conflict handling exist. Offering it earlier would risk double-deduction.
+Consequently, **two-way sync is still refused by the API**
+(`supportsTwoWaySync()` returns `false`), and resolving an inventory difference
+in Yukizi's favour clears the flag without pushing the correction to the channel
+— the UI says exactly that rather than claiming the channel was updated.
 
-Price and order sync are marked **Coming soon** in the UI and have columns
-reserved (`syncPrices`, `syncOrders`) that no job reads.
+Price and order sync remain **Coming soon** in the UI, with columns reserved
+(`syncPrices`, `syncOrders`) that no job reads.

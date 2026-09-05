@@ -1,6 +1,7 @@
 import {
   IsBoolean,
   IsEnum,
+  IsIn,
   IsInt,
   IsOptional,
   IsString,
@@ -122,6 +123,29 @@ export class MapProductDto {
   @ApiProperty({ description: 'Yukizi seller offer (listing) id.' })
   @IsUUID()
   sellerOfferId: string;
+}
+
+/**
+ * Which side wins for one flagged inventory difference. Required — Yukizi
+ * never picks for the seller.
+ */
+export class ResolveInventoryConflictDto {
+  @ApiProperty({
+    enum: ['YUKIZI', 'EXTERNAL'],
+    description:
+      "EXTERNAL imports the channel quantity into Yukizi. YUKIZI keeps Yukizi's quantity and clears the flag.",
+  })
+  @IsIn(['YUKIZI', 'EXTERNAL'])
+  choice: 'YUKIZI' | 'EXTERNAL';
+}
+
+/** Search for a Yukizi listing to map an external one onto. */
+export class QueryMappingCandidatesDto {
+  @ApiPropertyOptional({ description: 'Match on product name or SKU.' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  search?: string;
 }
 
 export class QueryIntegrationActivityDto {

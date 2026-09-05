@@ -8,6 +8,20 @@ import { ConfigService } from '@nestjs/config';
 import axios, { AxiosError } from 'axios';
 import * as crypto from 'crypto';
 import { normalizeShopifyDomain } from '../store-url.util';
+import { ExternalProductPage } from './external-product.types';
+
+/** Only the fields of Shopify's product payload this integration reads. */
+interface ShopifyRawProduct {
+  id: number;
+  title?: string;
+  variants?: Array<{
+    id: number;
+    sku?: string;
+    title?: string;
+    inventory_quantity?: number;
+    inventory_item_id?: number;
+  }>;
+}
 
 /**
  * Shopify OAuth (the public-app "authorization code grant" flow).
@@ -252,6 +266,79 @@ export class ShopifyProvider {
       // A 5xx or a timeout is Shopify being unwell, not a dead credential.
       throw error;
     }
+  }
+
+  /**
+   * One page of products, with the cursor for the next page.
+   *
+   * Shopify's REST pagination is cursor-based via the `Link` header — offset
+   * paging was removed. The cursor is opaque and must be passed back verbatim;
+   * while it is present Shopify rejects any parameter other than `limit`.
+   */
+  async fetchProductsPage(
+    shopDomain: string,
+    accessToken: string,
+    cursor?: string | null,
+    limit = 250,
+  ): Promise<ExternalProductPage> {
+    const shop = normalizeShopifyDomain(shopDomain);
+    const params = new URLSearchParams({ limit: String(Math.min(250, limit)) });
+    if (cursor) params.set('page_info', cursor);
+
+    const response = await axios.get<{ products: ShopifyRawProduct[] }>(
+      `https://${shop}/admin/api/${SHOPIFY_API_VERSION}/products.json?${params.toString()}`,
+      {
+        headers: { 'X-Shopify-Access-Token': accessToken },
+        timeout: 30_000,
+      },
+    );
+
+    const products: ExternalProductPage['products'] = [];
+    for (const product of response.data?.products ?? []) {
+      // A Shopify product always has at least one variant, and the VARIANT is
+      // what carries the SKU and the stock — so variants, not products, are
+      // what map onto Yukizi listings.
+      for (const variant of product.variants ?? []) {
+        products.push({
+          externalProductId: String(product.id),
+          externalVariantId: String(variant.id),
+          sku: variant.sku?.trim() || null,
+          title:
+            variant.title && variant.title !== 'Default Title'
+              ? `${product.title ?? 'Product'} — ${variant.title}`
+              : (product.title ?? null),
+          quantity:
+            typeof variant.inventory_quantity === 'number'
+              ? variant.inventory_quantity
+              : null,
+          // Shopify stock is always merchant-controlled from our side.
+          fulfillmentChannel: 'MERCHANT' as const,
+          extra: { inventoryItemId: String(variant.inventory_item_id ?? '') },
+        });
+      }
+    }
+
+    return { products, nextCursor: this.parseNextCursor(response.headers?.link) };
+  }
+
+  /**
+   * Extracts the `page_info` of the rel="next" link, or null on the last page.
+   * Header shape:
+   *   <https://shop/admin/api/.../products.json?page_info=XYZ&limit=250>; rel="next"
+   */
+  private parseNextCursor(linkHeader?: unknown): string | null {
+    if (typeof linkHeader !== 'string' || !linkHeader) return null;
+    for (const part of linkHeader.split(',')) {
+      if (!part.includes('rel="next"')) continue;
+      const url = part.match(/<([^>]+)>/)?.[1];
+      if (!url) continue;
+      try {
+        return new URL(url).searchParams.get('page_info');
+      } catch {
+        return null;
+      }
+    }
+    return null;
   }
 
   /**
