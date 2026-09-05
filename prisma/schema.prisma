@@ -1657,7 +1657,12 @@ model IntegrationProductMapping {
   yukiziSku        String?
 
   externalProductId String
-  externalVariantId String?
+  /// Empty string, never NULL, when the listing has no variant.
+  ///
+  /// Postgres treats NULLs as distinct in a unique index, so a nullable column
+  /// here would make (integration, product, NULL) rows never collide — and
+  /// every re-import would silently duplicate every simple product.
+  externalVariantId String  @default("")
   externalSku       String?
   externalListingId String?
   externalTitle     String?
@@ -1673,6 +1678,21 @@ model IntegrationProductMapping {
   mappedManuallyAt   DateTime?
   lastSyncedAt       DateTime?
   lastError          String?
+
+  /// Last quantity the channel reported, and when. Kept so an inventory
+  /// difference can be shown to the seller without re-querying the channel.
+  externalQuantity   Int?
+  externalQuantityAt DateTime?
+  /// Set when an import found the channel and Yukizi disagreeing about stock.
+  /// Yukizi refuses to pick a winner on its own: the seller resolves it, and
+  /// this is cleared. Nothing overwrites a quantity while this is set.
+  inventoryConflictAt DateTime?
+  /// The Yukizi quantity at the moment the conflict was detected, so the
+  /// comparison shown to the seller is the one that was actually flagged.
+  conflictYukiziQuantity Int?
+  /// Why automatic matching could not decide: 'SKU_MATCHES_MULTIPLE_PRODUCTS'
+  /// | 'SKU_SHARED_BY_EXTERNAL_LISTINGS' | 'NO_SKU'.
+  conflictReason String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

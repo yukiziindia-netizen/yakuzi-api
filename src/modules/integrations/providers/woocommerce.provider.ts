@@ -2,6 +2,23 @@ import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import axios, { AxiosError } from 'axios';
 import * as crypto from 'crypto';
 import { assertPublicHostname, normalizeStoreUrl } from '../store-url.util';
+import { ExternalProductPage } from './external-product.types';
+
+/** Only the fields of Woo's product payload this integration reads. */
+interface WooRawProduct {
+  id: number;
+  name?: string;
+  sku?: string;
+  type?: string;
+  stock_quantity?: number | null;
+}
+
+interface WooRawVariation {
+  id: number;
+  name?: string;
+  sku?: string;
+  stock_quantity?: number | null;
+}
 
 /**
  * WooCommerce authentication uses the store's own REST API key endpoint
@@ -238,6 +255,113 @@ export class WooCommerceProvider {
     const b = Buffer.from(signature);
     if (a.length !== b.length) return false;
     return crypto.timingSafeEqual(a, b);
+  }
+
+  /**
+   * One page of products.
+   *
+   * WooCommerce uses ordinary page numbers, and reports the total page count in
+   * the `x-wp-totalpages` header — which is how we know when to stop rather
+   * than guessing from a short page.
+   *
+   * Variable products carry no SKU or stock of their own; the variations do.
+   * So each variable product costs one extra request, which is why this is
+   * paged rather than fetched all at once.
+   */
+  async fetchProductsPage(
+    storeUrl: string,
+    credentials: { consumerKey: string; consumerSecret: string },
+    page = 1,
+    perPage = 50,
+  ): Promise<ExternalProductPage> {
+    const normalized = normalizeStoreUrl(storeUrl);
+    await assertPublicHostname(new URL(normalized).hostname);
+
+    const auth = {
+      username: credentials.consumerKey,
+      password: credentials.consumerSecret,
+    };
+
+    const response = await axios.get<WooRawProduct[]>(
+      `${normalized}/wp-json/wc/v3/products`,
+      {
+        auth,
+        params: { per_page: Math.min(100, perPage), page, status: 'any' },
+        timeout: 30_000,
+        headers: { 'User-Agent': 'Yukizi-Integrations/1.0' },
+      },
+    );
+
+    const products: ExternalProductPage['products'] = [];
+
+    for (const product of response.data ?? []) {
+      if (product.type === 'variable') {
+        const variations = await this.fetchVariations(
+          normalized,
+          auth,
+          product.id,
+        );
+        for (const variation of variations) {
+          products.push({
+            externalProductId: String(product.id),
+            externalVariantId: String(variation.id),
+            sku: variation.sku?.trim() || null,
+            title: `${product.name ?? 'Product'}${
+              variation.name ? ` — ${variation.name}` : ''
+            }`,
+            quantity:
+              typeof variation.stock_quantity === 'number'
+                ? variation.stock_quantity
+                : null,
+            fulfillmentChannel: 'MERCHANT' as const,
+          });
+        }
+        continue;
+      }
+
+      products.push({
+        externalProductId: String(product.id),
+        externalVariantId: null,
+        sku: product.sku?.trim() || null,
+        title: product.name ?? null,
+        quantity:
+          typeof product.stock_quantity === 'number'
+            ? product.stock_quantity
+            : null,
+        fulfillmentChannel: 'MERCHANT' as const,
+      });
+    }
+
+    const totalPages = Number(response.headers?.['x-wp-totalpages'] ?? 1);
+    return {
+      products,
+      nextCursor:
+        Number.isFinite(totalPages) && page < totalPages ? String(page + 1) : null,
+    };
+  }
+
+  /** Variations of one variable product. Capped: 100 is Woo's own maximum. */
+  private async fetchVariations(
+    normalizedStoreUrl: string,
+    auth: { username: string; password: string },
+    productId: number,
+  ): Promise<WooRawVariation[]> {
+    try {
+      const { data } = await axios.get<WooRawVariation[]>(
+        `${normalizedStoreUrl}/wp-json/wc/v3/products/${productId}/variations`,
+        {
+          auth,
+          params: { per_page: 100 },
+          timeout: 30_000,
+          headers: { 'User-Agent': 'Yukizi-Integrations/1.0' },
+        },
+      );
+      return data ?? [];
+    } catch {
+      // One unreadable product must not abort the whole import.
+      this.logger.warn(`Could not read variations for product ${productId}`);
+      return [];
+    }
   }
 
   /**

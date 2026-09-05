@@ -89,8 +89,11 @@ export class IntegrationsService {
    * Deliberately throws NotFound rather than Forbidden for someone else's id:
    * a Forbidden would confirm the row exists, which is an enumeration oracle
    * across sellers.
+   *
+   * Public so sibling services (import, job runner) enforce ownership through
+   * this exact check rather than writing their own.
    */
-  private async requireOwnedIntegration(
+  async requireOwnedIntegration(
     sellerId: string,
     integrationId: string,
   ): Promise<SellerIntegration> {
@@ -295,6 +298,27 @@ export class IntegrationsService {
       this.prisma.integrationProductMapping.count({ where }),
     ]);
 
+    // Counts for the filter chips, computed over the whole channel rather than
+    // the current page so the numbers do not change as the seller pages.
+    const [mapped, unmapped, conflict, missingSku, inventoryConflicts] =
+      await Promise.all([
+        this.prisma.integrationProductMapping.count({
+          where: { sellerId, integrationId, status: 'MAPPED' },
+        }),
+        this.prisma.integrationProductMapping.count({
+          where: { sellerId, integrationId, status: 'UNMAPPED' },
+        }),
+        this.prisma.integrationProductMapping.count({
+          where: { sellerId, integrationId, status: 'CONFLICT' },
+        }),
+        this.prisma.integrationProductMapping.count({
+          where: { sellerId, integrationId, status: 'MISSING_SKU' },
+        }),
+        this.prisma.integrationProductMapping.count({
+          where: { sellerId, integrationId, inventoryConflictAt: { not: null } },
+        }),
+      ]);
+
     return {
       data: rows.map((row) => ({
         id: row.id,
@@ -308,12 +332,58 @@ export class IntegrationsService {
         asin: row.asin,
         fulfillmentChannel: row.fulfillmentChannel,
         status: row.status,
+        conflictReason: row.conflictReason,
+        externalQuantity: row.externalQuantity,
+        // Only present while a difference is unresolved.
+        inventoryConflict: row.inventoryConflictAt
+          ? {
+              yukiziQuantity: row.conflictYukiziQuantity,
+              externalQuantity: row.externalQuantity,
+              detectedAt: row.inventoryConflictAt,
+            }
+          : null,
+        mappedManually: Boolean(row.mappedManuallyAt),
         lastSyncedAt: row.lastSyncedAt,
       })),
+      counts: {
+        mapped,
+        unmapped,
+        conflict,
+        missingSku,
+        inventoryConflicts,
+        total: mapped + unmapped + conflict + missingSku,
+      },
       total,
       page: Math.max(1, options.page ?? 1),
       limit: take,
     };
+  }
+
+  /**
+   * Candidate Yukizi listings for a seller to map an external listing onto.
+   * Scoped to the seller's own live listings, and searchable by name or SKU —
+   * a seller with a large catalogue cannot pick from an unfiltered dropdown.
+   */
+  async listMappingCandidates(userId: string, search?: string) {
+    const sellerId = await this.resolveSellerId(userId);
+
+    const where: Prisma.SellerOfferWhereInput = { sellerId, deletedAt: null };
+    if (search?.trim()) {
+      const term = search.trim();
+      where.OR = [
+        { name: { contains: term, mode: 'insensitive' } },
+        { sku: { contains: term, mode: 'insensitive' } },
+      ];
+    }
+
+    const offers = await this.prisma.sellerOffer.findMany({
+      where,
+      select: { id: true, name: true, sku: true },
+      orderBy: { name: 'asc' },
+      take: 50,
+    });
+
+    return offers;
   }
 
   /**
@@ -472,6 +542,27 @@ export class IntegrationsService {
       status: IntegrationLogStatus.SUCCESS,
       message: 'Connection setup completed.',
     });
+
+    // Finishing setup is what starts the first import — the seller has just
+    // told us what to sync, so there is nothing left to wait for. Queued, not
+    // run inline: a catalogue import must never block this request.
+    if (dto.syncProducts || dto.syncInventory) {
+      const alreadyQueued = await this.findActiveJob(integration.id);
+      if (!alreadyQueued) {
+        await this.prisma.integrationSyncJob.create({
+          data: {
+            sellerId,
+            integrationId: integration.id,
+            jobType: SyncJobType.INITIAL_IMPORT,
+          },
+        });
+        await this.log(sellerId, integration.id, {
+          action: 'IMPORT_QUEUED',
+          status: IntegrationLogStatus.SUCCESS,
+          message: 'Initial product import queued.',
+        });
+      }
+    }
 
     return this.toSellerView(updated);
   }

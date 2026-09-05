@@ -1,4 +1,7 @@
 import { Module } from '@nestjs/common';
+import { ProductsModule } from '../products/products.module';
+import { IntegrationImportService } from './integration-import.service';
+import { IntegrationJobRunnerService } from './integration-job-runner.service';
 import { IntegrationsController } from './integrations.controller';
 import { IntegrationCallbacksController } from './integration-callbacks.controller';
 import { IntegrationsService } from './integrations.service';
@@ -17,12 +20,18 @@ import { AmazonProvider } from './providers/amazon.provider';
  * nothing needs importing here — same as every other feature module.
  */
 @Module({
+  // ProductsModule exports InventoryService, which owns the DEFAULT-batch
+  // convention for stock. Imported stock goes through that same path so it
+  // behaves exactly like stock typed into the seller portal.
+  imports: [ProductsModule],
   controllers: [IntegrationsController, IntegrationCallbacksController],
   providers: [
     IntegrationsService,
     IntegrationOAuthService,
     IntegrationWebhooksService,
     IntegrationHealthService,
+    IntegrationImportService,
+    IntegrationJobRunnerService,
     EncryptionService,
     ShopifyProvider,
     WooCommerceProvider,

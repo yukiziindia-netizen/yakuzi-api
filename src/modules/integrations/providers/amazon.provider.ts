@@ -6,6 +6,20 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios, { AxiosError } from 'axios';
+import { ExternalProductPage } from './external-product.types';
+
+/** Only the fields of the Listings Items payload this integration reads. */
+interface AmazonListingsResponse {
+  items?: Array<{
+    sku?: string;
+    summaries?: Array<{ asin?: string; itemName?: string }>;
+    fulfillmentAvailability?: Array<{
+      fulfillmentChannelCode?: string;
+      quantity?: number;
+    }>;
+  }>;
+  pagination?: { nextToken?: string };
+}
 
 /**
  * Amazon Selling Partner API (SP-API) authorisation.
@@ -307,6 +321,91 @@ export class AmazonProvider {
       if (status === 401 || status === 403) return null;
       throw error;
     }
+  }
+
+  /**
+   * One page of the seller's listings, via the Listings Items API
+   * (`searchListingsItems`, 2021-08-01).
+   *
+   * FBA vs MFN is decided here and nowhere else. Amazon reports availability
+   * per fulfilment channel: `DEFAULT` is merchant-fulfilled stock the seller
+   * controls, anything else (AMAZON_NA, AMAZON_EU, …) is held in Amazon's
+   * fulfilment centres. The two are emitted as separate rows with different
+   * `fulfillmentChannel` values so that FBA quantities can be displayed but
+   * never treated as seller-controlled stock.
+   */
+  async fetchListingsPage(
+    credentials: AmazonCredentials,
+    cursor?: string | null,
+    pageSize = 20,
+  ): Promise<ExternalProductPage> {
+    const host = SP_API_HOSTS[credentials.region] ?? SP_API_HOSTS.na;
+    const accessToken = await this.getAccessToken(credentials.refreshToken);
+
+    const params: Record<string, string> = {
+      marketplaceIds: credentials.marketplaceId,
+      includedData: 'summaries,fulfillmentAvailability',
+      // Amazon caps this endpoint at 20 per page.
+      pageSize: String(Math.min(20, pageSize)),
+    };
+    if (cursor) params.pageToken = cursor;
+
+    const { data } = await axios.get<AmazonListingsResponse>(
+      `https://${host}/listings/2021-08-01/items/${encodeURIComponent(
+        credentials.sellingPartnerId,
+      )}`,
+      {
+        headers: { 'x-amz-access-token': accessToken },
+        params,
+        timeout: 30_000,
+      },
+    );
+
+    const products: ExternalProductPage['products'] = [];
+
+    for (const item of data?.items ?? []) {
+      const sku = item.sku?.trim() || null;
+      const summary = item.summaries?.[0];
+      const asin = summary?.asin ?? null;
+      const title = summary?.itemName ?? sku;
+
+      const availability = item.fulfillmentAvailability ?? [];
+      if (availability.length === 0) {
+        // A listing with no availability block still needs a mapping row so
+        // the seller can see it; quantity is genuinely unknown, not zero.
+        products.push({
+          externalProductId: sku ?? '',
+          externalVariantId: null,
+          sku,
+          title,
+          quantity: null,
+          fulfillmentChannel: 'MERCHANT' as const,
+          asin,
+        });
+        continue;
+      }
+
+      for (const entry of availability) {
+        const isMerchant =
+          (entry.fulfillmentChannelCode ?? 'DEFAULT').toUpperCase() === 'DEFAULT';
+        products.push({
+          externalProductId: sku ?? '',
+          // FBA and MFN availability for one SKU are distinct rows; the channel
+          // code keeps their unique keys apart.
+          externalVariantId: isMerchant ? null : entry.fulfillmentChannelCode ?? 'FBA',
+          sku,
+          title,
+          quantity:
+            typeof entry.quantity === 'number' ? entry.quantity : null,
+          fulfillmentChannel: isMerchant
+            ? ('MERCHANT' as const)
+            : ('AMAZON_FBA' as const),
+          asin,
+        });
+      }
+    }
+
+    return { products, nextCursor: data?.pagination?.nextToken ?? null };
   }
 
   /**

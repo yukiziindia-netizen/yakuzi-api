@@ -27,11 +27,14 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { IntegrationsService } from './integrations.service';
 import { IntegrationOAuthService } from './integration-oauth.service';
+import { IntegrationImportService } from './integration-import.service';
 import {
   CheckWooCommerceStoreDto,
   CompleteSetupDto,
   MapProductDto,
+  QueryMappingCandidatesDto,
   QueryMappingsDto,
+  ResolveInventoryConflictDto,
   StartAmazonConnectionDto,
   StartShopifyConnectionDto,
   StartWooCommerceConnectionDto,
@@ -54,6 +57,7 @@ export class IntegrationsController {
   constructor(
     private readonly integrationsService: IntegrationsService,
     private readonly oauthService: IntegrationOAuthService,
+    private readonly importService: IntegrationImportService,
   ) {}
 
   @Get()
@@ -233,6 +237,40 @@ export class IntegrationsController {
       dto.sellerOfferId,
     );
     return { message: 'Product mapped successfully', data };
+  }
+
+  @Get('mappings/candidates')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: "Seller's own listings, for manual mapping" })
+  async mappingCandidates(
+    @CurrentUser('id') userId: string,
+    @Query() query: QueryMappingCandidatesDto,
+  ) {
+    const data = await this.integrationsService.listMappingCandidates(
+      userId,
+      query.search,
+    );
+    return { message: 'Candidates retrieved successfully', data };
+  }
+
+  @Post(':id/mappings/:mappingId/resolve-inventory')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Resolve one inventory difference in favour of Yukizi or the channel',
+  })
+  async resolveInventoryConflict(
+    @CurrentUser('id') userId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('mappingId', ParseUUIDPipe) mappingId: string,
+    @Body() dto: ResolveInventoryConflictDto,
+  ) {
+    const data = await this.importService.resolveInventoryConflict(
+      userId,
+      id,
+      mappingId,
+      dto.choice,
+    );
+    return { message: 'Inventory difference resolved', data };
   }
 
   @Delete(':id')
