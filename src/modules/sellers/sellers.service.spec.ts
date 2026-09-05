@@ -107,6 +107,85 @@ describe('SellersService.createProfile — admin notification email', () => {
   });
 });
 
+describe('SellersService.getDashboard', () => {
+  const build = () => {
+    const prisma = {
+      sellerProfile: { findUnique: jest.fn().mockResolvedValue({ id: 'profile-1', rating: 4.5 }) },
+      sellerOffer: { count: jest.fn().mockResolvedValue(0) },
+      orderItem: {
+        count: jest.fn().mockResolvedValue(0),
+        aggregate: jest.fn().mockResolvedValue({ _sum: { totalPrice: 0 } }),
+        findMany: jest.fn().mockResolvedValue([]),
+      },
+      sellerSettlement: { aggregate: jest.fn().mockResolvedValue({ _sum: { amount: 0 } }) },
+      productBatch: { count: jest.fn().mockResolvedValue(0) },
+    };
+    const idfyService = { isConfigured: jest.fn().mockReturnValue(false), verifyGst: jest.fn() };
+    const mailService = { sendMail: jest.fn(), resolveAdminRecipient: jest.fn() };
+    const service = new SellersService(prisma as never, idfyService as never, mailService as never);
+    return { service, prisma };
+  };
+
+  it('excludes soft-deleted listings from the product count and the low-stock count', async () => {
+    const { service, prisma } = build();
+
+    await service.getDashboard('user-1');
+
+    // totalProducts (first sellerOffer.count call) must not count deleted offers.
+    expect(prisma.sellerOffer.count.mock.calls[0][0]).toEqual({
+      where: { sellerId: 'profile-1', deletedAt: null },
+    });
+    expect(prisma.productBatch.count).toHaveBeenCalledWith({
+      where: { sellerOffer: { sellerId: 'profile-1', deletedAt: null }, stock: { lt: 10 } },
+    });
+  });
+
+  it('returns a six-month chartData series; revenue counts DELIVERED only, orders count everything', async () => {
+    const { service, prisma } = build();
+    const now = new Date();
+    const twoMonthsAgo = new Date(now);
+    twoMonthsAgo.setDate(1);
+    twoMonthsAgo.setMonth(twoMonthsAgo.getMonth() - 2);
+    // First findMany call = recent orders, second = chart items.
+    prisma.orderItem.findMany
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([
+        { totalPrice: 8, order: { createdAt: now, orderStatus: 'DELIVERED' } },
+        { totalPrice: 8, order: { createdAt: now, orderStatus: 'CANCELLED' } },
+        { totalPrice: 8, order: { createdAt: twoMonthsAgo, orderStatus: 'DELIVERED' } },
+      ]);
+
+    const result = await service.getDashboard('user-1');
+
+    expect(result.chartData).toHaveLength(6);
+    const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const current = result.chartData[5];
+    expect(current.month).toBe(MONTHS[now.getMonth()]);
+    expect(current.orders).toBe(2); // delivered + cancelled both count as orders
+    expect(current.revenue).toBe(8); // but only the delivered one is revenue
+    const older = result.chartData[3];
+    expect(older.month).toBe(MONTHS[twoMonthsAgo.getMonth()]);
+    expect(older).toMatchObject({ orders: 1, revenue: 8 });
+    // No internal bucket keys leak into the payload.
+    expect(Object.keys(current).sort()).toEqual(['month', 'orders', 'revenue']);
+  });
+
+  it('scopes the chart query to this seller from the first of the window month', async () => {
+    const { service, prisma } = build();
+
+    await service.getDashboard('user-1');
+
+    const chartCall = prisma.orderItem.findMany.mock.calls[1][0];
+    expect(chartCall.where.sellerId).toBe('profile-1');
+    const since: Date = chartCall.where.order.createdAt.gte;
+    expect(since.getDate()).toBe(1);
+    const monthsBack =
+      (new Date().getFullYear() - since.getFullYear()) * 12 +
+      (new Date().getMonth() - since.getMonth());
+    expect(monthsBack).toBe(5);
+  });
+});
+
 describe('SellersService.getWaitlist', () => {
   const build = () => {
     const prisma = {

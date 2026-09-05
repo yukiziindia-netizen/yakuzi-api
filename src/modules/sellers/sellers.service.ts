@@ -349,6 +349,7 @@ export class SellersService {
         orders: [],
         revenueTrend: [],
       },
+      chartData: [],
     };
 
     try {
@@ -369,7 +370,10 @@ export class SellersService {
         pendingPayouts,
         lowStockItems,
       ] = await Promise.all([
-        (this.prisma as any).sellerOffer ? this.prisma.sellerOffer.count({ where: { sellerId: seller.id } }) : Promise.resolve(0),
+        // deletedAt: null on both counts — a soft-deleted listing must leave
+        // the "Active Listings x/y" denominator, or a deleted product reads
+        // as "1 not live" forever.
+        (this.prisma as any).sellerOffer ? this.prisma.sellerOffer.count({ where: { sellerId: seller.id, deletedAt: null } }) : Promise.resolve(0),
         (this.prisma as any).sellerOffer ? this.prisma.sellerOffer.count({
           where: { sellerId: seller.id, isActive: true, deletedAt: null },
         }) : Promise.resolve(0),
@@ -402,7 +406,7 @@ export class SellersService {
           _sum: { amount: true },
         }) : Promise.resolve({ _sum: { amount: 0 } }),
         (this.prisma as any).productBatch ? this.prisma.productBatch.count({
-          where: { sellerOffer: { sellerId: seller.id }, stock: { lt: 10 } },
+          where: { sellerOffer: { sellerId: seller.id, deletedAt: null }, stock: { lt: 10 } },
         }) : Promise.resolve(0),
       ]);
 
@@ -424,6 +428,47 @@ export class SellersService {
           },
         },
       }) : [];
+
+      // Monthly series for the seller Analytics charts, which have read a
+      // `chartData` field since they were built but no endpoint ever supplied
+      // it. Six calendar months including the current one. Revenue counts
+      // DELIVERED orders only (same rule as totalRevenue above); the order
+      // count includes every order so the chart total matches the Orders card.
+      const chartStart = new Date();
+      chartStart.setDate(1);
+      chartStart.setHours(0, 0, 0, 0);
+      chartStart.setMonth(chartStart.getMonth() - 5);
+
+      const chartItems = (this.prisma as any).orderItem ? await this.prisma.orderItem.findMany({
+        where: { sellerId: seller.id, order: { createdAt: { gte: chartStart } } },
+        select: {
+          totalPrice: true,
+          order: { select: { createdAt: true, orderStatus: true } },
+        },
+      }) : [];
+
+      const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      const buckets = Array.from({ length: 6 }, (_, i) => {
+        const d = new Date(chartStart);
+        d.setMonth(d.getMonth() + i);
+        return {
+          key: `${d.getFullYear()}-${d.getMonth()}`,
+          month: MONTH_LABELS[d.getMonth()],
+          revenue: 0,
+          orders: 0,
+        };
+      });
+      const bucketByKey = new Map(buckets.map((b) => [b.key, b]));
+      for (const item of chartItems) {
+        const created = item.order?.createdAt;
+        if (!created) continue;
+        const bucket = bucketByKey.get(`${created.getFullYear()}-${created.getMonth()}`);
+        if (!bucket) continue;
+        bucket.orders += 1;
+        if (item.order.orderStatus === 'DELIVERED') {
+          bucket.revenue += Number(item.totalPrice || 0);
+        }
+      }
 
       return {
         stats: {
@@ -448,6 +493,7 @@ export class SellersService {
           })),
           revenueTrend: [],
         },
+        chartData: buckets.map(({ key: _key, ...rest }) => rest),
       };
     } catch (error) {
       this.logger.warn(`Failed to fetch seller dashboard: ${error instanceof Error ? error.message : 'Unknown error'}`);
