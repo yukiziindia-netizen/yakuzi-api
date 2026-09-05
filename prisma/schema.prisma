@@ -120,8 +120,9 @@ model SellerProfile {
   drugLicenseExpiry2  DateTime?
   orderItems          OrderItem[]
   sellerOffers        SellerOffer[]
-  user                User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user                User                @relation(fields: [userId], references: [id], onDelete: Cascade)
   settlements         SellerSettlement[]
+  integrations        SellerIntegration[]
 
   @@index([city])
   @@index([state])
@@ -307,6 +308,7 @@ model SellerOffer {
   orderItems           OrderItem[]
   batches              ProductBatch[]
   reviews              Review[]
+  integrationMappings  IntegrationProductMapping[]
   category             Category              @relation(fields: [categoryId], references: [id])
   analytics            ProductAnalytics?     @relation(fields: [productAnalyticsId], references: [id])
   searchIndex          ProductSearchIndex?   @relation(fields: [productSearchIndexId], references: [id])
@@ -1459,4 +1461,357 @@ model WebDailyStat {
 
   @@id([date, kind, key])
   @@map("analytics_daily")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Integrations — external sales-channel connections (Shopify / WooCommerce /
+// Amazon SP-API).
+//
+// Yukizi is the central inventory system: every external change is normalised
+// into an InventoryEvent first, and only then does Yukizi decide which other
+// channels need updating. Channels never talk to each other directly, which is
+// what keeps Shopify -> Woo -> Amazon -> Shopify loops from existing at all.
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum IntegrationProvider {
+  SHOPIFY
+  WOOCOMMERCE
+  AMAZON
+}
+
+enum IntegrationStatus {
+  CONNECTED
+  DISCONNECTED
+  ERROR
+  EXPIRED
+  PAUSED
+}
+
+/// Which way inventory flows for a connected channel. TWO_WAY is only offered
+/// once loop protection is active for that provider.
+enum IntegrationSyncDirection {
+  IMPORT_ONLY
+  EXPORT_ONLY
+  TWO_WAY
+}
+
+/// Who wins when Yukizi and a channel disagree about a quantity.
+enum InventorySourceOfTruth {
+  YUKIZI
+  EXTERNAL
+}
+
+enum IntegrationMappingStatus {
+  MAPPED
+  UNMAPPED
+  CONFLICT
+  MISSING_SKU
+}
+
+/// Amazon inventory is not one thing: MERCHANT (MFN) stock is seller
+/// controlled and may participate in normal sync, while AMAZON_FBA stock sits
+/// in Amazon's fulfilment centres and must never be overwritten from Yukizi.
+enum FulfillmentChannel {
+  MERCHANT
+  AMAZON_FBA
+}
+
+enum InventoryEventType {
+  EXTERNAL_INVENTORY_CHANGE
+  YUKIZI_MANUAL_CHANGE
+  ORDER_CREATED
+  ORDER_CANCELLED
+  REFUND
+  MANUAL_ADJUSTMENT
+  INITIAL_IMPORT
+  SYNC_RECONCILIATION
+}
+
+enum InventoryEventStatus {
+  PENDING
+  PROCESSED
+  /// Recognised as the echo of Yukizi's own write, or a duplicate delivery.
+  SKIPPED
+  FAILED
+}
+
+enum SyncJobStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum SyncJobType {
+  INITIAL_IMPORT
+  INVENTORY_PUSH
+  INVENTORY_PULL
+  RECONCILIATION
+  WEBHOOK_REGISTRATION
+}
+
+enum IntegrationLogStatus {
+  SUCCESS
+  WARNING
+  FAILURE
+}
+
+/// One connected channel account. Deliberately NOT unique on
+/// (sellerId, provider): the UI allows one connection per provider today, but
+/// the schema must not make a second Shopify store impossible later. The
+/// uniqueness that matters is "the same external account connected twice".
+model SellerIntegration {
+  id       String              @id @default(uuid())
+  sellerId String
+  provider IntegrationProvider
+  status   IntegrationStatus   @default(DISCONNECTED)
+
+  /// Stable id of the account on the other side: Shopify shop domain,
+  /// WooCommerce store host, Amazon selling partner id.
+  externalAccountId String
+  externalStoreName String?
+  externalStoreUrl  String?
+
+  /// Amazon only: the marketplace this connection sells on, and the SP-API
+  /// region endpoint group (na | eu | fe).
+  marketplaceId String?
+  region        String?
+
+  /// AES-256-GCM ciphertext of a JSON credential bundle. Never selected into
+  /// a seller-facing response — see IntegrationsService.toSellerView().
+  encryptedCredentials String?
+  /// Key generation used, so credentials can be re-wrapped after a key roll.
+  credentialsKeyVersion Int      @default(1)
+  scopes                String[] @default([])
+
+  syncEnabled   Boolean @default(true)
+  syncProducts  Boolean @default(true)
+  syncInventory Boolean @default(true)
+  /// Placeholders for phase 4 — surfaced in the UI as "Coming soon", never
+  /// acted on by any job.
+  syncPrices    Boolean @default(false)
+  syncOrders    Boolean @default(false)
+
+  inventoryDirection IntegrationSyncDirection @default(IMPORT_ONLY)
+  sourceOfTruth      InventorySourceOfTruth   @default(YUKIZI)
+
+  /// Whether the seller has finished the post-connect wizard. Until then the
+  /// connection exists but no sync job may run.
+  setupCompletedAt DateTime?
+
+  lastSyncAt           DateTime?
+  lastSuccessfulSyncAt DateTime?
+  /// Sanitised, seller-readable. Never a raw provider payload.
+  lastError            String?
+  lastErrorAt          DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  /// Set on disconnect; the row is kept so history and mappings survive.
+  disconnectedAt DateTime?
+
+  seller   SellerProfile               @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+  mappings IntegrationProductMapping[]
+  events   InventoryEvent[]
+  jobs     IntegrationSyncJob[]
+  logs     IntegrationLog[]
+  webhooks IntegrationWebhook[]
+
+  @@unique([sellerId, provider, externalAccountId])
+  @@index([sellerId])
+  @@index([sellerId, provider])
+  @@index([status])
+  @@map("seller_integrations")
+}
+
+/// Registered webhook/notification subscriptions, so disconnect can delete
+/// exactly what was created rather than guessing.
+model IntegrationWebhook {
+  id            String @id @default(uuid())
+  integrationId String
+  /// Provider's own id for the subscription (Shopify webhook id, Woo webhook
+  /// id, Amazon subscription id).
+  externalId    String
+  topic         String
+  /// Per-webhook shared secret where the provider issues one (WooCommerce).
+  encryptedSecret String?
+  createdAt       DateTime @default(now())
+
+  integration SellerIntegration @relation(fields: [integrationId], references: [id], onDelete: Cascade)
+
+  @@unique([integrationId, topic, externalId])
+  @@index([integrationId])
+  @@map("integration_webhooks")
+}
+
+/// Links a Yukizi listing to its counterpart on a channel. Mapping is by SKU
+/// or an explicit seller choice — never by similar names.
+model IntegrationProductMapping {
+  id            String @id @default(uuid())
+  sellerId      String
+  integrationId String
+
+  /// The Yukizi side. Null while an imported listing is waiting to be mapped.
+  sellerOfferId    String?
+  catalogProductId String?
+  yukiziSku        String?
+
+  externalProductId String
+  externalVariantId String?
+  externalSku       String?
+  externalListingId String?
+  externalTitle     String?
+  /// Amazon only.
+  asin          String?
+  marketplaceId String?
+
+  /// MERCHANT for Shopify/Woo and Amazon MFN; AMAZON_FBA is display-only.
+  fulfillmentChannel FulfillmentChannel       @default(MERCHANT)
+  status             IntegrationMappingStatus @default(UNMAPPED)
+  /// Set when the seller mapped this by hand, so automatic matching leaves it
+  /// alone afterwards.
+  mappedManuallyAt   DateTime?
+  lastSyncedAt       DateTime?
+  lastError          String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  integration SellerIntegration @relation(fields: [integrationId], references: [id], onDelete: Cascade)
+  sellerOffer SellerOffer?      @relation(fields: [sellerOfferId], references: [id], onDelete: SetNull)
+  events      InventoryEvent[]
+
+  @@unique([integrationId, externalProductId, externalVariantId])
+  @@index([sellerId])
+  @@index([integrationId, status])
+  @@index([sellerOfferId])
+  @@index([externalSku])
+  @@map("integration_product_mappings")
+}
+
+/// The inventory ledger. Every quantity change — from a channel, from Yukizi,
+/// from an order — lands here first and is applied exactly once.
+model InventoryEvent {
+  id       String  @id @default(uuid())
+  sellerId String
+  /// Null for changes that originate inside Yukizi.
+  integrationId String?
+  mappingId     String?
+  sellerOfferId String?
+
+  /// 'YUKIZI' or the provider name — where the change came from.
+  sourcePlatform String
+  /// The provider's own event/webhook id. Together with sourcePlatform this
+  /// is the idempotency key: a redelivered webhook cannot apply twice.
+  sourceEventId  String?
+  /// Set by the outbound writer before it calls a channel, and matched when
+  /// the resulting echo webhook arrives. This is the loop breaker.
+  idempotencyKey String?
+
+  eventType InventoryEventType
+  status    InventoryEventStatus @default(PENDING)
+
+  oldQuantity   Int?
+  newQuantity   Int?
+  quantityDelta Int?
+
+  /// Why an event was skipped: 'ECHO_OF_OUR_WRITE' | 'DUPLICATE_DELIVERY' |
+  /// 'NO_MAPPING' | 'QUANTITY_UNCHANGED'.
+  skipReason String?
+  lastError  String?
+
+  receivedAt  DateTime  @default(now())
+  processedAt DateTime?
+
+  integration SellerIntegration?         @relation(fields: [integrationId], references: [id], onDelete: Cascade)
+  mapping     IntegrationProductMapping? @relation(fields: [mappingId], references: [id], onDelete: SetNull)
+
+  /// Idempotency at the database level, not just in application code.
+  @@unique([sourcePlatform, sourceEventId])
+  @@index([sellerId, receivedAt])
+  @@index([integrationId, receivedAt])
+  @@index([status])
+  @@index([idempotencyKey])
+  @@map("inventory_events")
+}
+
+/// Queued channel work. Sync never runs inside a web request.
+model IntegrationSyncJob {
+  id            String @id @default(uuid())
+  sellerId      String
+  integrationId String
+
+  jobType SyncJobType
+  status  SyncJobStatus @default(PENDING)
+  /// Free-form job input (mapping ids, quantities, cursors).
+  payload Json?
+
+  attempts    Int       @default(0)
+  maxAttempts Int       @default(5)
+  /// Exponential backoff target; the runner only picks up due jobs.
+  runAfter    DateTime  @default(now())
+  startedAt   DateTime?
+  completedAt DateTime?
+  /// Set when a failure is not worth retrying (revoked token, bad scope).
+  permanentFailure Boolean @default(false)
+  lastError        String?
+
+  /// Progress for the UI: "142 of 327".
+  totalItems     Int @default(0)
+  processedItems Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  integration SellerIntegration @relation(fields: [integrationId], references: [id], onDelete: Cascade)
+
+  @@index([status, runAfter])
+  @@index([integrationId, status])
+  @@index([sellerId, createdAt])
+  @@map("integration_sync_jobs")
+}
+
+/// Debug/audit trail. Sanitised: never credentials, never raw tokens.
+model IntegrationLog {
+  id            String  @id @default(uuid())
+  sellerId      String
+  integrationId String?
+
+  action String
+  status IntegrationLogStatus
+  /// SKU or external id the line refers to, when it refers to one.
+  entityRef String?
+  /// Seller-readable sentence.
+  message   String?
+  /// Technical detail for admins only — never returned to sellers.
+  detail    Json?
+
+  createdAt DateTime @default(now())
+
+  integration SellerIntegration? @relation(fields: [integrationId], references: [id], onDelete: Cascade)
+
+  @@index([sellerId, createdAt])
+  @@index([integrationId, createdAt])
+  @@map("integration_logs")
+}
+
+/// Single-use anti-CSRF state for an in-flight authorisation. Rows are
+/// consumed on callback and swept after they expire.
+model IntegrationOAuthState {
+  id       String              @id @default(uuid())
+  /// Random opaque value sent to the provider and returned to us.
+  state    String              @unique
+  sellerId String
+  provider IntegrationProvider
+
+  /// Shopify shop domain / Woo store URL / Amazon region, captured at start.
+  context Json?
+
+  expiresAt  DateTime
+  consumedAt DateTime?
+  createdAt  DateTime @default(now())
+
+  @@index([sellerId, provider])
+  @@index([expiresAt])
+  @@map("integration_oauth_states")
 }

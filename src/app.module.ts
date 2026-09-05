@@ -38,6 +38,7 @@ import { BrandsModule } from './modules/brands/brands.module';
 import { BannersModule } from './modules/banners/banners.module';
 import { HomepageSectionsModule } from './modules/homepage-sections/homepage-sections.module';
 import { InstagramModule } from './modules/instagram/instagram.module';
+import { IntegrationsModule } from './modules/integrations/integrations.module';
 import { LocationsModule } from './modules/locations/locations.module';
 import { MailModule } from './modules/mail/mail.module';
 import { SeoModule } from './modules/seo/seo.module';
@@ -77,6 +78,23 @@ import { WebAnalyticsModule } from './modules/web-analytics/web-analytics.module
         SMTP_APP_PASSWORD: Joi.string().allow('').optional(),
         MAIL_FROM_NAME: Joi.string().allow('').optional(),
         MAIL_REPLY_TO: Joi.string().allow('').optional(),
+
+        // ─── Integrations (sales channels) ───────────
+        // All optional: a provider whose credentials are absent is shown as
+        // unavailable in the seller UI rather than breaking boot.
+        // 32 bytes, hex or base64 — `openssl rand -hex 32`. Without it, no
+        // authorization flow is allowed to start.
+        INTEGRATIONS_ENCRYPTION_KEY: Joi.string().allow('').optional(),
+        SELLER_APP_URL: Joi.string().allow('').optional(),
+        API_PUBLIC_URL: Joi.string().allow('').optional(),
+        SHOPIFY_CLIENT_ID: Joi.string().allow('').optional(),
+        SHOPIFY_CLIENT_SECRET: Joi.string().allow('').optional(),
+        SHOPIFY_REDIRECT_URI: Joi.string().allow('').optional(),
+        AMAZON_LWA_CLIENT_ID: Joi.string().allow('').optional(),
+        AMAZON_LWA_CLIENT_SECRET: Joi.string().allow('').optional(),
+        AMAZON_SP_API_APP_ID: Joi.string().allow('').optional(),
+        AMAZON_REDIRECT_URI: Joi.string().allow('').optional(),
+        AMAZON_SP_API_APP_DRAFT: Joi.string().allow('').optional(),
       }),
       validationOptions: { abortEarly: true },
     }),
@@ -153,6 +171,7 @@ import { WebAnalyticsModule } from './modules/web-analytics/web-analytics.module
     HomepageSectionsModule,
     InstagramModule,
     LocationsModule,
+    IntegrationsModule,
   ],
   providers: [
     // Apply throttler guard globally
