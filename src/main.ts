@@ -148,6 +148,7 @@ async function bootstrap() {
     .addTag('Tickets', 'Support ticket system')
     .addTag('Settlements', 'Seller settlement & payouts')
     .addTag('Admin', 'Admin dashboard & user management')
+    .addTag('Integrations', 'Seller sales-channel connections & inventory sync')
     .addTag('Health', 'System health checks')
     .build();
 
