@@ -4,6 +4,7 @@ import { ConfigService } from '@nestjs/config';
 import { OrderStatus, PaymentStatus, Role } from '@prisma/client';
 import { PrismaService } from '../../database/prisma.service';
 import { OrdersService } from './orders.service';
+import { BuyerEmailsService } from '../mail/buyer-emails.service';
 
 const DEFAULT_TIMEOUT_MINUTES = 30;
 
@@ -41,6 +42,7 @@ export class CheckoutAbandonmentSweepService {
     private readonly prisma: PrismaService,
     private readonly ordersService: OrdersService,
     private readonly configService: ConfigService,
+    private readonly buyerEmails: BuyerEmailsService,
   ) {}
 
   @Cron(CronExpression.EVERY_10_MINUTES)
@@ -78,7 +80,24 @@ export class CheckoutAbandonmentSweepService {
     // N cancellations concurrently against the database.
     for (const order of stale) {
       try {
-        await this.ordersService.cancelOrder(order.buyerId, order.id, Role.ADMIN);
+        // Email first, cancel second. The recovery email needs the order's
+        // items to show what the buyer was buying, and reading them before
+        // the cancellation avoids any question of racing the write that
+        // releases the stock.
+        const recovered = await this.buyerEmails.sendPaymentRecovery(order.id);
+
+        // Suppress the standard cancellation notice only when the better one
+        // actually reached them — two messages about one abandoned checkout is
+        // one too many, but none at all is worse. A buyer who signed up with
+        // just a phone number has no address for the recovery email, and still
+        // gets the SMS the cancellation notice sends.
+        await this.ordersService.cancelOrder(
+          order.buyerId,
+          order.id,
+          Role.ADMIN,
+          undefined,
+          recovered ? 'none' : 'cancellation',
+        );
         this.logger.log(`Cancelled abandoned unpaid checkout: order ${order.id}`);
       } catch (error: any) {
         this.logger.warn(

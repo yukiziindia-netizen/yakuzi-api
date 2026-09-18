@@ -15,6 +15,8 @@ const payoutEmailStub = { settlementPaid: jest.fn().mockResolvedValue(undefined)
 // Previewing a commission invoice is read-only and only the settlements
 // screen uses it, so every other harness just needs something shaped right.
 const commissionInvoiceStub = { forSettlement: jest.fn().mockResolvedValue(null) };
+// Nothing under test here sends mail; the refund path has its own spec.
+const buyerEmailsStub = { sendRefundIssued: jest.fn() };
 const commissionInvoicePdfStub = {
   render: jest.fn().mockResolvedValue(Buffer.from('%PDF-1.3 fake')),
   filename: jest.fn().mockReturnValue('YKZ-COM-2026-27-15D8CB94.pdf'),
@@ -56,6 +58,7 @@ const build = (pushResult: Record<string, unknown> = {}) => {
     payoutEmailStub as never,
     commissionInvoiceStub as never,
     commissionInvoicePdfStub as never,
+    buyerEmailsStub as never,
   );
   return { service, prisma, ordersService };
 };
@@ -137,6 +140,7 @@ describe('AdminService.adminUpdateProduct — catalog product resolution', () =>
       payoutEmailStub as never,
       commissionInvoiceStub as never,
       commissionInvoicePdfStub as never,
+    buyerEmailsStub as never,
     );
     return { service, prisma };
   };
@@ -216,6 +220,7 @@ describe('AdminService.getSettlementsSummary — totals across all pages', () =>
       payoutEmailStub as never,
       commissionInvoiceStub as never,
       commissionInvoicePdfStub as never,
+    buyerEmailsStub as never,
     );
     return { service, prisma };
   };
@@ -294,6 +299,7 @@ describe('AdminService.getAllSettlements — pagination priority', () => {
       payoutEmailStub as never,
       commissionInvoiceStub as never,
       commissionInvoicePdfStub as never,
+    buyerEmailsStub as never,
     );
     return { service, prisma };
   };
@@ -455,6 +461,7 @@ describe('AdminService.getDashboard — Platform Revenue', () => {
       payoutEmailStub as never,
       commissionInvoiceStub as never,
       commissionInvoicePdfStub as never,
+    buyerEmailsStub as never,
     );
     return { service, prisma };
   };
@@ -544,6 +551,7 @@ describe('AdminService.approveUser — seller approval email', () => {
       payoutEmailStub as never,
       commissionInvoiceStub as never,
       commissionInvoicePdfStub as never,
+    buyerEmailsStub as never,
     );
     return { service, mailService };
   };
@@ -636,6 +644,7 @@ describe('AdminService.adminCreateProductForSeller', () => {
       payoutEmailStub as never,
       commissionInvoiceStub as never,
       commissionInvoicePdfStub as never,
+    buyerEmailsStub as never,
     );
 
     const dto = {
@@ -704,6 +713,7 @@ describe('AdminService.getAllOrders — test-order exclusion', () => {
       payoutEmailStub as never,
       commissionInvoiceStub as never,
       commissionInvoicePdfStub as never,
+    buyerEmailsStub as never,
     );
     return { service, prisma };
   };
@@ -779,6 +789,7 @@ describe('AdminService.countCancellableTestOrders', () => {
       payoutEmailStub as never,
       commissionInvoiceStub as never,
       commissionInvoicePdfStub as never,
+    buyerEmailsStub as never,
     );
 
     const result = await service.countCancellableTestOrders();
@@ -810,6 +821,7 @@ describe('AdminService.cancelAllTestOrders', () => {
       payoutEmailStub as never,
       commissionInvoiceStub as never,
       commissionInvoicePdfStub as never,
+    buyerEmailsStub as never,
     );
     return { service, prisma, ordersService };
   };
@@ -882,6 +894,7 @@ describe('AdminService.getAllProducts — other-sellers aggregation', () => {
       payoutEmailStub as never,
       commissionInvoiceStub as never,
       commissionInvoicePdfStub as never,
+    buyerEmailsStub as never,
     );
     return { service, prisma };
   };
@@ -993,6 +1006,7 @@ describe('AdminService.updateSellerSelfShip', () => {
       payoutEmailStub as never,
       commissionInvoiceStub as never,
       commissionInvoicePdfStub as never,
+    buyerEmailsStub as never,
     );
     return { service, prisma };
   };
@@ -1036,6 +1050,7 @@ describe('AdminService.getPublicSettings — SEO verification tokens', () => {
       payoutEmailStub as never,
       commissionInvoiceStub as never,
       commissionInvoicePdfStub as never,
+    buyerEmailsStub as never,
     );
     return { service };
   };
@@ -1069,6 +1084,7 @@ describe('AdminService.getPublicSettings — storefront SEO defaults', () => {
       prisma as never, {} as never, {} as never, {} as never,
       {} as never, {} as never, mockConfigService as never, payoutEmailStub as never,
       commissionInvoiceStub as never, commissionInvoicePdfStub as never,
+    buyerEmailsStub as never,
     );
   };
 
@@ -1113,6 +1129,7 @@ describe('AdminService.getPublicSettings — social profiles', () => {
       prisma as never, {} as never, {} as never, {} as never,
       {} as never, {} as never, mockConfigService as never, payoutEmailStub as never,
       commissionInvoiceStub as never, commissionInvoicePdfStub as never,
+    buyerEmailsStub as never,
     );
   };
 
@@ -1138,6 +1155,7 @@ describe('AdminService.getPublicSettings — support contact', () => {
       mockPrisma as never, {} as never, {} as never, {} as never,
       {} as never, {} as never, mockConfigService as never, payoutEmailStub as never,
       commissionInvoiceStub as never, commissionInvoicePdfStub as never,
+    buyerEmailsStub as never,
     );
   };
 
@@ -1202,6 +1220,7 @@ describe('AdminService — per-order test/real overrides', () => {
       payoutEmailStub as never,
       commissionInvoiceStub as never,
       commissionInvoicePdfStub as never,
+    buyerEmailsStub as never,
     );
     return { service, prisma };
   };
@@ -1338,6 +1357,7 @@ describe('AdminService.getDashboard — honours per-order overrides', () => {
       payoutEmailStub as never,
       commissionInvoiceStub as never,
       commissionInvoicePdfStub as never,
+    buyerEmailsStub as never,
     );
     return { service, prisma };
   };
@@ -1396,6 +1416,7 @@ describe('AdminService.getCommissionInvoicePdf', () => {
       payoutEmail as never,
       commissionInvoiceService as never,
       commissionInvoicePdfService as never,
+      buyerEmailsStub as never,
     );
     return { service, prisma, payoutEmail, commissionInvoiceService, commissionInvoicePdfService };
   };
@@ -1471,6 +1492,7 @@ describe('AdminService — orders from buyers with no phone', () => {
       payoutEmailStub as never,
       commissionInvoiceStub as never,
       commissionInvoicePdfStub as never,
+    buyerEmailsStub as never,
     );
     return { service, prisma };
   };

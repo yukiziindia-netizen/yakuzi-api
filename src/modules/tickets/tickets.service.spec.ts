@@ -26,7 +26,11 @@ describe('TicketsService.closeTicket', () => {
         update: jest.fn().mockResolvedValue({}),
       },
     };
-    const service = new TicketsService(prisma as never);
+    const buyerEmails = {
+      sendTicketReceived: jest.fn(),
+      sendTicketReply: jest.fn(),
+    };
+    const service = new TicketsService(prisma as never, buyerEmails as never);
     // getTicketById re-reads and re-authorizes; stubbed so these tests are
     // about closing, not about the read it returns.
     jest

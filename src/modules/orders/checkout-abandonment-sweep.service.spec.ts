@@ -13,12 +13,18 @@ const build = (configuredTimeoutMinutes?: string) => {
   const configService = {
     get: jest.fn().mockReturnValue(configuredTimeoutMinutes),
   };
+  // The recovery email is the buyer-facing half of this sweep; stubbed here so
+  // these tests stay about which orders get cancelled.
+  const buyerEmails = {
+    sendPaymentRecovery: jest.fn().mockResolvedValue(true),
+  };
   const service = new CheckoutAbandonmentSweepService(
     prisma as never,
     ordersService as never,
     configService as never,
+    buyerEmails as never,
   );
-  return { service, prisma, ordersService, configService };
+  return { service, prisma, ordersService, configService, buyerEmails };
 };
 
 describe('CheckoutAbandonmentSweepService.cancelAbandonedCheckouts', () => {
@@ -44,7 +50,7 @@ describe('CheckoutAbandonmentSweepService.cancelAbandonedCheckouts', () => {
   });
 
   it('cancels each stale order as ADMIN (bypassing the buyer-ownership check) so stock is restored', async () => {
-    const { service, prisma, ordersService } = build();
+    const { service, prisma, ordersService, buyerEmails } = build();
     prisma.order.findMany.mockResolvedValue([
       { id: 'order-1', buyerId: 'buyer-1' },
       { id: 'order-2', buyerId: 'buyer-2' },
@@ -52,8 +58,44 @@ describe('CheckoutAbandonmentSweepService.cancelAbandonedCheckouts', () => {
 
     await service.cancelAbandonedCheckouts();
 
-    expect(ordersService.cancelOrder).toHaveBeenCalledWith('buyer-1', 'order-1', Role.ADMIN);
-    expect(ordersService.cancelOrder).toHaveBeenCalledWith('buyer-2', 'order-2', Role.ADMIN);
+    // 'none' suppresses the generic cancellation notice — these buyers get the
+    // payment-recovery email instead, which says something more useful about
+    // the same event.
+    expect(ordersService.cancelOrder).toHaveBeenCalledWith(
+      'buyer-1',
+      'order-1',
+      Role.ADMIN,
+      undefined,
+      'none',
+    );
+    expect(ordersService.cancelOrder).toHaveBeenCalledWith(
+      'buyer-2',
+      'order-2',
+      Role.ADMIN,
+      undefined,
+      'none',
+    );
+    expect(buyerEmails.sendPaymentRecovery).toHaveBeenCalledWith('order-1');
+    expect(buyerEmails.sendPaymentRecovery).toHaveBeenCalledWith('order-2');
+  });
+
+  it('falls back to the cancellation notice when the recovery email could not reach them', async () => {
+    const { service, prisma, ordersService, buyerEmails } = build();
+    prisma.order.findMany.mockResolvedValue([{ id: 'order-1', buyerId: 'buyer-1' }]);
+    // A buyer who signed up with only a phone number has no address for the
+    // recovery email — they must still hear something, via the SMS the
+    // cancellation notice sends.
+    buyerEmails.sendPaymentRecovery.mockResolvedValue(false);
+
+    await service.cancelAbandonedCheckouts();
+
+    expect(ordersService.cancelOrder).toHaveBeenCalledWith(
+      'buyer-1',
+      'order-1',
+      Role.ADMIN,
+      undefined,
+      'cancellation',
+    );
   });
 
   it('continues cancelling remaining orders when one cancellation fails', async () => {

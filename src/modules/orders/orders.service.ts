@@ -2114,6 +2114,17 @@ export class OrdersService {
     orderId: string,
     role: string,
     reason?: string,
+    /**
+     * Which message the buyer gets, if any.
+     *
+     * Defaults to the plain cancellation notice, so every existing caller
+     * behaves exactly as before. The abandoned-checkout sweep passes
+     * 'none' and sends its own payment-recovery email instead: to that
+     * buyer nothing was ever cancelled, they simply did not finish paying,
+     * and "your order has been cancelled" is both confusing and a wasted
+     * chance to get them back.
+     */
+    notify: 'cancellation' | 'none' = 'cancellation',
   ) {
     // 1. Fetch order
     const order = await this.prisma.order.findUnique({
@@ -2270,11 +2281,13 @@ export class OrdersService {
     // the cancellation is already committed and stock already restored, so a
     // notification channel having a bad day must not turn a completed cancel
     // into an error for whoever pressed the button.
-    void this.notifyBuyerOfCancellation(orderId, reason).catch((error) => {
-      this.logger.warn(
-        `Could not tell the buyer order ${orderId} was cancelled: ${(error as Error)?.message}`,
-      );
-    });
+    if (notify === 'cancellation') {
+      void this.notifyBuyerOfCancellation(orderId, reason).catch((error) => {
+        this.logger.warn(
+          `Could not tell the buyer order ${orderId} was cancelled: ${(error as Error)?.message}`,
+        );
+      });
+    }
 
     return updated;
   }
