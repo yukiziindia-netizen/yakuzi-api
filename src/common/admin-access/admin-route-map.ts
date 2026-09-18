@@ -174,6 +174,12 @@ const RULES: RouteRule[] = [
   // ── System ───────────────────────────────────────────────────────────────
   // System tabs have no "everyday" tier: reading is view, changing is full.
   { pattern: /^\/admin\/settings(\/|$)/, tab: 'settings', writeLevel: 'full' },
+
+  // ── Activity log ─────────────────────────────────────────────────────────
+  // Read-only by construction: the module exposes no write routes at all, so
+  // `view` is the only level that can ever be demanded here. An admin without
+  // the grant gets a 403 from the guard and never sees the tab in the sidebar.
+  { pattern: /^\/admin\/activity(\/|$)/, tab: 'activity', writeLevel: 'full' },
 ];
 
 /**

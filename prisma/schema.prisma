@@ -34,6 +34,7 @@ model User {
   sellerProfile            SellerProfile?
   tickets                  Ticket[]
   adminCreatedSellerOffers SellerOffer[]           @relation("SellerOfferCreatedByAdmin")
+  adminActivityLogs        AdminActivityLog[]
 
   @@index([role])
   @@index([status])
@@ -549,6 +550,75 @@ model NotificationBroadcast {
 
   @@index([createdAt])
   @@map("notification_broadcasts")
+}
+
+/// Append-only record of what admins do in the panel.
+///
+/// Exists for accountability: who changed what, when, from where. There is
+/// deliberately NO delete or update path to this table anywhere in the API —
+/// not hidden in the UI, simply never written — because a log an admin can
+/// edit is not evidence of anything.
+///
+/// Note for whoever operates the database: the application's DB user should
+/// hold INSERT and SELECT on this table and NOT DELETE or UPDATE. Without
+/// that, the guarantee above only covers the API, not someone with a psql
+/// prompt.
+model AdminActivityLog {
+  id String @id @default(uuid())
+
+  /// The admin who acted. SetNull rather than Cascade: deleting an admin
+  /// account must never erase the history of what they did — that is exactly
+  /// the case this table exists for.
+  adminUserId String?
+  admin       User?   @relation(fields: [adminUserId], references: [id], onDelete: SetNull)
+
+  /// Name and email captured AT THE TIME of the action. Denormalised on
+  /// purpose so an entry still names a person after the account is renamed or
+  /// deleted and adminUserId has gone null.
+  adminName  String
+  adminEmail String?
+
+  /// Sidebar tab this action belongs to ("orders", "products", ...), resolved
+  /// from the same route map the permission system uses, so the log's
+  /// sections always match the panel's.
+  section String
+
+  /// HTTP method, kept raw for filtering (POST / PATCH / DELETE).
+  method String
+
+  /// Request path, with any query string stripped.
+  path String
+
+  /// One human-readable line: "Approved seller ABC Traders".
+  description String
+
+  /// What was acted on, when it can be identified — "order", "product", the
+  /// id, and a label worth showing in a table.
+  targetType  String?
+  targetId    String?
+  targetLabel String?
+
+  /// Outcome. Failures are recorded too: an admin attempting something they
+  /// were refused is itself worth seeing.
+  statusCode Int
+  success    Boolean
+
+  /// Redacted request body. Passwords, tokens, OTPs, bank details and
+  /// document URLs are stripped before this is written — the log must not
+  /// become a second copy of the data it describes.
+  changes Json?
+
+  ipAddress String?
+  userAgent String?
+
+  createdAt DateTime @default(now())
+
+  @@index([adminUserId])
+  @@index([section])
+  @@index([createdAt])
+  @@index([adminUserId, createdAt])
+  @@index([section, createdAt])
+  @@map("admin_activity_logs")
 }
 
 model Ticket {

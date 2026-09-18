@@ -66,6 +66,10 @@ export const TAB_KEYS = [
   // System
   'admins',
   'settings',
+  // Append-only audit trail of admin actions. Read-only by nature, so
+  // only `none` and `view` are meaningful for this tab — there is no
+  // write action to gate behind `partial` or `full`.
+  'activity',
 ] as const;
 
 export type TabKey = (typeof TAB_KEYS)[number];
