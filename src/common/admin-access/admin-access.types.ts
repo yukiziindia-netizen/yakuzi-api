@@ -185,4 +185,16 @@ export const TAB_GROUPS: TabGroup[] = [
       { key: 'settings', label: 'Settings' },
     ],
   },
+  {
+    key: 'audit',
+    label: 'Audit',
+    // Its own group rather than a row under System, because the levels differ:
+    // the activity log has no write actions at all, so offering `full` would
+    // be a control that grants nothing. none/view is the honest set.
+    supportsPartial: false,
+    levels: ['none', 'view'],
+    fullMeans:
+      'See the activity log: every action other admins take in the panel. Entries cannot be edited or deleted by anyone, including Super Admins.',
+    tabs: [{ key: 'activity', label: 'Activity Log' }],
+  },
 ];
