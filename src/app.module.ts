@@ -23,6 +23,7 @@ import { OrdersModule } from './modules/orders/orders.module';
 import { WishlistModule } from './modules/wishlist/wishlist.module';
 import { PaymentsModule } from './modules/payments/payments.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
+import { ActivityModule } from './modules/activity/activity.module';
 import { AdminModule } from './modules/admin/admin.module';
 import { StorageModule } from './modules/storage/storage.module';
 import { SettlementsModule } from './modules/settlements/settlements.module';
@@ -153,6 +154,9 @@ import { WebAnalyticsModule } from './modules/web-analytics/web-analytics.module
     WishlistModule,
     PaymentsModule,
     NotificationsModule,
+    // Registers a global interceptor that records every admin write. Placed
+    // here rather than editing ~200 handlers; see activity.module.ts.
+    ActivityModule,
     MailModule,
     SeoModule,
     WebAnalyticsModule,
