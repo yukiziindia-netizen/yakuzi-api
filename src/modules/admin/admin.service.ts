@@ -50,6 +50,8 @@ import { SellersService } from '../sellers/sellers.service';
 import { UpdateSellerProfileDto } from '../sellers/dto/update-seller-profile.dto';
 import { MailService } from '../mail/mail.service';
 import { PayoutEmailService } from '../settlements/payout-email.service';
+import { BuyerEmailsService } from '../mail/buyer-emails.service';
+import { RecordRefundDto } from './dto/record-refund.dto';
 import { CommissionInvoiceService } from '../settlements/commission-invoice.service';
 import { CommissionInvoicePdfService } from '../settlements/commission-invoice-pdf.service';
 import { ProductsService } from '../products/products.service';
@@ -104,6 +106,7 @@ export class AdminService {
     private readonly payoutEmailService: PayoutEmailService,
     private readonly commissionInvoiceService: CommissionInvoiceService,
     private readonly commissionInvoicePdfService: CommissionInvoicePdfService,
+    private readonly buyerEmails: BuyerEmailsService,
   ) {}
 
   /**
@@ -4328,6 +4331,61 @@ export class AdminService {
       socialWhatsapp: String(settings.socialWhatsapp ?? ''),
     };
   }
+
+  /**
+   * Records that a refund has actually gone back to the buyer, and tells them.
+   *
+   * This does not move money. Refunds are issued in Razorpay's dashboard or at
+   * a bank; what was missing was any record of it here, and therefore any way
+   * to close the loop with the buyer — the cancellation email promises a
+   * refund and nothing has ever confirmed it landed.
+   *
+   * Recording it twice is refused rather than silently ignored, so an admin
+   * who is unsure whether a colleague already did it gets told, instead of the
+   * buyer getting a second email about the same money.
+   */
+  async recordRefund(orderId: string, dto: RecordRefundDto) {
+    const order = await this.prisma.order.findUnique({
+      where: { id: orderId },
+      select: { id: true, totalAmount: true, refundedAt: true },
+    });
+    if (!order) throw new NotFoundException('Order not found');
+
+    if (order.refundedAt) {
+      throw new BadRequestException(
+        'A refund has already been recorded for this order.',
+      );
+    }
+
+    const amount = dto.amount ?? Number(order.totalAmount);
+    if (amount > Number(order.totalAmount)) {
+      throw new BadRequestException(
+        'Refund amount cannot be more than the order total.',
+      );
+    }
+
+    const updated = await this.prisma.order.update({
+      where: { id: orderId },
+      data: {
+        refundedAt: new Date(),
+        refundAmount: amount,
+        refundReference: dto.reference?.trim() || null,
+        refundNotes: dto.notes?.trim() || null,
+      },
+      select: {
+        id: true,
+        refundedAt: true,
+        refundAmount: true,
+        refundReference: true,
+        refundNotes: true,
+      },
+    });
+
+    // Detached: the refund is recorded either way. An admin pressing this
+    // button must not see an error because a mail server was slow.
+    void this.buyerEmails.sendRefundIssued(orderId);
+
+    this.logger.log(`Refund of ${amount} recorded for order ${orderId}`);
+    return updated;
+  }
 }
-
-

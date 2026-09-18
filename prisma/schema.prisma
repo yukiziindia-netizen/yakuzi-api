@@ -425,6 +425,15 @@ model Order {
   cancellationReason String?
   cancelledAt        DateTime?
 
+  // Set when an admin records that the money has actually gone back. Until
+  // then a cancelled order only promises a refund; these are what let us tell
+  // the buyer it has landed, and what support reads when asked "where is it".
+  refundedAt        DateTime?
+  refundAmount      Decimal?  @db.Decimal(10, 2)
+  // Bank/UPI/Razorpay reference the buyer can quote to their own bank.
+  refundReference   String?
+  refundNotes       String?
+
   // One id shared by every order a single checkout produced. A cart holding
   // items from three sellers becomes three orders, and the buyer still pays
   // once for all of them — this is what ties them back together when the money
@@ -2114,4 +2123,29 @@ model IntegrationExternalOrder {
   @@index([sellerId, placedAt])
   @@index([integrationId, placedAt])
   @@map("integration_external_orders")
+}
+
+/// One row per lifecycle email that must only ever go out once.
+///
+/// The scheduled emails (review requests, cart reminders, payment recovery)
+/// are driven by cron jobs that re-read the same rows every run, so "have we
+/// already sent this" cannot be inferred from the order or cart itself. The
+/// unique constraint below is what makes the guarantee real: two overlapping
+/// runs both trying to claim the same send will see one insert win and the
+/// other fail, rather than both deciding they are first.
+model EmailDispatch {
+  id        String   @id @default(uuid())
+  /// Which email. See EMAIL_KIND in buyer-emails.service.ts.
+  kind      String
+  /// What it was about — an order id, cart id, ticket message id.
+  dedupeKey String
+  /// Who it went to, for support lookups. No foreign key: this is a log, and
+  /// it should survive the account being deleted.
+  userId    String?
+  createdAt DateTime @default(now())
+
+  @@unique([kind, dedupeKey])
+  @@index([kind, createdAt])
+  @@index([userId])
+  @@map("email_dispatches")
 }

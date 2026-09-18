@@ -8,12 +8,16 @@ import { PrismaService } from '../../database/prisma.service';
 import { CreateTicketDto } from './dto/create-ticket.dto';
 import { CreateMessageDto } from './dto/create-message.dto';
 import { Role, TicketStatus } from '@prisma/client';
+import { BuyerEmailsService } from '../mail/buyer-emails.service';
 
 @Injectable()
 export class TicketsService {
   private readonly logger = new Logger(TicketsService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly buyerEmails: BuyerEmailsService,
+  ) {}
 
   /**
    * Create a support ticket. Any authenticated user can open one.
@@ -44,6 +48,13 @@ export class TicketsService {
     });
 
     this.logger.log(`Ticket created: ${ticket.id} by user ${userId}`);
+
+    // Acknowledge it straight away, so nobody is left wondering whether the
+    // message went anywhere. Detached: raising a ticket must not fail because
+    // the mail server is slow, least of all for someone already having a
+    // problem.
+    void this.buyerEmails.sendTicketReceived(ticket.id);
+
     return ticket;
   }
 
@@ -148,6 +159,14 @@ export class TicketsService {
     ]);
 
     this.logger.log(`Message added to ticket ${ticketId} by user ${userId}`);
+
+    // Tell the person who raised the ticket that somebody answered. Only for
+    // replies from our side — the service also refuses to email anyone their
+    // own message back, so a buyer adding a follow-up stays silent.
+    if (role === Role.ADMIN) {
+      void this.buyerEmails.sendTicketReply(ticketId, message.id);
+    }
+
     return message;
   }
 

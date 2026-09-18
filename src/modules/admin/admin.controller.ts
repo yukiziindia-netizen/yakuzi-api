@@ -31,6 +31,7 @@ import { AdminService } from './admin.service';
 import { QueryUsersDto } from './dto/query-users.dto';
 import { AdminQueryProductsDto } from './dto/query-products.dto';
 import { AdminQueryOrdersDto } from './dto/query-orders.dto';
+import { RecordRefundDto } from './dto/record-refund.dto';
 import { AdminQueryPaymentsDto } from './dto/query-payments.dto';
 import { AdminQuerySettlementsDto } from './dto/query-settlements.dto';
 import { AdminQueryTicketsDto } from './dto/query-tickets.dto';
@@ -333,6 +334,25 @@ export class AdminController {
   ) {
     const data = await this.adminService.adminUpdateOrderStatus(id, dto);
     return { message: 'Order status updated successfully', data };
+  }
+
+  @Patch('orders/:id/refund')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Record that a refund has been issued for an order',
+    description:
+      'Does not move money — refunds are issued in the payment provider. This ' +
+      'records that it happened and emails the buyer to confirm it is on its way.',
+  })
+  @ApiResponse({ status: 200, description: 'Refund recorded and buyer notified' })
+  @ApiResponse({ status: 400, description: 'Already refunded, or amount too high' })
+  @ApiResponse({ status: 404, description: 'Order not found' })
+  async recordRefund(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: RecordRefundDto,
+  ) {
+    const data = await this.adminService.recordRefund(id, dto);
+    return { message: 'Refund recorded and the buyer has been notified', data };
   }
 
   @Get('orders/test-orders-count')

@@ -20,6 +20,7 @@ import { parseAdminGrants } from '../../common/admin-access';
 import { REDIS_CLIENT } from '../../config/redis.config';
 import { Role, UserStatus } from '@prisma/client';
 import { OtpSmsService } from './services/otp-sms.service';
+import { BuyerEmailsService } from '../mail/buyer-emails.service';
 import { MailService } from '../mail/mail.service';
 import { RegisterBuyerDto } from './dto/register-buyer.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
@@ -72,6 +73,7 @@ export class AuthService {
     @Inject(REDIS_CLIENT) private readonly redis: Redis,
     private readonly otpSmsService: OtpSmsService,
     private readonly mailService: MailService,
+    private readonly buyerEmails: BuyerEmailsService,
   ) {}
 
   // ─── SEND OTP ──────────────────────────────────────
@@ -432,6 +434,8 @@ export class AuthService {
     // Generate JWT tokens
     const tokens = await this.generateTokens(user.id, user.role);
 
+    this.welcomeIfNew(user.id, user.role, isNewUser);
+
     return {
       ...tokens,
       user,
@@ -565,6 +569,8 @@ export class AuthService {
     });
 
     const tokens = await this.generateTokens(user.id, user.role);
+
+    this.welcomeIfNew(user.id, user.role, isNewUser);
 
     return {
       ...tokens,
@@ -836,6 +842,8 @@ export class AuthService {
 
     const tokens = await this.generateTokens(user.id, user.role);
 
+    this.welcomeIfNew(user.id, user.role, isNewUser);
+
     return {
       ...tokens,
       user: {
@@ -993,5 +1001,18 @@ export class AuthService {
         HttpStatus.TOO_MANY_REQUESTS,
       );
     }
+  }
+
+  /**
+   * Sends the welcome email to a buyer whose account has just been created.
+   *
+   * Detached on purpose: signing in is what matters here, and it must never
+   * wait on — or be failed by — a mail server. Buyers who signed up with only
+   * a phone number have no address to write to and are skipped inside the
+   * service, as is any account this somehow reaches twice.
+   */
+  private welcomeIfNew(userId: string, role: Role, isNewUser: boolean): void {
+    if (!isNewUser || role !== Role.BUYER) return;
+    void this.buyerEmails.sendWelcome(userId);
   }
 }
