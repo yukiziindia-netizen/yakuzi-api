@@ -3,6 +3,7 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 import { OrderStatus } from '@prisma/client';
 import { PrismaService } from '../../database/prisma.service';
 import { BuyerEmailsService } from './buyer-emails.service';
+import { AdminAlertsService } from './admin-alerts.service';
 import { MailService } from './mail.service';
 
 /**
@@ -33,6 +34,7 @@ export class LifecycleEmailsCron {
     private readonly prisma: PrismaService,
     private readonly buyerEmails: BuyerEmailsService,
     private readonly mail: MailService,
+    private readonly adminAlerts: AdminAlertsService,
   ) {}
 
   // ── Review requests ────────────────────────────────────────
@@ -124,6 +126,64 @@ export class LifecycleEmailsCron {
     }
 
     this.logger.log(`Cart-reminder sweep considered ${carts.length} cart(s)`);
+  }
+
+  // ── Dispatched with no tracking ────────────────────────────
+
+  /** How long after "dispatched" a missing courier link counts as stuck. */
+  private get noTrackingAfterHours(): number {
+    return this.positiveInt(process.env.NO_TRACKING_ALERT_HOURS, 12);
+  }
+
+  /**
+   * Finds orders a seller marked dispatched that still have no way for the
+   * buyer to follow them, and reports them as one digest.
+   *
+   * Twice a day rather than hourly: this is a chase-the-seller job, and
+   * nothing about it improves by arriving in the inbox twelve times.
+   */
+  @Cron(CronExpression.EVERY_12_HOURS)
+  async alertOnUntrackedDispatches(): Promise<void> {
+    if (!this.mail.isConfigured()) return;
+
+    const cutoff = new Date(Date.now() - this.noTrackingAfterHours * 3_600_000);
+
+    const orders = await this.prisma.order.findMany({
+      where: {
+        orderStatus: {
+          in: [
+            OrderStatus.DISPATCHED_FROM_SELLER,
+            OrderStatus.SHIPPED,
+            OrderStatus.OUT_FOR_DELIVERY,
+          ],
+        },
+        // Either channel counts as trackable: Shiprocket writes awbCode, a
+        // self-ship seller pastes trackingUrl. Missing both is the problem.
+        awbCode: null,
+        OR: [{ trackingUrl: null }, { trackingUrl: '' }],
+        updatedAt: { lt: cutoff },
+      },
+      select: {
+        id: true,
+        updatedAt: true,
+        items: { take: 1, select: { seller: { select: { companyName: true } } } },
+      },
+      orderBy: { updatedAt: 'asc' },
+      take: this.BATCH_LIMIT,
+    });
+
+    if (orders.length === 0) return;
+
+    const now = Date.now();
+    await this.adminAlerts.noTrackingDigest(
+      orders.map((order) => ({
+        id: order.id,
+        hours: Math.round((now - order.updatedAt.getTime()) / 3_600_000),
+        sellerName: order.items[0]?.seller?.companyName ?? 'Unknown seller',
+      })),
+    );
+
+    this.logger.log(`Untracked-dispatch sweep found ${orders.length} order(s)`);
   }
 
   private positiveInt(raw: string | undefined, fallback: number): number {

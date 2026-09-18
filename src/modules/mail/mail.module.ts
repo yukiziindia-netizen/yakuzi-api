@@ -2,6 +2,8 @@ import { Global, Module } from '@nestjs/common';
 import { MailService } from './mail.service';
 import { BuyerEmailsService } from './buyer-emails.service';
 import { LifecycleEmailsCron } from './lifecycle-emails.cron';
+import { SellerEmailsService } from './seller-emails.service';
+import { AdminAlertsService } from './admin-alerts.service';
 
 /**
  * `@Global` because the buyer lifecycle emails are sent from all over — auth,
@@ -14,7 +16,13 @@ import { LifecycleEmailsCron } from './lifecycle-emails.cron';
  */
 @Global()
 @Module({
-  providers: [MailService, BuyerEmailsService, LifecycleEmailsCron],
-  exports: [MailService, BuyerEmailsService],
+  providers: [
+    MailService,
+    BuyerEmailsService,
+    SellerEmailsService,
+    AdminAlertsService,
+    LifecycleEmailsCron,
+  ],
+  exports: [MailService, BuyerEmailsService, SellerEmailsService, AdminAlertsService],
 })
 export class MailModule {}

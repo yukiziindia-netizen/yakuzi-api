@@ -18,7 +18,7 @@ describe('InventoryService', () => {
       },
       inventoryAlert: { createMany: jest.fn().mockResolvedValue({ count: 1 }) },
     };
-    return { service: new InventoryService(prisma as never), prisma };
+    return { service: new InventoryService(prisma as never, { sendStockAlert: jest.fn() } as never), prisma };
   };
 
   it('creates a batch without inventing an expiry date', async () => {

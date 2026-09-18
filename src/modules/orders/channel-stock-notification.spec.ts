@@ -1,6 +1,17 @@
 import { OrdersService } from './orders.service';
 
 /**
+ * These fire from cancelOrder / updateShippingDetails / submitSelfShipTracking
+ * but are not what any of these tests are about — the emails themselves have
+ * their own specs. Stubbed as jest.fn() rather than {} so the calls resolve.
+ */
+const sellerEmailsStub = { sendOrderCancelled: jest.fn() };
+const adminAlertsStub = {
+  shippingDetailsSubmitted: jest.fn(),
+  selfShipTracking: jest.fn(),
+};
+
+/**
  * A Yukizi sale reduces stock, and the seller's connected sales channels have
  * to be told — otherwise the same unit stays purchasable on Shopify,
  * WooCommerce and Amazon until the next hourly sweep, which is long enough to
@@ -25,6 +36,8 @@ const build = () => {
     {} as never,
     inventoryService as never,
     integrationEvents as never,
+    sellerEmailsStub as never,
+    adminAlertsStub as never,
   );
 
   const notify = (offers: { sellerId: string; sellerOfferId: string }[]) =>
@@ -85,6 +98,8 @@ describe('OrdersService — telling channels a Yukizi sale moved stock', () => {
       {} as never,
       undefined as never,
       undefined as never,
+      sellerEmailsStub as never,
+      adminAlertsStub as never,
     );
 
     await expect(
