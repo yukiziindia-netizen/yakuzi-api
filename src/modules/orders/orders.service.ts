@@ -18,6 +18,8 @@ import { calculateSellerPayout, buildPayoutInputFromOrderItem } from '../settlem
 import { MailService } from '../mail/mail.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { OtpSmsService } from '../auth/services/otp-sms.service';
+import { SellerEmailsService } from '../mail/seller-emails.service';
+import { AdminAlertsService } from '../mail/admin-alerts.service';
 import { SellerOrderNotifierService } from './seller-order-notifier.service';
 import { InventoryService } from '../products/services/inventory.service';
 import { IntegrationEventsService } from '../integrations/integration-events.service';
@@ -69,7 +71,28 @@ export class OrdersService {
     // positionally, so changing the existing order would break them silently.
     private readonly inventoryService: InventoryService,
     private readonly integrationEvents: IntegrationEventsService,
+    private readonly sellerEmails: SellerEmailsService,
+    private readonly adminAlerts: AdminAlertsService,
   ) {}
+
+  /**
+   * Fires a notification and forgets it — safely.
+   *
+   * `void somePromise` is not enough on its own: it swallows a rejection but
+   * NOT a synchronous throw, so a notification service that blew up before
+   * returning its promise would take the order operation down with it. This
+   * wraps both cases, because none of these calls is ever worth failing an
+   * order, a cancellation or a tracking submission for.
+   */
+  private detach(label: string, run: () => Promise<unknown>): void {
+    void Promise.resolve()
+      .then(run)
+      .catch((error: unknown) => {
+        this.logger.warn(
+          `${label} failed: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      });
+  }
 
   // ──────────────────────────────────────────────
   // SHIPROCKET PUSH — shared by the seller and admin
@@ -1628,7 +1651,9 @@ export class OrdersService {
 
     // Best-effort, same contract as SellersService.emailAdminNewSeller: a
     // mail failure here must never fail the seller's save.
-    await this.emailAdminShippingDetailsSubmitted(orderId, seller);
+    this.detach(`shipping-details alert for order ${orderId}`, () =>
+      this.adminAlerts.shippingDetailsSubmitted(orderId, seller.id),
+    );
 
     // Submitting shipping details IS the seller's acceptance signal:
     // advance PLACED -> ACCEPTED (guarded updateMany so a concurrent
@@ -1810,62 +1835,22 @@ export class OrdersService {
     );
 
     // Admin needs to know a self-ship seller has dispatched — there is no
-    // Shiprocket record for these, so this email is the only signal. Awaited
-    // but never allowed to throw: a mail failure must not fail the seller's
-    // tracking submission (same contract as the shipping-details email).
-    await this.emailAdminSelfShipTracking(orderId, seller, dto.trackingUrl, dto.courierName, isFirstSubmit).catch(
-      (error: unknown) => {
-        this.logger.warn(
-          `self-ship admin email failed for order ${orderId}: ${error instanceof Error ? error.message : String(error)}`,
-        );
-      },
+    // Shiprocket record for these, so this alert is the only signal. The
+    // service swallows its own failures: a mail problem must never fail the
+    // seller's tracking submission.
+    this.detach(`self-ship tracking alert for order ${orderId}`, () =>
+      this.adminAlerts.selfShipTracking(
+        orderId,
+        seller.id,
+        dto.trackingUrl,
+        dto.courierName,
+        isFirstSubmit,
+      ),
     );
 
     return updated;
   }
 
-  /**
-   * Tells the admin a self-ship seller submitted (or updated) a tracking
-   * link. Same recipient chain as every other admin email — Admin Alert
-   * Email from platform settings first (see
-   * MailService.resolveAdminRecipient).
-   */
-  private async emailAdminSelfShipTracking(
-    orderId: string,
-    seller: { id: string; companyName: string },
-    trackingUrl: string,
-    courierName: string | undefined,
-    isFirstSubmit: boolean,
-  ): Promise<void> {
-    const to = await this.mailService.resolveAdminRecipient();
-    if (!to) {
-      this.logger.warn(
-        `self-ship-tracking admin email skipped: no Admin Alert Email in settings and neither ADMIN_NOTIFICATION_EMAIL nor SMTP_USER is set (order ${orderId}, seller ${seller.id})`,
-      );
-      return;
-    }
-
-    const orderRef = orderId.slice(0, 8).toUpperCase();
-    const safeCompany = this.escape(seller.companyName);
-    const safeUrl = this.escape(trackingUrl);
-    const courierLine = courierName ? `\nCourier: ${courierName}` : '';
-    const safeCourier = courierName
-      ? `<br/>Courier: <strong>${this.escape(courierName)}</strong>`
-      : '';
-    const verb = isFirstSubmit ? 'submitted' : 'updated';
-
-    const result = await this.mailService.sendMail({
-      to,
-      subject: `Self-ship tracking ${verb} for order ${orderRef}`,
-      text: `${seller.companyName} has ${verb} a self-ship tracking link for order ${orderRef}.${courierLine}\nTracking: ${trackingUrl}`,
-      html: `<p><strong>${safeCompany}</strong> has ${verb} a self-ship tracking link for order <strong>${orderRef}</strong>.${safeCourier}</p><p>Tracking: <a href="${safeUrl}">${safeUrl}</a></p>`,
-    });
-    if (!result.sent) {
-      this.logger.warn(
-        `Could not email admin about self-ship tracking for order ${orderId} (retryable=${result.retryable})`,
-      );
-    }
-  }
 
   // ──────────────────────────────────────────────
   // UPDATE ADMIN SHIPPING DOCS (Admin)
@@ -1973,38 +1958,6 @@ export class OrdersService {
     });
   }
 
-  /**
-   * Best-effort — the shipping-details save has already succeeded by the
-   * time this runs, so a mail failure here must never fail it.
-   */
-  private async emailAdminShippingDetailsSubmitted(
-    orderId: string,
-    seller: { id: string; companyName: string },
-  ): Promise<void> {
-    // Admin Alert Email (platform settings) wins, then ADMIN_NOTIFICATION_EMAIL,
-    // then the platform's own inbox — see MailService.resolveAdminRecipient.
-    const to = await this.mailService.resolveAdminRecipient();
-    if (!to) {
-      this.logger.warn(
-        `shipping-details-submitted admin email skipped: no Admin Alert Email in settings and neither ADMIN_NOTIFICATION_EMAIL nor SMTP_USER is set (order ${orderId}, seller ${seller.id})`,
-      );
-      return;
-    }
-
-    const orderRef = orderId.slice(0, 8).toUpperCase();
-    const safeCompanyName = this.escape(seller.companyName);
-    const result = await this.mailService.sendMail({
-      to,
-      subject: `Shipping details submitted for order ${orderRef}`,
-      text: `${seller.companyName} has submitted shipping details for order ${orderRef}.\n\nReview it in the admin dashboard.`,
-      html: `<p><strong>${safeCompanyName}</strong> has submitted shipping details for order <strong>${orderRef}</strong>.</p><p>Review it in the admin dashboard.</p>`,
-    });
-    if (!result.sent) {
-      this.logger.warn(
-        `Could not email admin about shipping-details submission for order ${orderId} (retryable=${result.retryable})`,
-      );
-    }
-  }
 
   /**
    * Escapes text for safe interpolation into an HTML email body. Same
@@ -2288,6 +2241,14 @@ export class OrdersService {
         );
       });
     }
+
+    // The sellers are told whatever the buyer-facing choice was. This is the
+    // most time-critical message on the platform: until it existed a seller
+    // could pack, label and hand a cancelled order to a courier with nothing
+    // anywhere telling them to stop.
+    this.detach(`seller cancellation notice for order ${orderId}`, () =>
+      this.sellerEmails.sendOrderCancelled(orderId, reason),
+    );
 
     return updated;
   }

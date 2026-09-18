@@ -88,6 +88,7 @@ import { WebAnalyticsModule } from './modules/web-analytics/web-analytics.module
         // authorization flow is allowed to start.
         INTEGRATIONS_ENCRYPTION_KEY: Joi.string().allow('').optional(),
         SELLER_APP_URL: Joi.string().allow('').optional(),
+        ADMIN_APP_URL: Joi.string().allow('').optional(),
         API_PUBLIC_URL: Joi.string().allow('').optional(),
         SHOPIFY_CLIENT_ID: Joi.string().allow('').optional(),
         SHOPIFY_CLIENT_SECRET: Joi.string().allow('').optional(),

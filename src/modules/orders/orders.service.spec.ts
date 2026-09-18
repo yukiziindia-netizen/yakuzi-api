@@ -2,6 +2,23 @@ import { OrdersService } from './orders.service';
 import type { CreateOrderDto } from './dto/create-order.dto';
 import { OrderStatus, PaymentStatus, Role } from '@prisma/client';
 
+/**
+ * These fire from cancelOrder / updateShippingDetails / submitSelfShipTracking
+ * but are not what any of these tests are about — the emails themselves have
+ * their own specs. Stubbed as jest.fn() rather than {} so the calls resolve.
+ */
+const sellerEmailsStub = { sendOrderCancelled: jest.fn() };
+const adminAlertsStub = {
+  shippingDetailsSubmitted: jest.fn(),
+  selfShipTracking: jest.fn(),
+};
+
+beforeEach(() => {
+  sellerEmailsStub.sendOrderCancelled.mockReset();
+  adminAlertsStub.shippingDetailsSubmitted.mockReset();
+  adminAlertsStub.selfShipTracking.mockReset();
+});
+
 const dto = (over: Partial<CreateOrderDto> = {}): CreateOrderDto =>
   ({
     name: 'Arko',
@@ -47,6 +64,8 @@ const build = (
     {} as never,
     {} as never,
     {} as never,
+    sellerEmailsStub as never,
+    adminAlertsStub as never,
   );
   return { service, prisma };
 };
@@ -162,6 +181,8 @@ describe('OrdersService.pushOrderToShiprocketIfNeeded', () => {
       {} as never,
       {} as never,
       {} as never,
+      sellerEmailsStub as never,
+      adminAlertsStub as never,
     );
     return { service, shiprocketService };
   };
@@ -289,6 +310,8 @@ describe('OrdersService.syncTrackingFields', () => {
     {} as never,
     {} as never,
     {} as never,
+    sellerEmailsStub as never,
+    adminAlertsStub as never,
   );
     return { service, prisma };
   };
@@ -327,6 +350,8 @@ describe('OrdersService.syncTrackingFields', () => {
     {} as never,
     {} as never,
     {} as never,
+    sellerEmailsStub as never,
+    adminAlertsStub as never,
   );
     await expect(
       service.syncTrackingFields('order-1', { awb_code: 'AWB1' }),
@@ -362,6 +387,8 @@ describe('OrdersService.notifyBuyerOfStatusChange', () => {
       {} as never,
       {} as never,
       {} as never,
+      sellerEmailsStub as never,
+      adminAlertsStub as never,
     );
     return { service, prisma, mailService, notificationsService, otpSmsService };
   };
@@ -531,6 +558,8 @@ describe('OrdersService.createSettlementsForDeliveredOrder', () => {
       {} as never,
       {} as never,
       {} as never,
+      sellerEmailsStub as never,
+      adminAlertsStub as never,
     );
     return { service, prisma };
   };
@@ -668,6 +697,8 @@ describe('OrdersService.checkout — price integrity', () => {
       {} as never,
       {} as never,
       {} as never,
+      sellerEmailsStub as never,
+      adminAlertsStub as never,
     );
     return { service, prisma, tx, txOrderItemCreateManyCalls };
   };
@@ -764,6 +795,8 @@ describe('OrdersService.updateShippingDetails — auto-accept + Shiprocket push'
       {} as never,
       {} as never,
       {} as never,
+      sellerEmailsStub as never,
+      adminAlertsStub as never,
     );
     const notifySpy = jest
       .spyOn(service, 'notifyBuyerOfStatusChange')
@@ -839,48 +872,29 @@ describe('OrdersService.updateShippingDetails — auto-accept + Shiprocket push'
     ).resolves.toEqual({ id: 'order-1' });
   });
 
-  describe('admin notification email', () => {
-    it('emails ADMIN_NOTIFICATION_EMAIL when it is configured', async () => {
-      process.env.ADMIN_NOTIFICATION_EMAIL = 'admin@yukizi.com';
-      const { service, mailService } = build();
+  /**
+   * Composing the alert moved into AdminAlertsService — including who receives
+   * it, which MailService.resolveAdminRecipient owns and its own spec covers.
+   * What still belongs here is that this method hands off, with the right
+   * order and seller, and that a mail problem cannot fail the save.
+   */
+  describe('admin notification', () => {
+    it('tells the admin alert service which order was measured, and by whom', async () => {
+      const { service } = build();
 
       await service.updateShippingDetails('user-1', 'order-1', dto);
 
-      expect(mailService.sendMail).toHaveBeenCalledWith(
-        expect.objectContaining({
-          to: 'admin@yukizi.com',
-          subject: expect.stringContaining('ORDER-1'),
-          text: expect.stringContaining('Acme Co'),
-        }),
+      expect(adminAlertsStub.shippingDetailsSubmitted).toHaveBeenCalledWith(
+        'order-1',
+        'seller-1',
       );
     });
 
-    it('falls back to SMTP_USER when ADMIN_NOTIFICATION_EMAIL is not set', async () => {
-      delete process.env.ADMIN_NOTIFICATION_EMAIL;
-      process.env.SMTP_USER = 'platform-inbox@yukizi.com';
-      const { service, mailService } = build();
-
-      await service.updateShippingDetails('user-1', 'order-1', dto);
-
-      expect(mailService.sendMail).toHaveBeenCalledWith(
-        expect.objectContaining({ to: 'platform-inbox@yukizi.com' }),
-      );
-    });
-
-    it('skips silently when neither ADMIN_NOTIFICATION_EMAIL nor SMTP_USER is set', async () => {
-      delete process.env.ADMIN_NOTIFICATION_EMAIL;
-      delete process.env.SMTP_USER;
-      const { service, mailService } = build();
-
-      await service.updateShippingDetails('user-1', 'order-1', dto);
-
-      expect(mailService.sendMail).not.toHaveBeenCalled();
-    });
-
-    it('never lets a failed admin-notification send break the shipping-details save', async () => {
-      process.env.ADMIN_NOTIFICATION_EMAIL = 'admin@yukizi.com';
-      const { service, mailService } = build();
-      mailService.sendMail.mockResolvedValue({ sent: false, retryable: true });
+    it('never lets a failed admin notification break the shipping-details save', async () => {
+      const { service } = build();
+      adminAlertsStub.shippingDetailsSubmitted.mockImplementationOnce(() => {
+        throw new Error('smtp exploded');
+      });
 
       await expect(
         service.updateShippingDetails('user-1', 'order-1', dto),
@@ -916,6 +930,8 @@ describe('OrdersService.updateAdminShippingDocs', () => {
       sellerOrderNotifier as never,
       {} as never,
       {} as never,
+      sellerEmailsStub as never,
+      adminAlertsStub as never,
     );
     return { service, prisma, sellerOrderNotifier };
   };
@@ -1019,6 +1035,8 @@ describe('OrdersService.cancelOrder', () => {
       {} as never,
       {} as never,
       {} as never,
+      sellerEmailsStub as never,
+      adminAlertsStub as never,
     );
     return { service, prisma };
   };
@@ -1156,6 +1174,8 @@ describe('OrdersService.checkout — fulfillmentMode snapshot', () => {
       {} as never,
       {} as never,
       {} as never,
+      sellerEmailsStub as never,
+      adminAlertsStub as never,
     );
     return { service, orderCreateCalls };
   };
@@ -1192,6 +1212,8 @@ describe('OrdersService self-ship guards on the Shiprocket flow', () => {
       {} as never,
       {} as never,
       {} as never,
+      sellerEmailsStub as never,
+      adminAlertsStub as never,
     );
 
   it('pushOrderToShiprocketIfNeeded no-ops for a self_ship order', async () => {
@@ -1276,6 +1298,8 @@ describe('OrdersService.syncTrackingFields — track_url', () => {
       {} as never,
       {} as never,
       {} as never,
+      sellerEmailsStub as never,
+      adminAlertsStub as never,
     );
 
     await service.syncTrackingFields('order-1', {
@@ -1328,6 +1352,8 @@ describe('OrdersService.submitSelfShipTracking', () => {
       {} as never,
       {} as never,
       {} as never,
+      sellerEmailsStub as never,
+      adminAlertsStub as never,
     );
     const notifySpy = jest
       .spyOn(service, 'notifyBuyerOfStatusChange')
@@ -1465,28 +1491,37 @@ describe('OrdersService.submitSelfShipTracking — admin email', () => {
       {} as never,
       {} as never,
       {} as never,
+      sellerEmailsStub as never,
+      adminAlertsStub as never,
     );
     return { service, mailService, prisma };
   };
 
-  it('emails the admin when a self-ship seller submits tracking', async () => {
-    const { service, mailService } = build();
+  // Composing this alert moved into AdminAlertsService, which owns its own
+  // spec. What matters here is the hand-off — and in particular that the
+  // tracking link and courier reach it, since there is no Shiprocket record
+  // for a self-ship order and this alert is admin's only signal.
+  it('hands the tracking link to the admin alert service', async () => {
+    const { service } = build();
 
     await service.submitSelfShipTracking('user-1', 'aaaabbbb-1111-2222-3333-444444444444', {
       trackingUrl: 'https://track/1',
       courierName: 'Delhivery',
     } as never);
 
-    expect(mailService.sendMail).toHaveBeenCalledWith(
-      expect.objectContaining({ to: 'admin@yukizi.com' }),
+    expect(adminAlertsStub.selfShipTracking).toHaveBeenCalledWith(
+      'aaaabbbb-1111-2222-3333-444444444444',
+      'seller-1',
+      'https://track/1',
+      'Delhivery',
+      true,
     );
-    const arg = mailService.sendMail.mock.calls[0][0] as { subject: string };
-    expect(arg.subject).toContain('AAAABBBB');
   });
 
-  it('never fails the tracking submission when the admin email throws', async () => {
-    const { service } = build({
-      sendMail: jest.fn().mockRejectedValue(new Error('smtp down')),
+  it('never fails the tracking submission when the admin alert throws', async () => {
+    const { service } = build();
+    adminAlertsStub.selfShipTracking.mockImplementationOnce(() => {
+      throw new Error('smtp down');
     });
 
     await expect(
@@ -1533,6 +1568,8 @@ describe('OrdersService.checkout — contact details already registered', () => 
       {} as never,
       {} as never,
       {} as never,
+      sellerEmailsStub as never,
+      adminAlertsStub as never,
     );
     const guard = (
       service as unknown as {
@@ -1631,6 +1668,8 @@ describe('OrdersService.cancelOrder — reason and buyer notice', () => {
       {} as never,
       {} as never,
       {} as never,
+      sellerEmailsStub as never,
+      adminAlertsStub as never,
     );
     return { service, prisma, tx, notificationsService, mailService, otpSmsService };
   };

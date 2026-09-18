@@ -399,6 +399,7 @@ model Order {
   buyer             User          @relation(fields: [buyerId], references: [id], onDelete: Cascade)
   referralCode      ReferralCode? @relation(fields: [referralCodeId], references: [id])
   payments          Payment[]
+  tickets           Ticket[]
 
   // Shipping dimensions
   packageLength  Float?
@@ -637,11 +638,20 @@ model Ticket {
   status    TicketStatus @default(OPEN)
   createdAt DateTime     @default(now())
   updatedAt DateTime     @updatedAt
+  // Which order this is about, when the buyer raised it from one. Optional:
+  // plenty of tickets are about nothing in particular. When it is set, it is
+  // the only way to know which sellers have a stake in the answer — without
+  // it a complaint about a figure never reaches the person who sold it.
+  orderId   String?
   messages  Message[]
   user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // SetNull, not Cascade: deleting an order must not delete the conversation
+  // about it. Support still needs to be able to read what happened.
+  order     Order?       @relation(fields: [orderId], references: [id], onDelete: SetNull)
 
   @@index([userId])
   @@index([status])
+  @@index([orderId])
   @@map("tickets")
 }
 

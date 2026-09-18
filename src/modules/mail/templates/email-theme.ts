@@ -60,6 +60,26 @@ export function link(path: string): string {
     : `${base}${path.startsWith('/') ? '' : '/'}${path}`;
 }
 
+/** Where the seller dashboard lives. Same variable the OAuth callbacks use. */
+export function sellerUrl(): string {
+  return (process.env.SELLER_APP_URL || 'https://seller.yukizi.com').replace(/\/$/, '');
+}
+
+/** Where the admin panel lives. */
+export function adminUrl(): string {
+  return (process.env.ADMIN_APP_URL || 'https://admin.yukizi.com').replace(/\/$/, '');
+}
+
+/** Absolute seller-dashboard link from a path like `/orders`. */
+export function sellerLink(path: string): string {
+  return `${sellerUrl()}${path.startsWith('/') ? '' : '/'}${path}`;
+}
+
+/** Absolute admin-panel link from a path like `/orders`. */
+export function adminLink(path: string): string {
+  return `${adminUrl()}${path.startsWith('/') ? '' : '/'}${path}`;
+}
+
 export const SUPPORT_EMAIL = 'support@yukizi.com';
 
 /**

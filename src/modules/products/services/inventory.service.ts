@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { AlertType } from '@prisma/client';
 import { PrismaService } from '../../../database/prisma.service';
+import { SellerEmailsService } from '../../mail/seller-emails.service';
 
 /**
  * Internal inventory management service.
@@ -21,7 +22,10 @@ export class InventoryService {
   /** Low-stock threshold */
   private readonly LOW_STOCK_THRESHOLD = 10;
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly sellerEmails: SellerEmailsService,
+  ) {}
 
   /**
    * Create the batch a product's stock lives in.
@@ -124,6 +128,16 @@ export class InventoryService {
         });
         this.logger.log(
           `Created ${alerts.length} inventory alert(s) for product ${sellerOfferId}`,
+        );
+
+        // These alert rows have always been written and never read by anyone.
+        // Emailing the seller is the whole point of noticing. The service
+        // deduplicates to at most one per product per state per day, so a
+        // busy product does not turn this into a stream.
+        void this.sellerEmails.sendStockAlert(
+          sellerOfferId,
+          stock,
+          this.LOW_STOCK_THRESHOLD,
         );
       }
     } catch (error) {

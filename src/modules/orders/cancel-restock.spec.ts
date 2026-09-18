@@ -1,6 +1,17 @@
 import { OrdersService } from './orders.service';
 
 /**
+ * These fire from cancelOrder / updateShippingDetails / submitSelfShipTracking
+ * but are not what any of these tests are about — the emails themselves have
+ * their own specs. Stubbed as jest.fn() rather than {} so the calls resolve.
+ */
+const sellerEmailsStub = { sendOrderCancelled: jest.fn() };
+const adminAlertsStub = {
+  shippingDetailsSubmitted: jest.fn(),
+  selfShipTracking: jest.fn(),
+};
+
+/**
  * Cancelling an order must always give the stock back.
  *
  * It used to load only batches whose expiry was still in the future, then skip
@@ -66,6 +77,8 @@ describe('OrdersService.cancelOrder — restock', () => {
       {} as never,
       {} as never,
       {} as never,
+      sellerEmailsStub as never,
+      adminAlertsStub as never,
     );
     return { service, prisma, tx };
   };

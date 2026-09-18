@@ -30,7 +30,14 @@ describe('TicketsService.closeTicket', () => {
       sendTicketReceived: jest.fn(),
       sendTicketReply: jest.fn(),
     };
-    const service = new TicketsService(prisma as never, buyerEmails as never);
+    const sellerEmails = { sendTicketRaised: jest.fn() };
+    const adminAlerts = { ticketRaised: jest.fn() };
+    const service = new TicketsService(
+      prisma as never,
+      buyerEmails as never,
+      sellerEmails as never,
+      adminAlerts as never,
+    );
     // getTicketById re-reads and re-authorizes; stubbed so these tests are
     // about closing, not about the read it returns.
     jest
@@ -84,5 +91,90 @@ describe('TicketsService.closeTicket', () => {
       service.closeTicket(OWNER, Role.BUYER, TICKET),
     ).resolves.toBeDefined();
     expect(prisma.ticket.update).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * A ticket may name an order so the sellers on it can be told a buyer raised
+ * something. That is only safe if the order is the raiser's own — otherwise
+ * anyone could attach a stranger's order id and have unrelated sellers emailed
+ * a complaint.
+ */
+describe('TicketsService.createTicket — naming an order', () => {
+  const build = (order: { id: string; buyerId: string } | null) => {
+    const prisma = {
+      order: { findUnique: jest.fn().mockResolvedValue(order) },
+      ticket: {
+        create: jest.fn().mockResolvedValue({ id: 'ticket-1', messages: [] }),
+      },
+    };
+    const buyerEmails = { sendTicketReceived: jest.fn(), sendTicketReply: jest.fn() };
+    const sellerEmails = { sendTicketRaised: jest.fn() };
+    const adminAlerts = { ticketRaised: jest.fn() };
+    const service = new TicketsService(
+      prisma as never,
+      buyerEmails as never,
+      sellerEmails as never,
+      adminAlerts as never,
+    );
+    return { service, prisma, sellerEmails, adminAlerts };
+  };
+
+  const dto = { subject: 'Damaged', message: 'The box was crushed', orderId: 'order-1' };
+
+  it('stores the order when it belongs to the person raising the ticket', async () => {
+    const { service, prisma } = build({ id: 'order-1', buyerId: 'buyer-1' });
+
+    await service.createTicket('buyer-1', dto as never);
+
+    expect(prisma.ticket.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ orderId: 'order-1', userId: 'buyer-1' }),
+      }),
+    );
+  });
+
+  it("refuses somebody else's order, and creates nothing", async () => {
+    const { service, prisma } = build({ id: 'order-1', buyerId: 'someone-else' });
+
+    await expect(service.createTicket('buyer-1', dto as never)).rejects.toThrow(
+      ForbiddenException,
+    );
+    expect(prisma.ticket.create).not.toHaveBeenCalled();
+  });
+
+  it('refuses an order id that does not exist', async () => {
+    const { service, prisma } = build(null);
+
+    await expect(service.createTicket('buyer-1', dto as never)).rejects.toThrow(
+      ForbiddenException,
+    );
+    expect(prisma.ticket.create).not.toHaveBeenCalled();
+  });
+
+  it('stores null for a general ticket, and does not look an order up', async () => {
+    const { service, prisma } = build(null);
+
+    await service.createTicket('buyer-1', {
+      subject: 'Do you ship to Nepal?',
+      message: 'Asking before I order',
+    } as never);
+
+    expect(prisma.order.findUnique).not.toHaveBeenCalled();
+    expect(prisma.ticket.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ orderId: null }) }),
+    );
+  });
+
+  it('tells the admin about every ticket, and the sellers about this one', async () => {
+    const { service, sellerEmails, adminAlerts } = build({
+      id: 'order-1',
+      buyerId: 'buyer-1',
+    });
+
+    await service.createTicket('buyer-1', dto as never);
+
+    expect(adminAlerts.ticketRaised).toHaveBeenCalledWith('ticket-1');
+    expect(sellerEmails.sendTicketRaised).toHaveBeenCalledWith('ticket-1');
   });
 });

@@ -9,6 +9,8 @@ import { CreateTicketDto } from './dto/create-ticket.dto';
 import { CreateMessageDto } from './dto/create-message.dto';
 import { Role, TicketStatus } from '@prisma/client';
 import { BuyerEmailsService } from '../mail/buyer-emails.service';
+import { SellerEmailsService } from '../mail/seller-emails.service';
+import { AdminAlertsService } from '../mail/admin-alerts.service';
 
 @Injectable()
 export class TicketsService {
@@ -17,16 +19,53 @@ export class TicketsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly buyerEmails: BuyerEmailsService,
+    private readonly sellerEmails: SellerEmailsService,
+    private readonly adminAlerts: AdminAlertsService,
   ) {}
+
+  /**
+   * Fires a notification and forgets it — safely.
+   *
+   * `void somePromise` is not enough on its own: it swallows a rejection but
+   * NOT a synchronous throw, so a notification service that blew up before
+   * returning its promise would take the order operation down with it. This
+   * wraps both cases, because none of these calls is ever worth failing an
+   * order, a cancellation or a tracking submission for.
+   */
+  private detach(label: string, run: () => Promise<unknown>): void {
+    void Promise.resolve()
+      .then(run)
+      .catch((error: unknown) => {
+        this.logger.warn(
+          `${label} failed: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      });
+  }
 
   /**
    * Create a support ticket. Any authenticated user can open one.
    * The first message is created together with the ticket.
    */
   async createTicket(userId: string, dto: CreateTicketDto) {
+    // A ticket may name an order, but only the raiser's own. Without this
+    // check anyone could attach a stranger's order id and have the sellers on
+    // it emailed a complaint that has nothing to do with them.
+    let orderId: string | null = null;
+    if (dto.orderId) {
+      const order = await this.prisma.order.findUnique({
+        where: { id: dto.orderId },
+        select: { id: true, buyerId: true },
+      });
+      if (!order || order.buyerId !== userId) {
+        throw new ForbiddenException('That order is not yours.');
+      }
+      orderId = order.id;
+    }
+
     const ticket = await this.prisma.ticket.create({
       data: {
         userId,
+        orderId,
         subject: dto.subject,
         messages: {
           create: {
@@ -53,7 +92,20 @@ export class TicketsService {
     // message went anywhere. Detached: raising a ticket must not fail because
     // the mail server is slow, least of all for someone already having a
     // problem.
-    void this.buyerEmails.sendTicketReceived(ticket.id);
+    this.detach('ticket acknowledgement', () =>
+      this.buyerEmails.sendTicketReceived(ticket.id),
+    );
+
+    // Somebody has to know a customer is waiting. Until this existed a ticket
+    // sat unread until an admin happened to open the panel.
+    this.detach('admin ticket alert', () => this.adminAlerts.ticketRaised(ticket.id));
+
+    // And when the ticket names an order, the sellers on it hear about it too
+    // — a complaint about a figure should not reach the person who sold it
+    // only when the refund lands. No-ops for a general question.
+    this.detach('seller ticket alert', () =>
+      this.sellerEmails.sendTicketRaised(ticket.id),
+    );
 
     return ticket;
   }
@@ -164,7 +216,9 @@ export class TicketsService {
     // replies from our side — the service also refuses to email anyone their
     // own message back, so a buyer adding a follow-up stays silent.
     if (role === Role.ADMIN) {
-      void this.buyerEmails.sendTicketReply(ticketId, message.id);
+      this.detach('ticket reply notice', () =>
+        this.buyerEmails.sendTicketReply(ticketId, message.id),
+      );
     }
 
     return message;

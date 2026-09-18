@@ -1,4 +1,12 @@
-import { THEME, link, logoUrl, SUPPORT_EMAIL, storefrontUrl } from './email-theme';
+import {
+  THEME,
+  link,
+  sellerLink,
+  adminLink,
+  logoUrl,
+  SUPPORT_EMAIL,
+  storefrontUrl,
+} from './email-theme';
 
 /**
  * The shell every Yukizi email is poured into.
@@ -40,6 +48,53 @@ export function safeUrl(value: unknown): string {
   return escapeHtml(storefrontUrl());
 }
 
+/**
+ * Who is reading. Only changes the footer links and the sign-off line — a
+ * seller sent to "Your orders" on the storefront would be looking at the wrong
+ * orders, and an admin does not need a support address.
+ */
+export type Audience = 'buyer' | 'seller' | 'admin';
+
+interface FooterConfig {
+  help: string;
+  links: { label: string; href: string }[];
+  why: string;
+}
+
+function footerFor(audience: Audience): FooterConfig {
+  if (audience === 'seller') {
+    return {
+      help: `Questions about this? Write to <a href="mailto:${SUPPORT_EMAIL}" style="color:${THEME.purple};font-weight:600;">${SUPPORT_EMAIL}</a> — a real person reads it.`,
+      links: [
+        { label: 'Seller dashboard', href: sellerLink('/dashboard') },
+        { label: 'Your orders', href: sellerLink('/orders') },
+        { label: 'Your products', href: sellerLink('/products') },
+      ],
+      why: 'You are receiving this because you sell on Yukizi.',
+    };
+  }
+  if (audience === 'admin') {
+    return {
+      help: 'This is an automatic alert from the Yukizi platform.',
+      links: [
+        { label: 'Admin panel', href: adminLink('/dashboard') },
+        { label: 'Orders', href: adminLink('/orders') },
+        { label: 'Tickets', href: adminLink('/tickets') },
+      ],
+      why: 'You are receiving this because you are listed as a Yukizi alert recipient.',
+    };
+  }
+  return {
+    help: `Need a hand? Write to <a href="mailto:${SUPPORT_EMAIL}" style="color:${THEME.purple};font-weight:600;">${SUPPORT_EMAIL}</a> — a real person reads it.`,
+    links: [
+      { label: 'yukizi.com', href: link('/') },
+      { label: 'Your orders', href: link('/orders') },
+      { label: 'Support', href: link('/support') },
+    ],
+    why: 'You are receiving this because you have a Yukizi account.',
+  };
+}
+
 export interface EmailOptions {
   /** The grey line under the subject in most inboxes. Always set it. */
   preheader: string;
@@ -53,13 +108,24 @@ export interface EmailOptions {
   blocks: string[];
   /** Small print above the sign-off, for context specific to this email. */
   footerNote?: string;
+  /** Who is reading. Defaults to the buyer. */
+  audience?: Audience;
 }
 
 /**
  * Renders a complete HTML document for one email.
  */
 export function renderEmail(options: EmailOptions): string {
-  const { preheader, eyebrow, title, subtitle, blocks, footerNote } = options;
+  const {
+    preheader,
+    eyebrow,
+    title,
+    subtitle,
+    blocks,
+    footerNote,
+    audience = 'buyer',
+  } = options;
+  const foot = footerFor(audience);
 
   return `<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
 <html xmlns="http://www.w3.org/1999/xhtml" lang="en">
@@ -165,21 +231,22 @@ export function renderEmail(options: EmailOptions): string {
                 : ''
             }
             <p style="margin:0 0 6px;font-family:${THEME.font};font-size:13px;line-height:21px;color:${THEME.body};">
-              Need a hand? Write to <a href="mailto:${SUPPORT_EMAIL}" style="color:${THEME.purple};font-weight:600;">${SUPPORT_EMAIL}</a> — a real person reads it.
+              ${foot.help}
             </p>
             <p style="margin:0;font-family:${THEME.font};font-size:12px;line-height:20px;color:${THEME.faint};">
-              <a href="${safeUrl(link('/'))}" style="color:${THEME.faint};">yukizi.com</a>
-              &nbsp;·&nbsp;
-              <a href="${safeUrl(link('/orders'))}" style="color:${THEME.faint};">Your orders</a>
-              &nbsp;·&nbsp;
-              <a href="${safeUrl(link('/support'))}" style="color:${THEME.faint};">Support</a>
+              ${foot.links
+                .map(
+                  (l) =>
+                    `<a href="${safeUrl(l.href)}" style="color:${THEME.faint};">${escapeHtml(l.label)}</a>`,
+                )
+                .join('&nbsp;·&nbsp;')}
             </p>
           </td>
         </tr>
       </table>
 
       <p style="margin:18px 0 0;font-family:${THEME.font};font-size:11px;line-height:18px;color:${THEME.faint};text-align:center;max-width:600px;">
-        You are receiving this because you have a Yukizi account.
+        ${escapeHtml(foot.why)}
       </p>
 
     </td>
