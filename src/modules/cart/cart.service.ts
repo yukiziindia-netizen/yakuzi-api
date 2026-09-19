@@ -149,6 +149,15 @@ export class CartService {
               select: { stock: true },
             },
 
+            catalogProduct: {
+              select: {
+                images: {
+                  select: { url: true },
+                  orderBy: [{ order: 'asc' }, { id: 'asc' }],
+                },
+              },
+            },
+
             variant: {
               select: {
                 catalogProduct: {
@@ -172,7 +181,7 @@ export class CartService {
 
     return {
       ...cartItem,
-      sellerOffer: await this.formatCartItemOffer(cartItem.sellerOffer),
+      sellerOffer: this.formatCartItemOffer(cartItem.sellerOffer),
       totalPrice: (cartItem.quantity * Number(cartItem.unitPrice)) + (cartItem.quantity * (Number(cartItem.sellerOffer.finalShippingPrice ?? cartItem.sellerOffer.shippingCharges) || 0)),
     };
   }
@@ -207,6 +216,15 @@ export class CartService {
                 batches: {
                   where: { stock: { gt: 0 } },
                   select: { stock: true },
+                },
+
+                catalogProduct: {
+                  select: {
+                    images: {
+                      select: { url: true },
+                      orderBy: [{ order: 'asc' }, { id: 'asc' }],
+                    },
+                  },
                 },
 
                 variant: {
@@ -273,7 +291,7 @@ export class CartService {
     const items = await Promise.all(
       liveCartItems.map(async (item) => ({
         id: item.id,
-        sellerOffer: await this.formatCartItemOffer(item.sellerOffer),
+        sellerOffer: this.formatCartItemOffer(item.sellerOffer),
         quantity: item.quantity,
         unitPrice: item.unitPrice,
         totalPrice: (item.quantity * Number(item.unitPrice)) + (item.quantity * (Number(item.sellerOffer.finalShippingPrice ?? item.sellerOffer.shippingCharges) || 0)),
@@ -378,6 +396,15 @@ minimumOrderQuantity: true,
               select: { stock: true },
             },
 
+            catalogProduct: {
+              select: {
+                images: {
+                  select: { url: true },
+                  orderBy: [{ order: 'asc' }, { id: 'asc' }],
+                },
+              },
+            },
+
             variant: {
               select: {
                 catalogProduct: {
@@ -399,7 +426,7 @@ minimumOrderQuantity: true,
 
     return {
       ...updated,
-      sellerOffer: await this.formatCartItemOffer(updated.sellerOffer),
+      sellerOffer: this.formatCartItemOffer(updated.sellerOffer),
       totalPrice: (updated.quantity * Number(updated.unitPrice)) + (updated.quantity * (Number(updated.sellerOffer.finalShippingPrice ?? updated.sellerOffer.shippingCharges) || 0)),
     };
   }
@@ -452,41 +479,28 @@ minimumOrderQuantity: true,
     return { message: 'Cart cleared successfully' };
   }
 
-  private async formatCartItemOffer(sellerOffer: any) {
+  /**
+   * An offer reaches a catalog product two ways — `catalogProductId` directly
+   * (simple products) or `variantId` through a ProductVariant. Only the second
+   * was read here; the gap was filled by finding a product whose name merely
+   * *starts with* the offer's, which put one product's photograph on another
+   * product's cart line ("Testing" matches "Testing - Iron man"). The offer's
+   * own link is the only thing consulted now, and an offer linked to nothing
+   * carries no image rather than someone else's.
+   */
+  private formatCartItemOffer(sellerOffer: any) {
     if (!sellerOffer) return sellerOffer;
 
-    let images: string[] = [];
+    const linked =
+      sellerOffer.variant?.catalogProduct ?? sellerOffer.catalogProduct;
+    const images: string[] = (linked?.images ?? []).map(
+      (img: any) => img.url as string,
+    );
 
-    if (sellerOffer.variant?.catalogProduct?.images) {
-      images = sellerOffer.variant.catalogProduct.images.map(
-        (img: any) => img.url,
-      );
-    } else {
-      // Fallback name-based lookup
-      const cleanName = sellerOffer.name.replace(/\.\.\./g, '').trim();
-      const catalogProduct = await this.prisma.catalogProduct.findFirst({
-        where: {
-          name: {
-            startsWith: cleanName,
-            mode: 'insensitive',
-          },
-          deletedAt: null,
-        },
-        include: {
-          images: {
-            select: { url: true },
-            orderBy: [{ order: 'asc' }, { id: 'asc' }],
-          },
-        },
-      });
-      if (catalogProduct && catalogProduct.images.length > 0) {
-        images = catalogProduct.images.map((img: any) => img.url);
-      }
-    }
-
-    // Remove variant/batches to keep response clean, attach flat images array
-    // and the total available stock summed across in-stock batches.
-    const { variant, batches, ...rest } = sellerOffer;
+    // Remove variant/catalogProduct/batches to keep the response clean, attach
+    // a flat images array and the total available stock summed across in-stock
+    // batches.
+    const { variant, catalogProduct, batches, ...rest } = sellerOffer;
     return {
       ...rest,
       images,

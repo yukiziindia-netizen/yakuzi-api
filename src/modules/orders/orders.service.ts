@@ -107,6 +107,32 @@ export class OrdersService {
       });
   }
 
+  /**
+   * The pictures for what was actually ordered.
+   *
+   * An offer reaches a catalog product two ways — `catalogProductId` directly
+   * (simple products) or `variantId` through a ProductVariant. Order screens
+   * read the images off the variant, and when an offer had none the gap used
+   * to be filled by finding a product whose name merely *starts with* the
+   * offer's: "Testing" matched "Testing - Iron man", so an order for one
+   * showed a photograph of the other on every order page a buyer opened.
+   *
+   * The offer's own link is the only thing consulted now. An offer linked to
+   * nothing keeps no image at all — a placeholder is honest, somebody else's
+   * product on your order is not.
+   */
+  private useOwnProductImages(items: unknown[]): void {
+    for (const item of items as any[]) {
+      const offer = item?.sellerOffer;
+      if (!offer || offer.variant) continue;
+
+      const images = offer.catalogProduct?.images;
+      if (images?.length) {
+        offer.variant = { catalogProduct: { images } };
+      }
+    }
+  }
+
   // ──────────────────────────────────────────────
   // SHIPROCKET PUSH — shared by the seller and admin
   // status-update paths so both actually create the
@@ -869,6 +895,14 @@ export class OrdersService {
                 name: true,
                 manufacturer: true,
                 mrp: true,
+                catalogProduct: {
+                  select: {
+                    images: {
+                      select: { url: true },
+                      orderBy: [{ order: 'asc' }, { id: 'asc' }],
+                    },
+                  },
+                },
                 variant: {
                   select: {
                     catalogProduct: {
@@ -898,33 +932,7 @@ export class OrdersService {
     });
 
     if (fullOrder) {
-      for (const item of fullOrder.items) {
-        if (item.sellerOffer && !item.sellerOffer.variant) {
-          const cleanName = item.sellerOffer.name.replace(/\.\.\./g, '').trim();
-          const catalogProduct = await this.prisma.catalogProduct.findFirst({
-            where: {
-              name: {
-                startsWith: cleanName,
-                mode: 'insensitive',
-              },
-              deletedAt: null,
-            },
-            include: {
-              images: {
-                select: { url: true },
-                orderBy: [{ order: 'asc' }, { id: 'asc' }],
-              },
-            },
-          });
-          if (catalogProduct && catalogProduct.images.length > 0) {
-            (item.sellerOffer as any).variant = {
-              catalogProduct: {
-                images: catalogProduct.images,
-              },
-            };
-          }
-        }
-      }
+      this.useOwnProductImages(fullOrder.items);
     }
 
     this.logger.log(
@@ -950,6 +958,14 @@ export class OrdersService {
                 name: true,
                 manufacturer: true,
                 mrp: true,
+                catalogProduct: {
+                  select: {
+                    images: {
+                      select: { url: true },
+                      orderBy: [{ order: 'asc' }, { id: 'asc' }],
+                    },
+                  },
+                },
                 variant: {
                   select: {
                     catalogProduct: {
@@ -974,37 +990,10 @@ export class OrdersService {
       orderBy: { createdAt: 'desc' },
     });
 
-    // Fallback: Populate images if variant is null (e.g. unlinked custom/temporary offers)
+    // Offers listed directly against a product carry no variant to read the
+    // pictures from.
     for (const order of orders) {
-      for (const item of order.items) {
-        if (item.sellerOffer && !(item.sellerOffer as any).variant) {
-          const cleanName = (item.sellerOffer as any).name
-            .replace(/\.\.\./g, '')
-            .trim();
-          const catalogProduct = await this.prisma.catalogProduct.findFirst({
-            where: {
-              name: {
-                startsWith: cleanName,
-                mode: 'insensitive',
-              },
-              deletedAt: null,
-            },
-            include: {
-              images: {
-                select: { url: true },
-                orderBy: [{ order: 'asc' }, { id: 'asc' }],
-              },
-            },
-          });
-          if (catalogProduct && catalogProduct.images.length > 0) {
-            (item.sellerOffer as any).variant = {
-              catalogProduct: {
-                images: catalogProduct.images,
-              },
-            };
-          }
-        }
-      }
+      this.useOwnProductImages(order.items);
     }
 
     return orders;
@@ -1123,34 +1112,9 @@ export class OrdersService {
       throw new NotFoundException('Order not found');
     }
 
-    // Fallback: Populate images if variant is null
-    for (const item of order.items) {
-      if (item.sellerOffer && !item.sellerOffer.variant) {
-        const cleanName = item.sellerOffer.name.replace(/\.\.\./g, '').trim();
-        const catalogProduct = await this.prisma.catalogProduct.findFirst({
-          where: {
-            name: {
-              startsWith: cleanName,
-              mode: 'insensitive',
-            },
-            deletedAt: null,
-          },
-          include: {
-            images: {
-              select: { url: true },
-              orderBy: [{ order: 'asc' }, { id: 'asc' }],
-            },
-          },
-        });
-        if (catalogProduct && catalogProduct.images.length > 0) {
-          (item.sellerOffer as any).variant = {
-            catalogProduct: {
-              images: catalogProduct.images,
-            },
-          };
-        }
-      }
-    }
+    // Offers listed directly against a product carry no variant to read the
+    // pictures from.
+    this.useOwnProductImages(order.items);
 
     // 3. Permission logic
     let hasAccess = false;
@@ -1300,6 +1264,14 @@ export class OrdersService {
             name: true,
             manufacturer: true,
             mrp: true,
+            catalogProduct: {
+              select: {
+                images: {
+                  select: { url: true },
+                  orderBy: [{ order: 'asc' }, { id: 'asc' }],
+                },
+              },
+            },
             variant: {
               select: {
                 catalogProduct: {
@@ -1327,6 +1299,10 @@ export class OrdersService {
       },
       orderBy: { createdAt: 'desc' },
     });
+
+    // A seller's own list read the pictures off the variant alone, so an offer
+    // listed straight against a product showed none.
+    this.useOwnProductImages(orderItems);
 
     // Group items by orderId for a cleaner response
     const ordersMap = new Map<
