@@ -2135,14 +2135,18 @@ model IntegrationExternalOrder {
   @@map("integration_external_orders")
 }
 
-/// One row per lifecycle email that must only ever go out once.
+/// One row per notification that must only ever be dispatched once.
 ///
-/// The scheduled emails (review requests, cart reminders, payment recovery)
-/// are driven by cron jobs that re-read the same rows every run, so "have we
-/// already sent this" cannot be inferred from the order or cart itself. The
-/// unique constraint below is what makes the guarantee real: two overlapping
-/// runs both trying to claim the same send will see one insert win and the
-/// other fail, rather than both deciding they are first.
+/// Mostly emails — the scheduled ones (review requests, cart reminders,
+/// payment recovery) are driven by cron jobs that re-read the same rows every
+/// run, so "have we already sent this" cannot be inferred from the order or
+/// cart itself. It also covers the payment-confirmed bell entry, where
+/// confirmPayment can legitimately run three times for one payment (browser
+/// verify, Razorpay webhook, admin manual confirm).
+///
+/// The unique constraint below is what makes the guarantee real: two
+/// overlapping runs both trying to claim the same dispatch will see one insert
+/// win and the other fail, rather than both deciding they are first.
 model EmailDispatch {
   id        String   @id @default(uuid())
   /// Which email. See EMAIL_KIND in buyer-emails.service.ts.

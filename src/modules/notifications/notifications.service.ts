@@ -29,6 +29,26 @@ export class NotificationsService {
   }
 
   /**
+   * Tells a buyer their checkout went through.
+   *
+   * One notification per checkout, not per order: a cart holding items from
+   * three sellers becomes three orders, and three identical pings for one
+   * button press reads as a bug. Every later notification IS per order, which
+   * is right — by then they are genuinely separate things being tracked
+   * separately.
+   */
+  async notifyCheckoutPlaced(buyerId: string, orderIds: string[]) {
+    if (orderIds.length === 0) return null;
+    if (orderIds.length === 1) {
+      return this.notifyOrderPlaced(buyerId, orderIds[0]);
+    }
+    return this.createNotification(
+      buyerId,
+      `Your order has been placed successfully — split into ${orderIds.length} shipments, one per seller.`,
+    );
+  }
+
+  /**
    * Notify buyer when order is accepted by seller.
    */
   async notifyOrderAccepted(buyerId: string, orderId: string) {

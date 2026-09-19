@@ -1,6 +1,12 @@
 import { OrderStatus, PaymentStatus, PaymentVerificationStatus } from '@prisma/client';
 import { PaymentsService } from './payments.service';
 
+/**
+ * confirmPayment now rings the buyer's bell as well. Not what these tests are
+ * about — the once-only claim around it has its own spec.
+ */
+const notificationsStub = { notifyPaymentConfirmed: jest.fn() };
+
 const dec = (n: number) => ({ toNumber: () => n }) as never;
 
 /**
@@ -74,6 +80,8 @@ describe('PaymentsService.confirmPayment — a basket paid once', () => {
       invoiceEmailService as never,
       { track: jest.fn() } as never,
       { notifySellersOfNewOrder: jest.fn() } as never,
+      // in-app notifications
+      notificationsStub as never,
     );
     return { service, prisma, tx, orderUpdate, invoiceEmailService };
   };

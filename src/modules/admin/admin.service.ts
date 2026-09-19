@@ -1674,6 +1674,12 @@ export class AdminService {
       dto.status,
     );
 
+    // notifyBuyerOfStatusChange covers the shipping journey only, so an admin
+    // setting ACCEPTED would otherwise tell the buyer nothing at all.
+    if (dto.status === OrderStatus.ACCEPTED) {
+      this.ordersService.notifyBuyerAccepted(order.buyerId, order.id);
+    }
+
     // Create settlements if status is DELIVERED and payment is successful
     if (
       updated.orderStatus === OrderStatus.DELIVERED &&
@@ -2230,6 +2236,10 @@ export class AdminService {
     // explaining the difference. Detached on purpose: this row records that
     // money has moved, and an email that will not send must never undo it.
     void this.payoutEmailService.settlementPaid(targetId);
+
+    // And the seller's bell. The email carries the invoice; this is what they
+    // see the next time they open the dashboard without checking their inbox.
+    void this.notifySellerSettlementPaid(updated.sellerId, Number(updated.amount));
 
     return updated;
   }
@@ -4387,5 +4397,30 @@ export class AdminService {
 
     this.logger.log(`Refund of ${amount} recorded for order ${orderId}`);
     return updated;
+  }
+
+  /**
+   * The in-app half of "your payout has gone out".
+   *
+   * Notifications are addressed to a User, but a settlement knows only the
+   * SellerProfile, so this resolves the one to the other. Swallows everything:
+   * the money has already moved by the time this runs.
+   */
+  private async notifySellerSettlementPaid(
+    sellerProfileId: string,
+    amount: number,
+  ): Promise<void> {
+    try {
+      const seller = await this.prisma.sellerProfile.findUnique({
+        where: { id: sellerProfileId },
+        select: { userId: true },
+      });
+      if (!seller?.userId) return;
+      await this.notificationsService.notifySettlementPaid(seller.userId, amount);
+    } catch (error: any) {
+      this.logger.warn(
+        `Could not create the settlement-paid notification for seller ${sellerProfileId}: ${error?.message ?? error}`,
+      );
+    }
   }
 }

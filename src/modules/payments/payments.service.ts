@@ -18,6 +18,7 @@ import { InvoiceEmailService } from '../orders/invoice-email.service';
 import { SellerOrderNotifierService } from '../orders/seller-order-notifier.service';
 import { WebAnalyticsService } from '../web-analytics/web-analytics.service';
 import { checkoutGroupWhere } from './checkout-group';
+import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
 export class PaymentsService {
@@ -30,6 +31,7 @@ export class PaymentsService {
     private readonly invoiceEmailService: InvoiceEmailService,
     private readonly webAnalytics: WebAnalyticsService,
     private readonly sellerOrderNotifier: SellerOrderNotifierService,
+    private readonly notificationsService: NotificationsService,
   ) {
     this.commissionRate = parseFloat(
       this.config.get<string>('PLATFORM_COMMISSION_RATE', '0.05'),
@@ -379,6 +381,17 @@ export class PaymentsService {
       },
     );
 
+    // The buyer's own bell. Same three-callers problem as the deferred seller
+    // notification above — browser verify, webhook and admin confirm can all
+    // land for one payment — so this claims a ledger row keyed on the payment
+    // before writing anything.
+    void this.notifyBuyerPaymentConfirmed(
+      paymentId,
+      payment.order.buyerId,
+      payment.orderId,
+      result.confirmedTotalPaid ?? payment.amount.toNumber(),
+    );
+
     // Server-side conversion truth for analytics (covers webhook + admin
     // confirm). Detached like the invoice email: never blocks a confirmation.
     void this.webAnalytics.track({
@@ -554,5 +567,40 @@ export class PaymentsService {
     this.logger.log(
       `Seller settlements created for ${items.length} order items`,
     );
+  }
+
+  /**
+   * Tells the buyer, once, that their payment went through.
+   *
+   * confirmPayment() legitimately runs up to three times for a single payment
+   * — the browser's /verify call, Razorpay's webhook, and an admin confirming
+   * by hand. Without the claim below the buyer would see the same line in
+   * their bell three times. Swallows everything: the payment is already
+   * confirmed by the time this runs.
+   */
+  private async notifyBuyerPaymentConfirmed(
+    paymentId: string,
+    buyerId: string,
+    orderId: string,
+    amount: number,
+  ): Promise<void> {
+    try {
+      await this.prisma.emailDispatch.create({
+        data: { kind: 'inapp_payment_confirmed', dedupeKey: paymentId, userId: buyerId },
+      });
+    } catch {
+      // Unique violation — somebody already announced this payment.
+      return;
+    }
+
+    try {
+      await this.notificationsService.notifyPaymentConfirmed(buyerId, orderId, amount);
+    } catch (error: unknown) {
+      this.logger.warn(
+        `Could not create the payment-confirmed notification for payment ${paymentId}: ${
+          error instanceof Error ? error.message : 'Unknown error'
+        }`,
+      );
+    }
   }
 }
