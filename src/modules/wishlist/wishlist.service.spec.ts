@@ -9,6 +9,7 @@ import { WishlistService } from './wishlist.service';
 describe('WishlistService', () => {
   const USER = 'user-1';
   const OFFER = 'offer-1';
+  const CATALOG = 'catalog-1';
 
   const build = (over: {
     rows?: Array<{ id: string; productId: string; createdAt: Date }>;
@@ -120,6 +121,118 @@ describe('WishlistService', () => {
     await expect(service.list(USER)).resolves.toEqual({ items: [], total: 0 });
   });
 
+  /**
+   * The bug this prevents: the cart drawer saves the listing id it needs for
+   * checkout while the product page saves the catalog id, so one product took
+   * two rows and showed up twice — once with a price and no picture, once with
+   * a picture and no price.
+   */
+  it('files a save against the product, not the listing it was saved from', async () => {
+    const { service, prisma } = build({
+      offers: [{ id: OFFER, catalogProductId: CATALOG, variant: null }],
+    });
+
+    await service.add(USER, OFFER);
+
+    expect(prisma.wishlistItem.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { userId_productId: { userId: USER, productId: CATALOG } },
+      }),
+    );
+  });
+
+  it('follows a listing to its product through a variant', async () => {
+    const { service, prisma } = build({
+      offers: [
+        {
+          id: OFFER,
+          catalogProductId: null,
+          variant: { catalogProductId: CATALOG },
+        },
+      ],
+    });
+
+    await service.add(USER, OFFER);
+
+    expect(prisma.wishlistItem.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { userId_productId: { userId: USER, productId: CATALOG } },
+      }),
+    );
+  });
+
+  it('shows one card when an older row holds the listing id for the same product', async () => {
+    const { service } = build({
+      rows: [row(CATALOG), { ...row(OFFER), id: 'w2' }],
+      offers: [
+        {
+          ...offer(),
+          catalogProductId: CATALOG,
+          variant: {
+            catalogProduct: {
+              id: CATALOG,
+              slug: 'iron-man-helmet',
+              images: [{ url: 'https://cdn/img1.jpg' }],
+            },
+          },
+        },
+      ],
+      catalogProducts: [
+        {
+          id: CATALOG,
+          name: 'Iron Man Helmet',
+          slug: 'iron-man-helmet',
+          images: [],
+        },
+      ],
+    });
+
+    const result = await service.list(USER);
+
+    expect(result.total).toBe(1);
+    expect(result.items[0].productId).toBe(CATALOG);
+  });
+
+  it('prices an item saved from a product page off its cheapest live offer', async () => {
+    const { service } = build({
+      rows: [row(CATALOG)],
+      offers: [
+        {
+          id: 'o1',
+          name: 'a',
+          manufacturer: 'Marvel',
+          catalogProductId: CATALOG,
+          mrp: 16999,
+          finalCustomerPayable: 15394.68,
+          variant: null,
+        },
+        {
+          id: 'o2',
+          name: 'b',
+          manufacturer: 'Marvel',
+          catalogProductId: CATALOG,
+          mrp: 19999,
+          finalCustomerPayable: 18999,
+          variant: null,
+        },
+      ],
+      catalogProducts: [
+        {
+          id: CATALOG,
+          name: 'Iron Man Helmet',
+          slug: 'iron-man-helmet',
+          images: [],
+        },
+      ],
+    });
+
+    const result = await service.list(USER);
+
+    // Was 0, which the storefront rendered as "N/A" on every saved card.
+    expect(result.items[0].product?.price).toBe(15394.68);
+    expect(result.items[0].product?.mrp).toBe(16999);
+  });
+
   it('treats saving the same item twice as a no-op, not an error', async () => {
     const { service, prisma } = build();
 
@@ -139,9 +252,21 @@ describe('WishlistService', () => {
     const result = await service.remove(USER, OFFER);
 
     expect(prisma.wishlistItem.deleteMany).toHaveBeenCalledWith({
-      where: { userId: USER, productId: OFFER },
+      where: { userId: USER, productId: { in: [OFFER] } },
     });
     expect(result).toEqual({ removed: 1 });
+  });
+
+  it('un-bookmarking also clears a row an older build filed under a listing id', async () => {
+    const { service, prisma } = build({
+      offers: [{ id: OFFER, catalogProductId: CATALOG, variant: null }],
+    });
+
+    await service.remove(USER, OFFER);
+
+    expect(prisma.wishlistItem.deleteMany).toHaveBeenCalledWith({
+      where: { userId: USER, productId: { in: [OFFER, CATALOG] } },
+    });
   });
 
   it('succeeds when removing something that was never saved', async () => {
