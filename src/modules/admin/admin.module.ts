@@ -1,6 +1,11 @@
 import { Module } from '@nestjs/common';
-import { AdminController, PublicConfigController } from './admin.controller';
+import {
+  AdminController,
+  PublicConfigController,
+  PublicStatsController,
+} from './admin.controller';
 import { AdminService } from './admin.service';
+import { PlatformStatsService } from './platform-stats.service';
 import { PayoutEmailService } from '../settlements/payout-email.service';
 import { CommissionInvoicePdfService } from '../settlements/commission-invoice-pdf.service';
 import { CommissionInvoiceService } from '../settlements/commission-invoice.service';
@@ -11,9 +16,10 @@ import { ProductsModule } from '../products/products.module';
 
 @Module({
   imports: [OrdersModule, SellersModule, MailModule, ProductsModule],
-  controllers: [AdminController, PublicConfigController],
+  controllers: [AdminController, PublicConfigController, PublicStatsController],
   providers: [
     AdminService,
+    PlatformStatsService,
     PayoutEmailService,
     CommissionInvoiceService,
     CommissionInvoicePdfService,

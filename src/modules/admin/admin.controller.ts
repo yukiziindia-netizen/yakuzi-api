@@ -28,6 +28,8 @@ import { AdminAccessGuard } from '../../common/admin-access';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { AdminService } from './admin.service';
+import { Throttle } from '@nestjs/throttler';
+import { PlatformStatsService } from './platform-stats.service';
 import { QueryUsersDto } from './dto/query-users.dto';
 import { AdminQueryProductsDto } from './dto/query-products.dto';
 import { AdminQueryOrdersDto } from './dto/query-orders.dto';
@@ -927,6 +929,34 @@ export class PublicConfigController {
   async getPublicConfig() {
     const data = await this.adminService.getPublicSettings();
     return { message: 'Platform config retrieved successfully', data };
+  }
+}
+
+/**
+ * Totals about the platform, for publication.
+ *
+ * Deliberately unguarded and deliberately dull: counts only — no names, no
+ * revenue, no per-seller breakdown, nothing a competitor could not establish
+ * by paging through the public catalogue themselves. The point is that an
+ * assistant, or a buyer, can check the scale of this place from one request
+ * instead of being asked to take it on trust.
+ *
+ * Read-only. There is no write counterpart and there should not be one: these
+ * numbers are counted, never set.
+ */
+@ApiTags('Config')
+@Controller('config/stats')
+export class PublicStatsController {
+  constructor(private readonly platformStats: PlatformStatsService) {}
+
+  @Get()
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 60, ttl: 60000 } })
+  @ApiOperation({ summary: 'Public platform totals (listings, sellers, categories)' })
+  @ApiResponse({ status: 200, description: 'Counts, as of countedAt' })
+  async getPublicStats() {
+    const data = await this.platformStats.get();
+    return { message: 'Platform stats retrieved successfully', data };
   }
 }
 
