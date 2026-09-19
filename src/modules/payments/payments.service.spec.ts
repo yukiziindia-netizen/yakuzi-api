@@ -1,6 +1,12 @@
 import { PaymentsService } from './payments.service';
 import { PaymentStatus } from '@prisma/client';
 
+/**
+ * confirmPayment now rings the buyer's bell as well. Not what these tests are
+ * about — the once-only claim around it has its own spec.
+ */
+const notificationsStub = { notifyPaymentConfirmed: jest.fn() };
+
 describe('PaymentsService.notifyDeferredSellers', () => {
   const build = () => {
     const prisma = {
@@ -19,6 +25,8 @@ describe('PaymentsService.notifyDeferredSellers', () => {
       {} as never,
       {} as never,
       sellerOrderNotifier as never,
+      // in-app notifications
+      notificationsStub as never,
     );
     return { service, prisma, sellerOrderNotifier };
   };
@@ -110,5 +118,82 @@ describe('PaymentsService.notifyDeferredSellers', () => {
     expect(sellerOrderNotifier.notifySellersOfNewOrder).toHaveBeenCalledWith([
       { orderId: 'order-2', sellerId: 'seller-2' },
     ]);
+  });
+});
+
+/**
+ * confirmPayment legitimately runs up to three times for one payment — the
+ * browser's /verify call, Razorpay's webhook, and an admin confirming by hand.
+ * The buyer must still see one line in their bell, not three.
+ */
+describe('PaymentsService — the payment-confirmed bell entry', () => {
+  const UNIQUE_VIOLATION = Object.assign(new Error('unique'), { code: 'P2002' });
+
+  const build = () => {
+    const prisma = { emailDispatch: { create: jest.fn().mockResolvedValue({}) } };
+    const notifications = { notifyPaymentConfirmed: jest.fn().mockResolvedValue({}) };
+    const service = new PaymentsService(
+      prisma as never,
+      { get: jest.fn().mockReturnValue('0.05') } as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      notifications as never,
+    );
+    return { service, prisma, notifications };
+  };
+
+  const call = (service: PaymentsService) =>
+    (
+      service as unknown as {
+        notifyBuyerPaymentConfirmed(
+          paymentId: string,
+          buyerId: string,
+          orderId: string,
+          amount: number,
+        ): Promise<void>;
+      }
+    ).notifyBuyerPaymentConfirmed('pay-1', 'buyer-1', 'order-1', 2499);
+
+  it('tells the buyer, with the amount and the order', async () => {
+    const { service, notifications } = build();
+
+    await call(service);
+
+    expect(notifications.notifyPaymentConfirmed).toHaveBeenCalledWith(
+      'buyer-1',
+      'order-1',
+      2499,
+    );
+  });
+
+  it('claims the payment before writing anything', async () => {
+    const { service, prisma } = build();
+
+    await call(service);
+
+    expect(prisma.emailDispatch.create).toHaveBeenCalledWith({
+      data: {
+        kind: 'inapp_payment_confirmed',
+        dedupeKey: 'pay-1',
+        userId: 'buyer-1',
+      },
+    });
+  });
+
+  it('stays silent when somebody already announced this payment', async () => {
+    const { service, prisma, notifications } = build();
+    prisma.emailDispatch.create.mockRejectedValue(UNIQUE_VIOLATION);
+
+    await call(service);
+
+    expect(notifications.notifyPaymentConfirmed).not.toHaveBeenCalled();
+  });
+
+  it('never throws — the payment is already confirmed by the time it runs', async () => {
+    const { service, notifications } = build();
+    notifications.notifyPaymentConfirmed.mockRejectedValue(new Error('db down'));
+
+    await expect(call(service)).resolves.toBeUndefined();
   });
 });

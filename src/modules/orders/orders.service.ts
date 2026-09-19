@@ -84,6 +84,19 @@ export class OrdersService {
    * wraps both cases, because none of these calls is ever worth failing an
    * order, a cancellation or a tracking submission for.
    */
+  /**
+   * Tells a buyer the seller has taken their order on.
+   *
+   * In-app only, deliberately. It is reassuring to see in the bell, but it is
+   * not worth an SMS to every buyer at every acceptance — the messages that
+   * earn one are the shipping milestones in BUYER_STATUS_UPDATES.
+   */
+  notifyBuyerAccepted(buyerId: string, orderId: string): void {
+    this.detach(`accepted notification for order ${orderId}`, () =>
+      this.notificationsService.notifyOrderAccepted(buyerId, orderId),
+    );
+  }
+
   private detach(label: string, run: () => Promise<unknown>): void {
     void Promise.resolve()
       .then(run)
@@ -286,9 +299,13 @@ export class OrdersService {
 
   /**
    * Statuses the buyer actually cares about hearing of, and what to call
-   * each one — deliberately a subset of OrderStatus. PLACED/ACCEPTED/etc.
-   * already have their own notification call sites elsewhere; this map only
-   * covers the post-payment shipping journey.
+   * each one — deliberately a subset of OrderStatus. This map is the
+   * email + SMS + in-app path, and covers the post-payment shipping journey
+   * only.
+   *
+   * PLACED and ACCEPTED are handled separately, as in-app notifications
+   * alone: they are worth a line in the bell but not worth an SMS each. See
+   * notifyBuyerAccepted() below and checkout()'s notifyCheckoutPlaced call.
    */
   private readonly BUYER_STATUS_UPDATES: Partial<
     Record<OrderStatus, { label: string; notifyInApp: (buyerId: string, orderId: string) => Promise<unknown> }>
@@ -796,6 +813,17 @@ export class OrdersService {
             }`,
           );
         });
+
+      // And the buyer's own bell. Same condition as the seller notification
+      // above, for the same reason: a Razorpay-intent order the buyer never
+      // pays for must not be announced as placed. That path is announced by
+      // PaymentsService.confirmPayment instead, once it is real.
+      this.detach(`checkout notification for buyer ${userId}`, () =>
+        this.notificationsService.notifyCheckoutPlaced(
+          userId,
+          sellerOrderPairs.map((pair) => pair.orderId),
+        ),
+      );
     }
 
     // 4f-bis. Tell the seller's connected sales channels that this stock has
@@ -1683,6 +1711,9 @@ export class OrdersService {
             forNotify,
             OrderStatus.ACCEPTED,
           );
+          // notifyBuyerOfStatusChange covers the shipping journey only, so
+          // ACCEPTED falls straight through it. The bell entry is this:
+          this.notifyBuyerAccepted(forNotify.buyerId, orderId);
         }
       }
 
