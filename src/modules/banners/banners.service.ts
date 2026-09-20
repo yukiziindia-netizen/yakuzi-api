@@ -66,7 +66,24 @@ export class BannersService {
       if ((this.prisma as any).banner) {
         const banners = await (this.prisma as any).banner.findMany({
           where: admin ? undefined : { isActive: true },
-          orderBy: { order: 'asc' },
+          // `order` alone is not a total ordering. Every banner currently in
+          // production carries order: 0 — the admin form defaults to it and
+          // nothing has ever required otherwise — so Postgres was free to
+          // return them in whatever sequence it liked, and could return a
+          // different one on the next query.
+          //
+          // That makes the first thing a visitor sees on the homepage
+          // effectively arbitrary, which is bad enough on its own and worse
+          // for anything that screenshots the page: search engines and AI
+          // assistants build their link thumbnails from a single capture of
+          // the top of the homepage, so an undefined first slide means an
+          // undefined thumbnail.
+          //
+          // createdAt as the tie-break makes it deterministic and gives a
+          // sensible default: oldest first, so an existing banner keeps its
+          // position when a new one is uploaded rather than being displaced
+          // at random. Explicit `order` values still win.
+          orderBy: [{ order: 'asc' }, { createdAt: 'asc' }],
         });
         return banners || [];
       }
