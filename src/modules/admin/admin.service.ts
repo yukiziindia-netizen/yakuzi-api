@@ -2770,7 +2770,22 @@ export class AdminService {
       adminUser = await this.prisma.user.create({
         data: {
           phone,
-          email: `admin+${phone}@yukizi.in`,
+          // No email. This used to write `admin+<phone>@yukizi.in`, a
+          // synthetic address on a domain that has never had a mail server —
+          // yukizi.in has no MX record and, until this week, did not resolve
+          // at all. So every admin created by phone was given a permanently
+          // undeliverable address, stored as if it were real.
+          //
+          // That is worse than leaving it empty. User.email is unique, so the
+          // fake value occupied the slot: an admin who later wanted their
+          // actual address had a conflict to clear first, and anything that
+          // mailed admins per-account would have been silently bouncing.
+          //
+          // Null is the honest representation of "we do not have one". These
+          // accounts sign in by phone and OTP, and platform alerts go to the
+          // adminAlertEmail setting rather than to individual admin rows, so
+          // nothing needs an address here. Postgres permits many NULLs under a
+          // unique constraint, so several phone-created admins coexist fine.
           password: '', // Will be set on first login via OTP
           role: 'ADMIN',
           status: 'PENDING',
