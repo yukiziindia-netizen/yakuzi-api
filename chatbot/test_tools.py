@@ -13,8 +13,8 @@ def _mock_conn_returning(rows):
 
 def test_search_products_queries_description_category_stock_and_rating():
     rows = [{
-        "name": "Naruto Vol. 1", "manufacturer": "Viz Media", "mrp": 499,
-        "description": "First volume", "category": "Books",
+        "name": "Naruto Vol. 1", "slug": "naruto-vol-1", "manufacturer": "Viz Media",
+        "mrp": 499, "description": "First volume", "category": "Books",
         "stock": 12, "avg_rating": 4.5,
     }]
     mock_conn, mock_cursor = _mock_conn_returning(rows)
@@ -27,7 +27,43 @@ def test_search_products_queries_description_category_stock_and_rating():
     assert "stock" in executed_sql.lower()
     assert "avg_rating" in executed_sql
     params = mock_cursor.execute.call_args[0][1]
-    assert params == ("%naruto%", "%naruto%", "%naruto%")
+    # Fourth copy drives the "name match beats description match" ordering term.
+    assert params == ("%naruto%", "%naruto%", "%naruto%", "%naruto%")
+
+
+def test_search_products_ranks_by_name_match_then_stock_then_rating():
+    mock_conn, mock_cursor = _mock_conn_returning([])
+    with patch("main.get_db_connection", return_value=mock_conn):
+        search_products("naruto")
+    executed_sql = mock_cursor.execute.call_args[0][0]
+    # Alphabetical ordering used to surface out-of-stock figures first.
+    assert "ORDER BY (cp.name ILIKE %s) DESC, stock DESC, avg_rating DESC" in executed_sql
+
+
+def test_search_products_returns_a_ready_made_product_url():
+    rows = [{
+        "name": "Naruto Vol. 1", "slug": "naruto-vol-1", "manufacturer": "Viz Media",
+        "mrp": 499, "description": "First volume", "category": "Books",
+        "stock": 12, "avg_rating": 4.5,
+    }]
+    mock_conn, _ = _mock_conn_returning(rows)
+    with patch("main.get_db_connection", return_value=mock_conn):
+        result = search_products("naruto")
+    # The model must never have to assemble a path itself.
+    assert "/products/naruto-vol-1" in result
+    assert "slug" not in result
+
+
+def test_search_products_omits_url_when_a_product_has_no_slug():
+    rows = [{
+        "name": "Unslugged Figure", "slug": None, "manufacturer": "Banpresto",
+        "mrp": 1299, "description": "", "category": "Figurines",
+        "stock": 3, "avg_rating": 0,
+    }]
+    mock_conn, _ = _mock_conn_returning(rows)
+    with patch("main.get_db_connection", return_value=mock_conn):
+        result = search_products("unslugged")
+    assert "'url': None" in result
 
 
 def test_search_products_returns_no_results_message_when_empty():
