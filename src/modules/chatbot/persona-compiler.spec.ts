@@ -89,6 +89,22 @@ describe('compileSystemInstruction — access switches', () => {
       'Never ask for a password, card details or an OTP',
     );
   });
+
+  it('scopes the honesty rule to store facts so it cannot act as a scope rule', () => {
+    // Unscoped, "if you cannot look something up, say so plainly" made the model
+    // treat any subject it had no tool for as off limits: "I cannot recommend a
+    // specific episode of Naruto as I am an assistant for the Yukizi online
+    // store and do not have information about anime content."
+    const out = compileSystemInstruction(make({ canAnswerOffTopic: true }));
+    expect(out).toContain('If you cannot look one of those up');
+    expect(out).toContain('having no tool for a subject is never a reason to refuse it');
+  });
+
+  it('does not invite general knowledge when off-topic answers are switched off', () => {
+    const out = compileSystemInstruction(make({ canAnswerOffTopic: false }));
+    expect(out).toContain('Only discuss Yukizi');
+    expect(out).not.toContain('never a reason to refuse it');
+  });
 });
 
 describe('compileSystemInstruction — boundaries and taught rules', () => {
