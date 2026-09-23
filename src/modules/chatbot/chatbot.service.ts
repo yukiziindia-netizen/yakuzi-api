@@ -12,6 +12,10 @@ import axios from 'axios';
 
 import { PrismaService } from '../../database/prisma.service';
 
+/** Storefront aborts its own request at 120s; stay under that so a stalled
+ *  sidecar produces a logged server-side error instead of a silent client abort. */
+const SIDECAR_CHAT_TIMEOUT_MS = 110000;
+
 @Injectable()
 export class ChatbotService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(ChatbotService.name);
@@ -243,8 +247,15 @@ export class ChatbotService implements OnModuleInit, OnModuleDestroy {
         // falls back to building the prompt itself, exactly as before.
         system_instruction: options?.systemInstruction,
         tools: options?.tools,
+      }, {
+        // Unbounded before, so a wedged sidecar held the request open forever and
+        // the browser was always the first to give up -- the customer got a
+        // network error while this process carried on spending Gemini quota on a
+        // reply with nowhere to go. Sits just under the storefront's 120s client
+        // timeout so the failure surfaces here, as a real error we can log.
+        timeout: SIDECAR_CHAT_TIMEOUT_MS,
       });
-      
+
       const data = response.data;
       if (typeof data === 'string') {
         return { response: data };
