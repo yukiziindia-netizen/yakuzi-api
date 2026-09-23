@@ -147,7 +147,7 @@ def search_products(query: str) -> str:
     try:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute(
-                'SELECT cp.name, cp.manufacturer, cp.mrp, cp.description, '
+                'SELECT cp.name, cp.slug, cp.manufacturer, cp.mrp, cp.description, '
                 'c.name AS category, '
                 'COALESCE(('
                 '  SELECT SUM(pb.stock) FROM product_batches pb '
@@ -164,8 +164,14 @@ def search_products(query: str) -> str:
                 'JOIN categories c ON c.id = cp."categoryId" '
                 'WHERE (cp.name ILIKE %s OR cp.manufacturer ILIKE %s OR cp.description ILIKE %s) '
                 'AND cp."isActive" = true AND cp."deletedAt" IS NULL '
-                'ORDER BY cp.name LIMIT 5',
-                (f"%{query}%", f"%{query}%", f"%{query}%")
+                # Was ORDER BY cp.name: a search for "Naruto" returned the first
+                # five figures alphabetically, so the assistant recommended
+                # whatever sorted earliest -- often out of stock -- instead of the
+                # best thing we can actually sell. Name matches beat description
+                # matches, then in-stock, then well-reviewed.
+                'ORDER BY (cp.name ILIKE %s) DESC, stock DESC, avg_rating DESC, cp.name '
+                'LIMIT 5',
+                (f"%{query}%", f"%{query}%", f"%{query}%", f"%{query}%")
             )
             rows = cur.fetchall()
             # RealDictCursor returns Decimal for numeric columns (mrp, avg_rating).
@@ -175,6 +181,11 @@ def search_products(query: str) -> str:
             for row in rows:
                 row['mrp'] = float(row['mrp']) if row['mrp'] is not None else None
                 row['avg_rating'] = float(row['avg_rating']) if row['avg_rating'] is not None else None
+                # Hand the model a finished path rather than a slug it has to
+                # assemble -- the storefront route is /products/<slug>, and a
+                # guessed URL is a broken link in front of a customer.
+                row['url'] = f"/products/{row['slug']}" if row.get('slug') else None
+                row.pop('slug', None)
             return str(rows) if rows else f"No products found matching '{query}'."
     except Exception as e:
         return f"Error executing query: {str(e)}"
