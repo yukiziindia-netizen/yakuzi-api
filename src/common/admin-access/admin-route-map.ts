@@ -174,6 +174,9 @@ const RULES: RouteRule[] = [
   // ── System ───────────────────────────────────────────────────────────────
   // System tabs have no "everyday" tier: reading is view, changing is full.
   { pattern: /^\/admin\/settings(\/|$)/, tab: 'settings', writeLevel: 'full' },
+  // Merchant Center lives under the same System-settings permission: reading
+  // status is view, running a sync is a full-level change.
+  { pattern: /^\/admin\/merchant(\/|$)/, tab: 'settings', writeLevel: 'full' },
 
   // ── Activity log ─────────────────────────────────────────────────────────
   // Read-only by construction: the module exposes no write routes at all, so
