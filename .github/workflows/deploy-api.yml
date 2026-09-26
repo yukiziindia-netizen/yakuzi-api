@@ -78,10 +78,21 @@ jobs:
             # whatever package versions existed the day the server was set up,
             # regardless of what requirements.txt asks for. Re-resolve it on
             # every deploy so a requirements change actually ships.
+            # Two virtualenvs exist on the server: chatbot/.venv (what the API
+            # relaunches from) and the legacy chatbot/venv that the standalone
+            # pm2 app `yukizi-chatbot` — the process actually holding port
+            # 5005 — was registered with. Syncing only .venv left the live
+            # sidecar on the package versions of the day it was created, old
+            # enough to drop Optional tool parameters from the Gemini schema.
+            # The version echo lands in this deploy log, so the next mismatch
+            # is a grep away instead of a day of guessing.
             echo "Syncing chatbot sidecar dependencies..."
-            if [ -x chatbot/.venv/bin/pip ]; then
-              chatbot/.venv/bin/pip install -q -r chatbot/requirements.txt || true
-            fi
+            for v in chatbot/.venv chatbot/venv; do
+              if [ -x "$v/bin/pip" ]; then
+                "$v/bin/pip" install -q -r chatbot/requirements.txt || true
+                echo "$v google-genai: $("$v/bin/pip" show google-genai 2>/dev/null | grep '^Version' || echo 'not installed')"
+              fi
+            done
 
             echo "Stopping Python chatbot sidecar (the API relaunches it)..."
             if command -v fuser >/dev/null 2>&1; then

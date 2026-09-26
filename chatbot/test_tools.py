@@ -227,6 +227,71 @@ def test_search_products_logs_query_errors_to_stderr(capsys):
     assert "operator does not exist" in capsys.readouterr().err
 
 
+def test_search_products_parses_a_budget_out_of_the_query_text():
+    """The production sidecar's legacy interpreter runs a google-genai old
+    enough to drop Optional parameters from the tool schema, so the model
+    cannot pass max_price at all. The budget must therefore also work when it
+    arrives inside the query text, which every SDK version can deliver."""
+    cases = [
+        ("naruto under 2000", "t.price <= %s", 2000.0),
+        ("naruto below ₹1,500", "t.price <= %s", 1500.0),
+        ("naruto less than 800 rupees", "t.price <= %s", 800.0),
+        ("naruto above 1000", "t.price >= %s", 1000.0),
+        ("naruto over 3000", "t.price >= %s", 3000.0),
+    ]
+    for text, clause, bound in cases:
+        mock_conn, mock_cursor = _mock_conn_returning([])
+        with patch("main.get_db_connection", return_value=mock_conn):
+            search_products(text)
+        executed_sql = mock_cursor.execute.call_args[0][0]
+        assert clause in executed_sql, text
+        params = mock_cursor.execute.call_args[0][1]
+        assert params[-1] == bound, text
+        # The budget words must not leak into the text match.
+        assert all("2000" not in str(p) or p == bound for p in params), text
+
+
+def test_search_products_parses_a_between_range_from_the_query_text():
+    mock_conn, mock_cursor = _mock_conn_returning([])
+    with patch("main.get_db_connection", return_value=mock_conn):
+        search_products("figures between 500 and 2000")
+    executed_sql = mock_cursor.execute.call_args[0][0]
+    assert "t.price <= %s" in executed_sql
+    assert "t.price >= %s" in executed_sql
+    params = mock_cursor.execute.call_args[0][1]
+    assert 2000.0 in params and 500.0 in params
+
+
+def test_search_products_budget_only_text_query_matches_whole_catalogue():
+    # "suggest me items below 2000" — no product words at all.
+    mock_conn, mock_cursor = _mock_conn_returning([])
+    with patch("main.get_db_connection", return_value=mock_conn):
+        search_products("suggest me items below 2000")
+    executed_sql = mock_cursor.execute.call_args[0][0]
+    assert "ILIKE" not in executed_sql
+    assert "t.price <= %s" in executed_sql
+    assert mock_cursor.execute.call_args[0][1] == (2000.0,)
+
+
+def test_search_products_explicit_price_params_win_over_parsed_text():
+    mock_conn, mock_cursor = _mock_conn_returning([])
+    with patch("main.get_db_connection", return_value=mock_conn):
+        search_products("naruto under 5000", max_price=2000)
+    params = mock_cursor.execute.call_args[0][1]
+    assert params[-1] == 2000.0
+    assert 5000.0 not in params
+
+
+def test_search_products_plain_query_parses_no_budget():
+    # A number that is part of a product name ("one piece film red 2022"
+    # style) must not silently become a price cap without a budget word.
+    mock_conn, mock_cursor = _mock_conn_returning([])
+    with patch("main.get_db_connection", return_value=mock_conn):
+        search_products("naruto figures")
+    executed_sql = mock_cursor.execute.call_args[0][0]
+    assert "t.price" not in executed_sql
+
+
 def test_search_products_no_results_mentions_the_price_range():
     mock_conn, _ = _mock_conn_returning([])
     with patch("main.get_db_connection", return_value=mock_conn):
