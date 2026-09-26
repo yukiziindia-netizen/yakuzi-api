@@ -4298,6 +4298,12 @@ export class AdminService {
       'merchant.enabled': false,
       'merchant.accountId': '',
       'merchant.dataSourceId': '',
+      // Meta (Facebook) Pixel. The Pixel ID ships in the browser, so it is a
+      // public setting; the Conversions API access token is a server secret
+      // (META_CAPI_ACCESS_TOKEN env var), never stored here. Off until the
+      // admin sets the ID and turns it on.
+      'metaPixel.enabled': false,
+      'metaPixel.pixelId': '',
     };
 
     try {
@@ -4391,6 +4397,11 @@ export class AdminService {
       socialDiscord: String(settings.socialDiscord ?? ''),
       socialLinkedin: String(settings.socialLinkedin ?? ''),
       socialWhatsapp: String(settings.socialWhatsapp ?? ''),
+      // The browser Pixel needs the ID, but only when the admin has switched
+      // Meta on — a blank ID means the storefront loads no Pixel at all.
+      metaPixelId: settings['metaPixel.enabled']
+        ? String(settings['metaPixel.pixelId'] ?? '')
+        : '',
     };
   }
 

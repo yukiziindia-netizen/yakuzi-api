@@ -26,6 +26,7 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
 import { ActivityModule } from './modules/activity/activity.module';
 import { AdminModule } from './modules/admin/admin.module';
 import { MerchantModule } from './modules/merchant/merchant.module';
+import { MetaModule } from './modules/meta/meta.module';
 import { StorageModule } from './modules/storage/storage.module';
 import { SettlementsModule } from './modules/settlements/settlements.module';
 import { ReviewsModule } from './modules/reviews/reviews.module';
@@ -181,6 +182,7 @@ import { WebAnalyticsModule } from './modules/web-analytics/web-analytics.module
     LocationsModule,
     IntegrationsModule,
     MerchantModule,
+    MetaModule,
   ],
   providers: [
     // Apply throttler guard globally
