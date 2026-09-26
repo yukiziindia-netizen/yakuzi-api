@@ -151,7 +151,19 @@ SEARCH_STOPWORDS = {
     'merchandise', 'model', 'my', 'of', 'on', 'or', 'product', 'products',
     'recommend', 'should', 'show', 'some', 'statue', 'statues', 'stock', 'store',
     'suggest', 'the', 'to', 'toy', 'toys', 'want', 'what', 'which', 'with', 'you',
+    # Budget phrasing. These belong in max_price/min_price, never in the text
+    # match — "naruto under 2000" must search for naruto, not for "under".
+    'above', 'around', 'below', 'between', 'budget', 'cheaper', 'cost', 'costs',
+    'inr', 'less', 'over', 'price', 'priced', 'prices', 'rs', 'rupee', 'rupees',
+    'than', 'under', 'within',
 }
+
+
+def _specific_tokens(query: str) -> list:
+    """Words that actually identify a product: not stopwords, and not the bare
+    numbers a customer uses as a budget ("under 2000")."""
+    words = re.findall(r"[a-z0-9]+", (query or '').lower())
+    return [w for w in words if len(w) > 1 and w not in SEARCH_STOPWORDS and not w.isdigit()]
 
 
 def search_tokens(query: str) -> list:
@@ -166,77 +178,108 @@ def search_tokens(query: str) -> list:
     entirely of stopwords still asks the database something.
     """
     words = re.findall(r"[a-z0-9]+", (query or '').lower())
-    kept = [w for w in words if len(w) > 1 and w not in SEARCH_STOPWORDS]
+    kept = _specific_tokens(query)
     return (kept or words or [(query or '').strip().lower()])[:6]
 
 
-def search_products(query: str) -> str:
-    """Searches the database for products matching the query, including
-    description, category, live stock across active/approved seller offers,
-    and average review rating."""
+def search_products(query: str, max_price: Optional[float] = None, min_price: Optional[float] = None) -> str:
+    """Searches the catalogue for products, optionally within a price budget.
+
+    query: only the words that identify what the customer wants — series,
+    character, product type or manufacturer (e.g. "naruto figure"). Pass ""
+    when the customer only gave a budget; the whole catalogue is considered.
+    max_price / min_price: optional bounds in rupees on the selling price
+    (e.g. "below 2000" -> max_price=2000).
+
+    Returns name, manufacturer, description, category, selling price, live
+    stock across active/approved seller offers, and average review rating.
+    """
     conn = get_db_connection()
     if not conn: return "Error: Could not connect to database."
-    tokens = search_tokens(query)
-    likes = [f"%{t}%" for t in tokens]
-    # One OR-group per token: a product needs to match at least one word, not
-    # the whole phrase. match_score then ranks by how much of the phrase landed,
-    # weighting a name or manufacturer hit above a passing mention in the
-    # description, so "naruto figure" still puts the Naruto figures on top.
-    score_sql = ' + '.join(
-        '(CASE WHEN cp.name ILIKE %s OR cp.manufacturer ILIKE %s THEN 2 '
-        'WHEN cp.description ILIKE %s THEN 1 ELSE 0 END)'
-        for _ in likes
+    has_price_bound = max_price is not None or min_price is not None
+    # A budget-only ask ("items below 2000") leaves no product words once the
+    # stopwords and the budget number are stripped. Text-matching the leftovers
+    # finds nothing, so with a price bound present the text filter is dropped
+    # and the bound is applied to the whole catalogue instead.
+    match_all = has_price_bound and not _specific_tokens(query)
+    if match_all:
+        score_sql = '0'
+        where_sql = 'TRUE'
+        params = []
+    else:
+        tokens = search_tokens(query)
+        likes = [f"%{t}%" for t in tokens]
+        # One OR-group per token: a product needs to match at least one word, not
+        # the whole phrase. match_score then ranks by how much of the phrase landed,
+        # weighting a name or manufacturer hit above a passing mention in the
+        # description, so "naruto figure" still puts the Naruto figures on top.
+        score_sql = ' + '.join(
+            '(CASE WHEN cp.name ILIKE %s OR cp.manufacturer ILIKE %s THEN 2 '
+            'WHEN cp.description ILIKE %s THEN 1 ELSE 0 END)'
+            for _ in likes
+        )
+        where_sql = ' OR '.join(
+            '(cp.name ILIKE %s OR cp.manufacturer ILIKE %s OR cp.description ILIKE %s)'
+            for _ in likes
+        )
+        params = [t for t in likes for _ in range(3)] * 2
+    inner_sql = (
+        'SELECT cp.name, cp.slug, cp.manufacturer, cp.description, '
+        'c.name AS category, '
+        f'({score_sql}) AS match_score, '
+        # Was cp.mrp: nullable, and unset for seller-priced products, so
+        # the assistant told customers it could not see prices at all.
+        # This is the storefront's own rule (products.service.ts):
+        # cheapest live offer by MRP, then charge finalCustomerPayable,
+        # falling back to the offer's MRP — so the number quoted here is
+        # the number on the product page. Only approved offers count, or
+        # the bot could quote a price no customer can actually pay.
+        '('
+        '  SELECT COALESCE(so."finalCustomerPayable", so.mrp) '
+        '  FROM seller_offers so '
+        '  WHERE so."catalogProductId" = cp.id AND so."isActive" = true '
+        '  AND so."deletedAt" IS NULL '
+        '  AND so."approvalStatus" = \'APPROVED\' '
+        '  ORDER BY so.mrp ASC LIMIT 1'
+        ') AS price, '
+        'COALESCE(('
+        '  SELECT SUM(pb.stock) FROM product_batches pb '
+        '  JOIN seller_offers so ON so.id = pb."sellerOfferId" '
+        '  WHERE so."catalogProductId" = cp.id AND so."isActive" = true '
+        '  AND so."deletedAt" IS NULL '
+        '  AND so."approvalStatus" = \'APPROVED\' AND pb."expiryDate" > NOW()'
+        '), 0) AS stock, '
+        'COALESCE(('
+        '  SELECT ROUND(AVG(r.rating)::numeric, 1) FROM reviews r '
+        '  WHERE r."catalogProductId" = cp.id'
+        '), 0) AS avg_rating '
+        'FROM catalog_products cp '
+        'JOIN categories c ON c.id = cp."categoryId" '
+        f'WHERE ({where_sql}) '
+        'AND cp."isActive" = true AND cp."deletedAt" IS NULL'
     )
-    where_sql = ' OR '.join(
-        '(cp.name ILIKE %s OR cp.manufacturer ILIKE %s OR cp.description ILIKE %s)'
-        for _ in likes
-    )
-    params = [t for t in likes for _ in range(3)] * 2
+    # Price bounds apply to the computed offer price, so they need an outer
+    # query. A NULL price (no live offer) never satisfies a bound, which is
+    # right: a product nobody can buy has no place in a budget answer.
+    price_where = []
+    if max_price is not None:
+        price_where.append('t.price <= %s')
+        params.append(max_price)
+    if min_price is not None:
+        price_where.append('t.price >= %s')
+        params.append(min_price)
+    sql = f'SELECT * FROM ({inner_sql}) t '
+    if price_where:
+        sql += 'WHERE ' + ' AND '.join(price_where) + ' '
+    # Was ORDER BY cp.name: a search for "Naruto" returned the first
+    # five figures alphabetically, so the assistant recommended
+    # whatever sorted earliest -- often out of stock -- instead of the
+    # best thing we can actually sell. Now: closest match to what was
+    # asked, then in-stock, then well-reviewed.
+    sql += 'ORDER BY t.match_score DESC, t.stock DESC, t.avg_rating DESC, t.name LIMIT 5'
     try:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute(
-                'SELECT cp.name, cp.slug, cp.manufacturer, cp.description, '
-                'c.name AS category, '
-                f'({score_sql}) AS match_score, '
-                # Was cp.mrp: nullable, and unset for seller-priced products, so
-                # the assistant told customers it could not see prices at all.
-                # This is the storefront's own rule (products.service.ts):
-                # cheapest live offer by MRP, then charge finalCustomerPayable,
-                # falling back to the offer's MRP — so the number quoted here is
-                # the number on the product page. Only approved offers count, or
-                # the bot could quote a price no customer can actually pay.
-                '('
-                '  SELECT COALESCE(so."finalCustomerPayable", so.mrp) '
-                '  FROM seller_offers so '
-                '  WHERE so."catalogProductId" = cp.id AND so."isActive" = true '
-                '  AND so."deletedAt" IS NULL '
-                '  AND so."approvalStatus" = \'APPROVED\' '
-                '  ORDER BY so.mrp ASC LIMIT 1'
-                ') AS price, '
-                'COALESCE(('
-                '  SELECT SUM(pb.stock) FROM product_batches pb '
-                '  JOIN seller_offers so ON so.id = pb."sellerOfferId" '
-                '  WHERE so."catalogProductId" = cp.id AND so."isActive" = true '
-                '  AND so."deletedAt" IS NULL '
-                '  AND so."approvalStatus" = \'APPROVED\' AND pb."expiryDate" > NOW()'
-                '), 0) AS stock, '
-                'COALESCE(('
-                '  SELECT ROUND(AVG(r.rating)::numeric, 1) FROM reviews r '
-                '  WHERE r."catalogProductId" = cp.id'
-                '), 0) AS avg_rating '
-                'FROM catalog_products cp '
-                'JOIN categories c ON c.id = cp."categoryId" '
-                f'WHERE ({where_sql}) '
-                'AND cp."isActive" = true AND cp."deletedAt" IS NULL '
-                # Was ORDER BY cp.name: a search for "Naruto" returned the first
-                # five figures alphabetically, so the assistant recommended
-                # whatever sorted earliest -- often out of stock -- instead of the
-                # best thing we can actually sell. Now: closest match to what was
-                # asked, then in-stock, then well-reviewed.
-                'ORDER BY match_score DESC, stock DESC, avg_rating DESC, cp.name '
-                'LIMIT 5',
-                tuple(params)
-            )
+            cur.execute(sql, tuple(params))
             rows = cur.fetchall()
             # RealDictCursor returns Decimal for numeric columns (price,
             # avg_rating). str(Decimal(...)) renders as Python constructor syntax
@@ -254,7 +297,13 @@ def search_products(query: str) -> str:
                 # Ranking detail, not something to read out to a customer.
                 row.pop('match_score', None)
                 row.pop('slug', None)
-            return str(rows) if rows else f"No products found matching '{query}'."
+            if rows:
+                return str(rows)
+            if match_all:
+                return "No products found in that price range."
+            if has_price_bound:
+                return f"No products found matching '{query}' in that price range."
+            return f"No products found matching '{query}'."
     except Exception as e:
         return f"Error executing query: {str(e)}"
     finally:

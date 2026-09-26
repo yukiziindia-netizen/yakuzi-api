@@ -38,7 +38,7 @@ def test_search_products_ranks_by_match_then_stock_then_rating():
         search_products("naruto")
     executed_sql = mock_cursor.execute.call_args[0][0]
     # Alphabetical ordering used to surface out-of-stock figures first.
-    assert "ORDER BY match_score DESC, stock DESC, avg_rating DESC" in executed_sql
+    assert "ORDER BY t.match_score DESC, t.stock DESC, t.avg_rating DESC" in executed_sql
 
 
 def test_search_products_drops_retail_filler_from_a_natural_phrase():
@@ -141,6 +141,66 @@ def test_search_products_leaves_price_none_when_no_live_offer():
     with patch("main.get_db_connection", return_value=mock_conn):
         result = search_products("retired")
     assert "'price': None" in result
+
+
+def test_search_products_filters_by_max_price():
+    """"tell me items below 2000" had the assistant answering it cannot filter
+    by price, because the tool only accepted a text query. A budget must reach
+    the database as a bound on the live offer price."""
+    mock_conn, mock_cursor = _mock_conn_returning([])
+    with patch("main.get_db_connection", return_value=mock_conn):
+        search_products("naruto", max_price=2000)
+    executed_sql = mock_cursor.execute.call_args[0][0]
+    assert "t.price <= %s" in executed_sql
+    params = mock_cursor.execute.call_args[0][1]
+    assert params[-1] == 2000
+
+
+def test_search_products_filters_by_min_and_max_price():
+    mock_conn, mock_cursor = _mock_conn_returning([])
+    with patch("main.get_db_connection", return_value=mock_conn):
+        search_products("figure", max_price=5000, min_price=1000)
+    executed_sql = mock_cursor.execute.call_args[0][0]
+    assert "t.price <= %s" in executed_sql
+    assert "t.price >= %s" in executed_sql
+    params = mock_cursor.execute.call_args[0][1]
+    assert 5000 in params and 1000 in params
+
+
+def test_search_products_without_a_budget_adds_no_price_clause():
+    mock_conn, mock_cursor = _mock_conn_returning([])
+    with patch("main.get_db_connection", return_value=mock_conn):
+        search_products("naruto")
+    executed_sql = mock_cursor.execute.call_args[0][0]
+    assert "t.price" not in executed_sql
+
+
+def test_search_products_budget_only_query_considers_the_whole_catalogue():
+    """A customer who only gives a budget ("items below 2000") has no product
+    words to match. Text-matching the leftovers ("items", "2000") finds
+    nothing, so with a price bound present the text filter must be dropped
+    entirely, not sent to the database as an unmatchable phrase."""
+    for q in ("", "items below 2000"):
+        mock_conn, mock_cursor = _mock_conn_returning([])
+        with patch("main.get_db_connection", return_value=mock_conn):
+            search_products(q, max_price=2000)
+        executed_sql = mock_cursor.execute.call_args[0][0]
+        assert "ILIKE" not in executed_sql, q
+        assert "t.price <= %s" in executed_sql, q
+        assert mock_cursor.execute.call_args[0][1] == (2000,), q
+
+
+def test_search_tokens_drops_price_words_and_bare_numbers():
+    from main import search_tokens
+    # "naruto under 2000" must search for naruto, not for the budget.
+    assert search_tokens("naruto under 2000") == ["naruto"]
+
+
+def test_search_products_no_results_mentions_the_price_range():
+    mock_conn, _ = _mock_conn_returning([])
+    with patch("main.get_db_connection", return_value=mock_conn):
+        result = search_products("naruto", max_price=100)
+    assert "price range" in result
 
 
 def test_search_products_returns_no_results_message_when_empty():
