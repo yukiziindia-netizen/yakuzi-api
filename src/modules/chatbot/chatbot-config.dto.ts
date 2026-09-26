@@ -1,5 +1,6 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import {
+  Allow,
   ArrayMaxSize,
   IsArray,
   IsBoolean,
@@ -21,6 +22,17 @@ import {
  * directly would otherwise become a bill.
  */
 export class UpdateChatbotConfigDto {
+  /**
+   * Bookkeeping columns, not admin input. The Studio reads the raw config
+   * row and sends the whole object back on save and preview; with
+   * forbidNonWhitelisted on, leaving these undeclared made every save and
+   * every preview a 400 — the Studio could not change a single setting.
+   * Allowed through the pipe here, stripped in the service before Prisma.
+   */
+  @Allow() id?: string;
+  @Allow() updatedAt?: unknown;
+  @Allow() updatedBy?: unknown;
+
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(60)
   assistantName?: string;
 
