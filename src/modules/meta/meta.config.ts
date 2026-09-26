@@ -31,7 +31,10 @@ export class MetaConfigService {
     const rows = await this.prisma.systemSetting
       .findMany({ where: { key: { in: Object.values(META_KEYS) } } })
       .catch(() => [] as { key: string; value: string }[]);
-    const byKey = new Map(rows.map((r) => [r.key, r.value]));
+    // Explicit tuple + Map types: without them the entries infer as string[]
+    // (not [string, string]) and the Map overload fails on a strict tsc —
+    // which a local incremental build can silently miss.
+    const byKey = new Map<string, string>(rows.map((r) => [r.key, r.value] as [string, string]));
     return {
       enabled: (byKey.get(META_KEYS.enabled) ?? '').trim().toLowerCase() === 'true',
       pixelId: (byKey.get(META_KEYS.pixelId) ?? '').trim(),
