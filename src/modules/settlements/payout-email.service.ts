@@ -42,7 +42,8 @@ export class PayoutEmailService {
         return;
       }
 
-      const invoice = await this.invoiceService.forSettlement(settlementId);
+      // Issuance: allocate the sequential commission number now, once.
+      const invoice = await this.invoiceService.forSettlement(settlementId, { assign: true });
       if (!invoice) {
         this.logger.warn(`payout-email skipped: settlement ${settlementId} not found`);
         return;

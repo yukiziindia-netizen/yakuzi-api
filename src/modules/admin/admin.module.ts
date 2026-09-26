@@ -13,9 +13,10 @@ import { OrdersModule } from '../orders/orders.module';
 import { SellersModule } from '../sellers/sellers.module';
 import { MailModule } from '../mail/mail.module';
 import { ProductsModule } from '../products/products.module';
+import { InvoicingModule } from '../invoicing/invoicing.module';
 
 @Module({
-  imports: [OrdersModule, SellersModule, MailModule, ProductsModule],
+  imports: [OrdersModule, SellersModule, MailModule, ProductsModule, InvoicingModule],
   controllers: [AdminController, PublicConfigController, PublicStatsController],
   providers: [
     AdminService,

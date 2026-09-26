@@ -1,5 +1,6 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
+import { InvoiceNumberingService } from '../invoicing/invoice-numbering.service';
 import {
   buildCommissionInvoice,
   type CommissionInvoice,
@@ -56,10 +57,28 @@ const REGISTERED_DETAILS = {
 export class CommissionInvoiceService {
   private readonly logger = new Logger(CommissionInvoiceService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    // Optional for the unit tests; DI always provides it in the app. Absent
+    // behaves like numbering-off — the UUID-derived fallback number.
+    @Optional() private readonly numbering?: InvoiceNumberingService,
+  ) {}
 
-  /** Null when there is no such settlement — callers decide what that means. */
-  async forSettlement(settlementId: string): Promise<CommissionInvoice | null> {
+  /**
+   * Null when there is no such settlement — callers decide what that means.
+   *
+   * `assign` distinguishes the two callers. The payout path (marking a
+   * settlement paid) issues the invoice and passes assign:true, allocating a
+   * sequential number once. The admin preview passes assign:false and only
+   * reads a number already allocated — a preview must never advance the tax
+   * series, and a settlement previewed but never paid must not burn a number.
+   * Numbered from settlement.createdAt so the number never moves with the
+   * payout date.
+   */
+  async forSettlement(
+    settlementId: string,
+    opts: { assign?: boolean } = {},
+  ): Promise<CommissionInvoice | null> {
     const settlement = await this.prisma.sellerSettlement.findUnique({
       where: { id: settlementId },
       include: {
@@ -69,7 +88,11 @@ export class CommissionInvoiceService {
     });
     if (!settlement) return null;
 
-    return buildCommissionInvoice(settlement, await this.issuer());
+    const assignedNumber = opts.assign
+      ? await this.numbering?.assignForSettlement(settlementId, settlement.createdAt)
+      : await this.numbering?.peekForSettlement(settlementId);
+
+    return buildCommissionInvoice(settlement, await this.issuer(), assignedNumber);
   }
 
   /** The seller's own email, for callers that need to send them something. */

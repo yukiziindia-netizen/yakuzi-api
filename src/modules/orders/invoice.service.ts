@@ -1,6 +1,7 @@
-import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException, Optional } from '@nestjs/common';
 import { Prisma, Role } from '@prisma/client';
 import { PrismaService } from '../../database/prisma.service';
+import { InvoiceNumberingService } from '../invoicing/invoice-numbering.service';
 
 /**
  * Builds tax invoices for an order.
@@ -108,7 +109,13 @@ type LoadedOrder = Prisma.OrderGetPayload<{ include: typeof ORDER_INCLUDE }>;
 
 @Injectable()
 export class InvoiceService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    // Optional so the unit tests can construct this with prisma alone; in the
+    // app DI always provides it. Absent behaves exactly like numbering-off:
+    // the UUID-derived fallback number.
+    @Optional() private readonly numbering?: InvoiceNumberingService,
+  ) {}
 
   /**
    * Invoices for an order, for whoever is allowed to see them — the owning
@@ -128,7 +135,10 @@ export class InvoiceService {
       throw new ForbiddenException('This order belongs to another account');
     }
 
-    return this.build(scoped);
+    // A read: use whatever numbers were already assigned at issuance; never
+    // allocate here, or merely opening an order would advance the series.
+    const assigned = (await this.numbering?.resolveForOrder(order.id)) ?? new Map();
+    return this.build(scoped, assigned);
   }
 
   /**
@@ -177,7 +187,13 @@ export class InvoiceService {
   async buildInvoicesForOrder(orderId: string): Promise<Invoice[]> {
     const order = await this.loadOrder(orderId);
     if (!order) return [];
-    return this.build(order);
+    // The issuance path (payment-confirmation email). Allocate a sequential
+    // number per seller now, once, before rendering — idempotent, so a retry
+    // or a re-send reuses the numbers already assigned.
+    const sellerIds = Array.from(new Set(order.items.map((i) => i.sellerId))).sort();
+    await this.numbering?.assignForOrder(order.id, sellerIds, order.createdAt);
+    const assigned = (await this.numbering?.resolveForOrder(order.id)) ?? new Map();
+    return this.build(order, assigned);
   }
 
   private async loadOrder(orderId: string): Promise<LoadedOrder | null> {
@@ -187,7 +203,7 @@ export class InvoiceService {
     });
   }
 
-  private build(order: LoadedOrder): Invoice[] {
+  private build(order: LoadedOrder, assigned: Map<string, string> = new Map()): Invoice[] {
     const buyerState = order.address?.state ?? '';
 
     // One invoice per seller, in a stable order so invoice numbers do not move
@@ -282,8 +298,14 @@ export class InvoiceService {
 
       const suffix = sellerIds.length > 1 ? `-${index + 1}` : '';
 
+      // A number assigned by the admin-controlled series wins; without one
+      // (numbering off, or an order issued before the feature) the invoice
+      // keeps its original UUID-derived number — forward-only, never renumbered.
+      const invoiceNumber =
+        assigned.get(sellerId) ?? `YKZ/INV/${financialYear}/${orderRef}${suffix}`;
+
       return {
-        invoiceNumber: `YKZ/INV/${financialYear}/${orderRef}${suffix}`,
+        invoiceNumber,
         invoiceDate: order.createdAt.toISOString(),
         orderReference: `YKZ/ORD/${financialYear}/${orderRef}`,
         sellerId,

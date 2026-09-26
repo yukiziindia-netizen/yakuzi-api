@@ -106,6 +106,7 @@ export function financialYear(date: Date): string {
 export function buildCommissionInvoice(
   settlement: SettlementForInvoice,
   issuer: IssuerDetails,
+  assignedNumber?: string | null,
 ): CommissionInvoice {
   // Dated and numbered from when the settlement was raised — the delivery
   // that earned the commission — NOT from the payout date.
@@ -154,7 +155,11 @@ export function buildCommissionInvoice(
     : '';
 
   return {
-    invoiceNumber: `YKZ/COM/${financialYear(issuedOn)}/${reference}`,
+    // The admin-controlled series when a number has been allocated for this
+    // settlement; otherwise the original UUID-derived number — forward-only,
+    // so a settlement issued before the feature keeps its identity.
+    invoiceNumber:
+      assignedNumber?.trim() || `YKZ/COM/${financialYear(issuedOn)}/${reference}`,
     invoiceDate: issuedOn.toISOString(),
     orderReference,
     payoutReference: settlement.payoutReference ?? null,
