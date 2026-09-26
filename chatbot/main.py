@@ -209,21 +209,32 @@ def parse_budget(query: str):
     return (num(mx.group(1)) if mx else None, num(mn.group(1)) if mn else None)
 
 
-def search_products(query: str, max_price: Optional[float] = None, min_price: Optional[float] = None) -> str:
+def search_products(query: str) -> str:
     """Searches the catalogue for products, optionally within a price budget.
 
     query: the words that identify what the customer wants — series,
     character, product type or manufacturer — plus any budget exactly as the
-    customer said it (e.g. "naruto figures under 2000"); the budget is parsed
-    out of the text and applied as a price filter. Pass just the budget (e.g.
-    "under 2000") when the customer only gave a budget; the whole catalogue
-    is considered.
-    max_price / min_price: optional explicit bounds in rupees on the selling
-    price; they override any budget found in the text.
+    customer said it (e.g. "naruto figures under 2000", "between 500 and
+    1500"); the budget is parsed out of the text and applied as a real price
+    filter. Pass just the budget (e.g. "under 2000") when the customer only
+    gave a budget; the whole catalogue is considered.
 
     Returns name, manufacturer, description, category, selling price, live
     stock across active/approved seller offers, and average review rating.
     """
+    # Deliberately a single-string schema. The declared max_price/min_price
+    # parameters were rejected at the SDK's argument-validation layer in
+    # production ("expecting a decimal number") before this code ever ran, and
+    # the model turned that into "I can't filter by price" refusals. A budget
+    # inside the text is the one channel every SDK version delivers intact —
+    # verified working against the live database.
+    return search_products_impl(query)
+
+
+def search_products_impl(query: str, max_price: Optional[float] = None, min_price: Optional[float] = None) -> str:
+    """search_products with explicit price bounds — kept callable for tests
+    and any future caller with a schema layer that can deliver them safely.
+    Explicit bounds override any budget found in the text."""
     # Gemini has been observed sending numeric arguments as strings. Postgres
     # has no numeric <= text operator, so coerce here rather than letting the
     # database turn a valid budget into an error.
