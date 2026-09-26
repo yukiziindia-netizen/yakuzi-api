@@ -182,14 +182,44 @@ def search_tokens(query: str) -> list:
     return (kept or words or [(query or '').strip().lower()])[:6]
 
 
+# Budget phrases the tool parses out of the query itself. The schema-level
+# max_price/min_price parameters are the clean path, but the interpreter the
+# production sidecar runs on is only guaranteed to deliver `query` — old
+# google-genai releases drop Optional parameters from the declaration — so a
+# budget must also survive the trip inside the text.
+_PRICE_NUM = r'(?:rs\.?|inr|₹)?\s*([0-9][0-9,]*(?:\.[0-9]+)?)'
+_MAX_WORDS = r'(?:under|below|within|upto|up\s+to|max(?:imum)?(?:\s+of)?|less\s+than|cheaper\s+than|budget(?:\s+(?:of|is))?)'
+_MIN_WORDS = r'(?:above|over|at\s+least|more\s+than|min(?:imum)?(?:\s+of)?|starting(?:\s+(?:from|at))?)'
+
+
+def parse_budget(query: str):
+    """(max_price, min_price) stated in the text, or (None, None).
+
+    A bare number is never treated as a budget — "one piece 2022" is a
+    product search, not a price cap. Only a budget word makes it one.
+    """
+    q = (query or '').lower()
+    def num(s): return float(s.replace(',', ''))
+    between = re.search(r'between\s+' + _PRICE_NUM + r'\s+and\s+' + _PRICE_NUM, q)
+    if between:
+        a, b = num(between.group(1)), num(between.group(2))
+        return (max(a, b), min(a, b))
+    mx = re.search(_MAX_WORDS + r'\s+' + _PRICE_NUM, q)
+    mn = re.search(_MIN_WORDS + r'\s+' + _PRICE_NUM, q)
+    return (num(mx.group(1)) if mx else None, num(mn.group(1)) if mn else None)
+
+
 def search_products(query: str, max_price: Optional[float] = None, min_price: Optional[float] = None) -> str:
     """Searches the catalogue for products, optionally within a price budget.
 
-    query: only the words that identify what the customer wants — series,
-    character, product type or manufacturer (e.g. "naruto figure"). Pass ""
-    when the customer only gave a budget; the whole catalogue is considered.
-    max_price / min_price: optional bounds in rupees on the selling price
-    (e.g. "below 2000" -> max_price=2000).
+    query: the words that identify what the customer wants — series,
+    character, product type or manufacturer — plus any budget exactly as the
+    customer said it (e.g. "naruto figures under 2000"); the budget is parsed
+    out of the text and applied as a price filter. Pass just the budget (e.g.
+    "under 2000") when the customer only gave a budget; the whole catalogue
+    is considered.
+    max_price / min_price: optional explicit bounds in rupees on the selling
+    price; they override any budget found in the text.
 
     Returns name, manufacturer, description, category, selling price, live
     stock across active/approved seller offers, and average review rating.
@@ -202,6 +232,8 @@ def search_products(query: str, max_price: Optional[float] = None, min_price: Op
         min_price = float(min_price) if min_price is not None else None
     except (TypeError, ValueError):
         return "Error: max_price and min_price must be numbers (rupees)."
+    if max_price is None and min_price is None:
+        max_price, min_price = parse_budget(query)
     conn = get_db_connection()
     if not conn: return "Error: Could not connect to database."
     has_price_bound = max_price is not None or min_price is not None
