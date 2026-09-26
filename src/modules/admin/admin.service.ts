@@ -4292,6 +4292,12 @@ export class AdminService {
       'invoiceNumbering.seller.prefix': 'YKZ/COM',
       'invoiceNumbering.seller.next': 1,
       'invoiceNumbering.seller.resetStart': 1,
+      // Google Merchant Center. Off until the admin sets the account and data
+      // source ids and the service-account credential is on the server
+      // (GOOGLE_MERCHANT_CREDENTIALS env var, never stored here).
+      'merchant.enabled': false,
+      'merchant.accountId': '',
+      'merchant.dataSourceId': '',
     };
 
     try {
