@@ -37,7 +37,10 @@ export class MerchantConfigService {
     const rows = await this.prisma.systemSetting
       .findMany({ where: { key: { in: Object.values(MERCHANT_KEYS) } } })
       .catch(() => [] as { key: string; value: string }[]);
-    const byKey = new Map(rows.map((r) => [r.key, r.value]));
+    // Explicit tuple + Map types: without them the entries infer as string[]
+    // and the Map overload fails under a clean tsc (see the identical fix in
+    // meta.config.ts / hotfix #166).
+    const byKey = new Map<string, string>(rows.map((r) => [r.key, r.value] as [string, string]));
     const str = (k: string) => (byKey.get(k) ?? '').trim();
 
     return {

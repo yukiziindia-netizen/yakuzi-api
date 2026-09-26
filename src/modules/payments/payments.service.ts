@@ -3,6 +3,7 @@ import {
   NotFoundException,
   BadRequestException,
   Logger,
+  Optional,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../database/prisma.service';
@@ -17,6 +18,7 @@ import { calculateSellerPayout } from '../settlements/payout-calculator';
 import { InvoiceEmailService } from '../orders/invoice-email.service';
 import { SellerOrderNotifierService } from '../orders/seller-order-notifier.service';
 import { WebAnalyticsService } from '../web-analytics/web-analytics.service';
+import { MetaCapiService } from '../meta/meta-capi.service';
 import { checkoutGroupWhere } from './checkout-group';
 import { NotificationsService } from '../notifications/notifications.service';
 
@@ -32,6 +34,9 @@ export class PaymentsService {
     private readonly webAnalytics: WebAnalyticsService,
     private readonly sellerOrderNotifier: SellerOrderNotifierService,
     private readonly notificationsService: NotificationsService,
+    // Optional so the unit tests can construct this without it; DI (the global
+    // MetaModule) always provides it in the app. Absent == Meta switched off.
+    @Optional() private readonly metaCapi?: MetaCapiService,
   ) {
     this.commissionRate = parseFloat(
       this.config.get<string>('PLATFORM_COMMISSION_RATE', '0.05'),
@@ -402,6 +407,15 @@ export class PaymentsService {
         orderId: payment.orderId,
         method: payment.method ?? undefined,
       },
+    });
+
+    // Same conversion, sent to Meta's Conversions API for ad attribution —
+    // deduplicated with the browser Pixel by the order id. Detached and
+    // no-op when Meta is switched off.
+    this.metaCapi?.trackPurchase({
+      orderId: payment.orderId,
+      userId: payment.order.buyerId,
+      amount: payment.amount.toNumber(),
     });
 
     this.logger.log(
