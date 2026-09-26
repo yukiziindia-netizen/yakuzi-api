@@ -171,10 +171,17 @@ describe('allowedTools', () => {
   it('hands over only what is switched on', () => {
     expect(
       allowedTools(make({ canReadBlogs: false, canCheckOrders: false })),
-    ).toEqual([TOOL_NAMES.products, TOOL_NAMES.reviews]);
+    ).toEqual([
+      TOOL_NAMES.products,
+      TOOL_NAMES.categories,
+      TOOL_NAMES.newArrivals,
+      TOOL_NAMES.bestsellers,
+      TOOL_NAMES.reviews,
+      TOOL_NAMES.storeInfo,
+    ]);
   });
 
-  it('returns an empty list when everything is off — not a silent fallback to all', () => {
+  it('keeps only official store facts when everything is off — never a silent fallback to all', () => {
     expect(
       allowedTools(
         make({
@@ -184,6 +191,6 @@ describe('allowedTools', () => {
           canCheckOrders: false,
         }),
       ),
-    ).toEqual([]);
+    ).toEqual([TOOL_NAMES.storeInfo]);
   });
 });

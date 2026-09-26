@@ -91,6 +91,12 @@ export class ChatRequestDto {
   @IsNumber()
   @IsOptional()
   thinkingBudget?: number;
+
+  /** Where the customer is on the storefront (path + title), so "is this
+   *  good?" on a product page needs no clarifying question. */
+  @IsString()
+  @IsOptional()
+  pageContext?: string;
 }
 
 @ApiTags('Chatbot')
@@ -158,6 +164,8 @@ export class ChatbotController {
         ),
         systemInstruction: runtime.systemInstruction,
         tools: runtime.tools,
+        // Clamped like the message: the caller never controls prompt size.
+        pageContext: dto.pageContext ? dto.pageContext.slice(0, 300) : undefined,
       },
     );
     return result;

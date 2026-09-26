@@ -3,6 +3,7 @@ import re
 import sys
 import time
 import traceback
+from contextvars import ContextVar
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from typing import List, Dict, Any, Optional
@@ -101,6 +102,9 @@ class ChatRequest(BaseModel):
     # Exactly the tools the admin left switched on. None means "all of them",
     # which is what every caller before the Studio expected.
     tools: Optional[List[str]] = None
+    # Where the customer is on the storefront right now (path and title), so
+    # "is this good?" on a product page needs no clarifying question.
+    page_context: Optional[str] = None
 
 class ConversationTrainRequest(BaseModel):
     history: List[ChatMessage]
@@ -209,6 +213,98 @@ def parse_budget(query: str):
     return (num(mx.group(1)) if mx else None, num(mn.group(1)) if mn else None)
 
 
+# Structured copies of what the product tools returned during the current
+# /chat request. The storefront widget renders these as tappable product
+# cards — image, price, working link — instead of leaving the customer with
+# re-typed text. A ContextVar so concurrent requests never share a bucket;
+# tools run synchronously inside the request's own context.
+_collected_products: ContextVar = ContextVar('collected_products', default=None)
+
+
+def _record_products(rows):
+    bucket = _collected_products.get()
+    if bucket is None:
+        return
+    for row in rows:
+        url = row.get('url')
+        if not url or any(p.get('url') == url for p in bucket):
+            continue
+        if len(bucket) >= 10:
+            return
+        bucket.append({
+            'name': row.get('name'),
+            'price': row.get('price'),
+            'stock': row.get('stock'),
+            'url': url,
+            'image': row.get('image'),
+            'category': row.get('category'),
+            'avg_rating': row.get('avg_rating'),
+        })
+
+
+def _normalize_product_rows(rows):
+    """Shared post-processing for every tool that returns catalogue rows.
+
+    RealDictCursor returns Decimal for numeric columns; str(Decimal(...))
+    renders as Python constructor syntax (e.g. "Decimal('499.00')"), which
+    Gemini could echo verbatim into a customer-facing reply, so cast to plain
+    floats before stringifying. A None price survives as None: no live offer
+    means there is no price to quote, and the model should say so, not invent
+    one. The slug becomes a finished /products/<slug> path — a guessed URL is
+    a broken link in front of a customer.
+    """
+    for row in rows:
+        row['price'] = float(row['price']) if row.get('price') is not None else None
+        row['avg_rating'] = float(row['avg_rating']) if row.get('avg_rating') is not None else None
+        row['url'] = f"/products/{row['slug']}" if row.get('slug') else None
+        row.pop('match_score', None)
+        row.pop('slug', None)
+    _record_products(rows)
+    return rows
+
+
+# The catalogue columns every product tool selects, kept in one place so the
+# storefront price rule (cheapest live approved offer, finalCustomerPayable
+# falling back to that offer's MRP — products.service.ts) cannot drift
+# between tools. cp.mrp is nullable and unset for seller-priced products;
+# reading it is what once had the assistant telling customers it could not
+# see prices. Only approved offers count, or the bot could quote a price no
+# customer can actually pay.
+_PRODUCT_COLUMNS_SQL = (
+    'cp.name, cp.slug, cp.manufacturer, cp.description, '
+    'c.name AS category, '
+    '('
+    '  SELECT ci.url FROM catalog_product_images ci '
+    '  WHERE ci."masterProductId" = cp.id '
+    '  ORDER BY ci."order" ASC, ci.id ASC LIMIT 1'
+    ') AS image, '
+    '('
+    '  SELECT COALESCE(so."finalCustomerPayable", so.mrp) '
+    '  FROM seller_offers so '
+    '  WHERE so."catalogProductId" = cp.id AND so."isActive" = true '
+    '  AND so."deletedAt" IS NULL '
+    '  AND so."approvalStatus" = \'APPROVED\' '
+    '  ORDER BY so.mrp ASC LIMIT 1'
+    ') AS price, '
+    'COALESCE(('
+    '  SELECT SUM(pb.stock) FROM product_batches pb '
+    '  JOIN seller_offers so ON so.id = pb."sellerOfferId" '
+    '  WHERE so."catalogProductId" = cp.id AND so."isActive" = true '
+    '  AND so."deletedAt" IS NULL '
+    '  AND so."approvalStatus" = \'APPROVED\' AND pb."expiryDate" > NOW()'
+    '), 0) AS stock, '
+    'COALESCE(('
+    '  SELECT ROUND(AVG(r.rating)::numeric, 1) FROM reviews r '
+    '  WHERE r."catalogProductId" = cp.id'
+    '), 0) AS avg_rating'
+)
+_PRODUCT_FROM_SQL = (
+    'FROM catalog_products cp '
+    'JOIN categories c ON c.id = cp."categoryId" '
+)
+_PRODUCT_ACTIVE_SQL = 'cp."isActive" = true AND cp."deletedAt" IS NULL'
+
+
 def search_products(query: str) -> str:
     """Searches the catalogue for products, optionally within a price budget.
 
@@ -275,39 +371,11 @@ def search_products_impl(query: str, max_price: Optional[float] = None, min_pric
         )
         params = [t for t in likes for _ in range(3)] * 2
     inner_sql = (
-        'SELECT cp.name, cp.slug, cp.manufacturer, cp.description, '
-        'c.name AS category, '
-        f'({score_sql}) AS match_score, '
-        # Was cp.mrp: nullable, and unset for seller-priced products, so
-        # the assistant told customers it could not see prices at all.
-        # This is the storefront's own rule (products.service.ts):
-        # cheapest live offer by MRP, then charge finalCustomerPayable,
-        # falling back to the offer's MRP — so the number quoted here is
-        # the number on the product page. Only approved offers count, or
-        # the bot could quote a price no customer can actually pay.
-        '('
-        '  SELECT COALESCE(so."finalCustomerPayable", so.mrp) '
-        '  FROM seller_offers so '
-        '  WHERE so."catalogProductId" = cp.id AND so."isActive" = true '
-        '  AND so."deletedAt" IS NULL '
-        '  AND so."approvalStatus" = \'APPROVED\' '
-        '  ORDER BY so.mrp ASC LIMIT 1'
-        ') AS price, '
-        'COALESCE(('
-        '  SELECT SUM(pb.stock) FROM product_batches pb '
-        '  JOIN seller_offers so ON so.id = pb."sellerOfferId" '
-        '  WHERE so."catalogProductId" = cp.id AND so."isActive" = true '
-        '  AND so."deletedAt" IS NULL '
-        '  AND so."approvalStatus" = \'APPROVED\' AND pb."expiryDate" > NOW()'
-        '), 0) AS stock, '
-        'COALESCE(('
-        '  SELECT ROUND(AVG(r.rating)::numeric, 1) FROM reviews r '
-        '  WHERE r."catalogProductId" = cp.id'
-        '), 0) AS avg_rating '
-        'FROM catalog_products cp '
-        'JOIN categories c ON c.id = cp."categoryId" '
+        f'SELECT {_PRODUCT_COLUMNS_SQL}, '
+        f'({score_sql}) AS match_score '
+        f'{_PRODUCT_FROM_SQL}'
         f'WHERE ({where_sql}) '
-        'AND cp."isActive" = true AND cp."deletedAt" IS NULL'
+        f'AND {_PRODUCT_ACTIVE_SQL}'
     )
     # Price bounds apply to the computed offer price, so they need an outer
     # query. A NULL price (no live offer) never satisfies a bound, which is
@@ -331,23 +399,7 @@ def search_products_impl(query: str, max_price: Optional[float] = None, min_pric
     try:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute(sql, tuple(params))
-            rows = cur.fetchall()
-            # RealDictCursor returns Decimal for numeric columns (price,
-            # avg_rating). str(Decimal(...)) renders as Python constructor syntax
-            # (e.g. "Decimal('499.00')"), which Gemini could echo verbatim into a
-            # customer-facing reply, so cast to plain floats before stringifying.
-            # A None price survives as None: no live offer means there is no
-            # price to quote, and the model should say so, not invent one.
-            for row in rows:
-                row['price'] = float(row['price']) if row['price'] is not None else None
-                row['avg_rating'] = float(row['avg_rating']) if row['avg_rating'] is not None else None
-                # Hand the model a finished path rather than a slug it has to
-                # assemble -- the storefront route is /products/<slug>, and a
-                # guessed URL is a broken link in front of a customer.
-                row['url'] = f"/products/{row['slug']}" if row.get('slug') else None
-                # Ranking detail, not something to read out to a customer.
-                row.pop('match_score', None)
-                row.pop('slug', None)
+            rows = _normalize_product_rows(cur.fetchall())
             if rows:
                 return str(rows)
             if match_all:
@@ -382,6 +434,133 @@ def search_blogs(query: str) -> str:
         return f"Error executing query: {str(e)}"
     finally:
         conn.close()
+
+def list_categories() -> str:
+    """Lists the store's product categories with how many products each has
+    live right now. Use when a customer asks what kinds of things Yukizi
+    sells, or to help them narrow down what they want."""
+    conn = get_db_connection()
+    if not conn: return "Error: Could not connect to database."
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(
+                'SELECT c.name, COUNT(cp.id) AS live_products '
+                'FROM categories c '
+                'JOIN catalog_products cp ON cp."categoryId" = c.id '
+                f'AND {_PRODUCT_ACTIVE_SQL} '
+                'GROUP BY c.name '
+                'ORDER BY live_products DESC'
+            )
+            rows = [dict(r) for r in cur.fetchall()]
+            return str(rows) if rows else "No categories found."
+    except Exception as e:
+        print(f"list_categories failed: {e}", file=sys.stderr)
+        return f"Error executing query: {str(e)}"
+    finally:
+        conn.close()
+
+
+def get_new_arrivals() -> str:
+    """The newest products added to the store, with price, stock and rating.
+    Use for "what's new", "latest arrivals", "anything recent"."""
+    conn = get_db_connection()
+    if not conn: return "Error: Could not connect to database."
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(
+                f'SELECT {_PRODUCT_COLUMNS_SQL}, 0 AS match_score '
+                f'{_PRODUCT_FROM_SQL}'
+                f'WHERE {_PRODUCT_ACTIVE_SQL} '
+                'ORDER BY cp."createdAt" DESC LIMIT 5'
+            )
+            rows = _normalize_product_rows(cur.fetchall())
+            return str(rows) if rows else "No products found."
+    except Exception as e:
+        print(f"get_new_arrivals failed: {e}", file=sys.stderr)
+        return f"Error executing query: {str(e)}"
+    finally:
+        conn.close()
+
+
+def get_bestsellers() -> str:
+    """The store's most-purchased products, with price, stock and rating.
+    Use for "what's popular", "bestsellers", "what do people usually buy"."""
+    conn = get_db_connection()
+    if not conn: return "Error: Could not connect to database."
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(
+                f'SELECT {_PRODUCT_COLUMNS_SQL}, 0 AS match_score, '
+                # Units actually bought, across every offer of the product.
+                'COALESCE(('
+                '  SELECT SUM(oi.quantity) FROM order_items oi '
+                '  JOIN seller_offers so2 ON so2.id = oi."sellerOfferId" '
+                '  WHERE so2."catalogProductId" = cp.id'
+                '), 0) AS units_sold '
+                f'{_PRODUCT_FROM_SQL}'
+                f'WHERE {_PRODUCT_ACTIVE_SQL} '
+                'ORDER BY units_sold DESC, avg_rating DESC, stock DESC LIMIT 5'
+            )
+            rows = _normalize_product_rows(cur.fetchall())
+            for row in rows:
+                row['units_sold'] = int(row['units_sold']) if row.get('units_sold') is not None else 0
+            return str(rows) if rows else "No products found."
+    except Exception as e:
+        print(f"get_bestsellers failed: {e}", file=sys.stderr)
+        return f"Error executing query: {str(e)}"
+    finally:
+        conn.close()
+
+
+# The store's own published facts, one fetch per hour. llms.txt is generated
+# live by the storefront specifically for language models: policies, shipping
+# and return windows, company identity, category/price coverage and all the
+# buying guides, each with a one-line answer. Serving answers from it means
+# the bot and the website can never disagree.
+_STORE_INFO_CACHE = {'text': None, 'at': 0.0}
+_STORE_INFO_SKIP_SECTIONS = ('products', 'recently added', 'machine-readable', 'key pages')
+
+
+def _fetch_store_info_text() -> str:
+    now = time.time()
+    if _STORE_INFO_CACHE['text'] and now - _STORE_INFO_CACHE['at'] < 3600:
+        return _STORE_INFO_CACHE['text']
+    import httpx
+    url = os.environ.get('STORE_INFO_URL', 'https://yukizi.com/llms.txt')
+    resp = httpx.get(url, timeout=10, follow_redirects=True)
+    resp.raise_for_status()
+    _STORE_INFO_CACHE['text'] = resp.text
+    _STORE_INFO_CACHE['at'] = now
+    return resp.text
+
+
+def get_store_info(topic: str) -> str:
+    """Official Yukizi store facts: shipping times and coverage, returns and
+    refunds, payment methods, seller verification, company details, and the
+    store's buying guides (e.g. how to spot a fake figure or Funko Pop).
+    topic: a few words, e.g. "return policy", "shipping time", "fake funko".
+    Answer policy and authenticity questions from this, never from memory."""
+    try:
+        text = _fetch_store_info_text()
+    except Exception as e:
+        print(f"get_store_info fetch failed: {e}", file=sys.stderr)
+        return "Error: store information is unavailable right now."
+    sections = re.split(r'\n(?=## )', text)
+    keep = [s for s in sections
+            if not s.lower().lstrip('# ').startswith(_STORE_INFO_SKIP_SECTIONS)]
+    words = {w for w in re.findall(r'[a-z0-9]+', (topic or '').lower()) if len(w) > 2}
+    def score(section: str) -> int:
+        body = section.lower()
+        return sum(body.count(w) for w in words)
+    ranked = sorted(keep, key=score, reverse=True)
+    top = [s for s in ranked[:2] if score(s) > 0]
+    if not top:
+        # Nothing matched the topic: serve the first real section (Key facts),
+        # not the file preamble, so the answer still carries policy substance.
+        headed = [s for s in keep if s.startswith('## ')]
+        top = headed[:1] or keep[:1]
+    return '\n\n'.join(s.strip()[:4000] for s in top)
+
 
 def get_product_reviews(product_identifier: str) -> str:
     """Looks up a product by id or name, then returns its average rating
@@ -472,6 +651,10 @@ ALL_TOOLS = {
     "get_order_status": get_order_status,
     "search_blogs": search_blogs,
     "get_product_reviews": get_product_reviews,
+    "list_categories": list_categories,
+    "get_new_arrivals": get_new_arrivals,
+    "get_bestsellers": get_bestsellers,
+    "get_store_info": get_store_info,
 }
 
 
@@ -584,6 +767,9 @@ async def chat(request: ChatRequest):
         }
         
     start_time = time.time()
+    # Fresh bucket per request: product tools drop structured rows in here as
+    # they run, and the widget renders them as tappable cards.
+    products_token = _collected_products.set([])
     try:
         client = get_genai_client(api_key)
         gemini_history = []
@@ -611,8 +797,17 @@ async def chat(request: ChatRequest):
             except Exception as te:
                 print(f"ThinkingConfig setup notice: {te}", file=sys.stderr)
 
+        system_instruction = request.system_instruction or build_system_instruction()
+        if request.page_context:
+            system_instruction += (
+                '\n\nCONTEXT\nThe customer is currently on this page of the store: '
+                + request.page_context[:300]
+                + '\nWhen they say "this" or ask about a product without naming '
+                  'one, assume they mean what this page shows.'
+            )
+
         config = types.GenerateContentConfig(
-            system_instruction=request.system_instruction or build_system_instruction(),
+            system_instruction=system_instruction,
             tools=resolve_tools(request.tools),
             thinking_config=thinking_config
         )
@@ -659,7 +854,10 @@ async def chat(request: ChatRequest):
         return {
             "response": final_text,
             "thoughts": thoughts_str,
-            "thinking_time_ms": thinking_time_ms
+            "thinking_time_ms": thinking_time_ms,
+            # Structured rows from the product tools this request ran, for the
+            # widget's product cards. Empty when no product tool was used.
+            "products": _collected_products.get() or []
         }
     except Exception as e:
         print(f"Error calling Gemini API: {type(e).__name__}: {e}", file=sys.stderr)
@@ -670,6 +868,8 @@ async def chat(request: ChatRequest):
                 "Please try again in a moment, or contact Yukizi support if it keeps happening."
             )
         }
+    finally:
+        _collected_products.reset(products_token)
 
 if __name__ == "__main__":
     port = int(os.environ.get("CHATBOT_PORT", 5005))

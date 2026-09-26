@@ -1,0 +1,51 @@
+name: Chatbot canary
+
+# Golden questions against the LIVE assistant. The price-filter outage of
+# 2026-09-26 was invisible for days because nothing exercised the deployed
+# bot — the code was green, the server was not. Three fixed questions every
+# six hours make that class of regression a red X within hours instead.
+on:
+  schedule:
+    - cron: '17 */6 * * *'
+  workflow_dispatch:
+
+jobs:
+  golden-questions:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ask the live assistant the golden questions
+        run: |
+          set -u
+          fail=0
+          ask() {
+            curl -sS -X POST https://yukizi.com/api/chatbot/chat \
+              -H 'Content-Type: application/json' \
+              -H "x-visitor-id: canary-${GITHUB_RUN_ID}" \
+              --max-time 120 \
+              -d "{\"message\": \"$1\", \"history\": []}" | jq -r '.response // ""'
+          }
+
+          echo "── Q1: budget question ──"
+          r1=$(ask "suggest me items below 2000")
+          echo "$r1"
+          if [ -z "$r1" ]; then echo "::error::Budget answer came back empty"; fail=1; fi
+          if ! echo "$r1" | grep -q "₹"; then echo "::error::Budget answer quotes no prices"; fail=1; fi
+          if echo "$r1" | grep -qiE "unable to|technical issue|cannot filter|can't filter"; then
+            echo "::error::Assistant refused the budget question"; fail=1
+          fi
+
+          echo "── Q2: catalogue question ──"
+          r2=$(ask "do you have naruto figures? tell me their prices")
+          echo "$r2"
+          if [ -z "$r2" ]; then echo "::error::Catalogue answer came back empty"; fail=1; fi
+          if ! echo "$r2" | grep -q "₹"; then echo "::error::Catalogue answer quotes no prices"; fail=1; fi
+
+          echo "── Q3: policy question ──"
+          r3=$(ask "what is your return policy?")
+          echo "$r3"
+          if [ -z "$r3" ]; then echo "::error::Policy answer came back empty"; fail=1; fi
+          if ! echo "$r3" | grep -qiE "3 day|three day|damaged"; then
+            echo "::error::Policy answer does not match the published policy"; fail=1
+          fi
+
+          exit $fail

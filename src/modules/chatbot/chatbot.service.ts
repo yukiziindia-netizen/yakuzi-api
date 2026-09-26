@@ -225,8 +225,17 @@ export class ChatbotService implements OnModuleInit, OnModuleDestroy {
       systemInstruction?: string;
       /** Exactly the tools the admin left switched on. */
       tools?: string[];
+      /** Where the customer is on the storefront right now (path + title). */
+      pageContext?: string;
     },
-  ): Promise<{ response: string; thoughts?: string; thinkingTimeMs?: number }> {
+  ): Promise<{
+    response: string;
+    thoughts?: string;
+    thinkingTimeMs?: number;
+    /** Structured rows from the product tools this turn ran — the widget
+     *  renders them as tappable product cards. */
+    products?: Array<Record<string, unknown>>;
+  }> {
     const geminiApiKey = this.configService.get<string>('GEMINI_API_KEY') || '';
 
     // We rely on the external Python sidecar process.
@@ -247,6 +256,7 @@ export class ChatbotService implements OnModuleInit, OnModuleDestroy {
         // falls back to building the prompt itself, exactly as before.
         system_instruction: options?.systemInstruction,
         tools: options?.tools,
+        page_context: options?.pageContext,
       }, {
         // Unbounded before, so a wedged sidecar held the request open forever and
         // the browser was always the first to give up -- the customer got a
@@ -264,6 +274,7 @@ export class ChatbotService implements OnModuleInit, OnModuleDestroy {
         response: data.response || '',
         thoughts: data.thoughts,
         thinkingTimeMs: data.thinking_time_ms,
+        products: Array.isArray(data.products) ? data.products : [],
       };
     } catch (err) {
       this.logger.error(

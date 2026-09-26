@@ -53,7 +53,25 @@ export const TOOL_NAMES = {
   reviews: 'get_product_reviews',
   blogs: 'search_blogs',
   orders: 'get_order_status',
+  categories: 'list_categories',
+  newArrivals: 'get_new_arrivals',
+  bestsellers: 'get_bestsellers',
+  storeInfo: 'get_store_info',
 } as const;
+
+/**
+ * The catalogue is one capability, not four toggles. An admin who allows
+ * product search means "let it help people shop" — browsing categories, new
+ * arrivals and bestsellers are the same permission exercised sideways, so
+ * they ride the canSearchProducts switch rather than adding three dials
+ * nobody would understand.
+ */
+const CATALOGUE_TOOLS = [
+  TOOL_NAMES.products,
+  TOOL_NAMES.categories,
+  TOOL_NAMES.newArrivals,
+  TOOL_NAMES.bestsellers,
+] as const;
 
 /**
  * A dial reads as a band, not a number. Below 25 and above 75 are the opinions
@@ -160,8 +178,12 @@ function accessLines(c: PersonaConfig): string[] {
 
   lines.push(
     c.canSearchProducts
-      ? `You can look up real products in the Yukizi catalogue with ${TOOL_NAMES.products}. Use it before answering anything about what is available or in stock — never describe a product from memory.`
+      ? `You can look up real products in the Yukizi catalogue with ${TOOL_NAMES.products}. Use it before answering anything about what is available or in stock — never describe a product from memory. Include any budget the customer gave inside the search text itself (e.g. "naruto figures under 2000"). You can also list the store's categories with ${TOOL_NAMES.categories}, show the newest products with ${TOOL_NAMES.newArrivals}, and the most-purchased with ${TOOL_NAMES.bestsellers}.`
       : 'You cannot look up the catalogue. If asked what is available, say you cannot check stock right now and point them to the shop page.',
+  );
+
+  lines.push(
+    `Official store facts — shipping times, returns and refunds, payments, seller verification, company details and Yukizi's own buying guides (e.g. spotting fake figures) — come from ${TOOL_NAMES.storeInfo}. Use it for any policy or authenticity question instead of answering from memory.`,
   );
 
   lines.push(
@@ -312,9 +334,13 @@ export function compileSystemInstruction(
 /** The tools the sidecar should register, given what is switched on. */
 export function allowedTools(config: PersonaConfig): string[] {
   const tools: string[] = [];
-  if (config.canSearchProducts) tools.push(TOOL_NAMES.products);
+  if (config.canSearchProducts) tools.push(...CATALOGUE_TOOLS);
   if (config.canReadReviews) tools.push(TOOL_NAMES.reviews);
   if (config.canReadBlogs) tools.push(TOOL_NAMES.blogs);
   if (config.canCheckOrders) tools.push(TOOL_NAMES.orders);
+  // Store facts are policy text the site already publishes; there is no
+  // configuration in which answering "what is your return policy" from the
+  // official source should be switched off.
+  tools.push(TOOL_NAMES.storeInfo);
   return tools;
 }
