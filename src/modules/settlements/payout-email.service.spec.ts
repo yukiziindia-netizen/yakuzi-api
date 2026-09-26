@@ -98,8 +98,10 @@ describe('PayoutEmailService', () => {
 
     await service.settlementPaid(SETTLEMENT_ID);
 
-    // Same loader the preview endpoint calls, so the two cannot drift.
-    expect(invoiceService.forSettlement).toHaveBeenCalledWith(SETTLEMENT_ID);
+    // Same loader the preview endpoint calls, so the document cannot drift.
+    // Payout is issuance, so it passes assign:true to allocate the sequential
+    // commission number once; the preview omits it and only reads.
+    expect(invoiceService.forSettlement).toHaveBeenCalledWith(SETTLEMENT_ID, { assign: true });
     expect(pdfService.render).toHaveBeenCalledWith(invoice());
   });
 

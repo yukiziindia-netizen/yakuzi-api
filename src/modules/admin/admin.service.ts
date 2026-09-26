@@ -53,6 +53,7 @@ import { PayoutEmailService } from '../settlements/payout-email.service';
 import { BuyerEmailsService } from '../mail/buyer-emails.service';
 import { RecordRefundDto } from './dto/record-refund.dto';
 import { CommissionInvoiceService } from '../settlements/commission-invoice.service';
+import { InvoiceNumberingService } from '../invoicing/invoice-numbering.service';
 import { CommissionInvoicePdfService } from '../settlements/commission-invoice-pdf.service';
 import { ProductsService } from '../products/products.service';
 import { AdminCreateProductDto } from './dto/admin-create-product.dto';
@@ -107,6 +108,8 @@ export class AdminService {
     private readonly commissionInvoiceService: CommissionInvoiceService,
     private readonly commissionInvoicePdfService: CommissionInvoicePdfService,
     private readonly buyerEmails: BuyerEmailsService,
+    // Appended last, per the note above — positional spec construction.
+    private readonly invoiceNumbering: InvoiceNumberingService,
   ) {}
 
   /**
@@ -4273,6 +4276,22 @@ export class AdminService {
       socialDiscord: '',
       socialLinkedin: '',
       socialWhatsapp: '',
+      // Invoice numbering. Off by default: until an admin turns it on and sets
+      // a start number, invoices keep their original UUID-derived numbers, so
+      // enabling this is a deliberate act, never a surprise on a live store.
+      // "next" is exactly the number the next invoice will carry — not one
+      // after it. "resetStart" is what the series restarts at each year, on
+      // (resetMonth, resetDay). Consumer = buyer tax invoices, seller =
+      // commission invoices; the two series are independent.
+      'invoiceNumbering.enabled': false,
+      'invoiceNumbering.resetMonth': 4,
+      'invoiceNumbering.resetDay': 1,
+      'invoiceNumbering.consumer.prefix': 'YKZ/INV',
+      'invoiceNumbering.consumer.next': 1,
+      'invoiceNumbering.consumer.resetStart': 1,
+      'invoiceNumbering.seller.prefix': 'YKZ/COM',
+      'invoiceNumbering.seller.next': 1,
+      'invoiceNumbering.seller.resetStart': 1,
     };
 
     try {
@@ -4323,6 +4342,18 @@ export class AdminService {
           });
         });
         await Promise.all(updates);
+
+        // If the invoice-numbering settings were touched, mark the counters as
+        // belonging to the current reset-window, so a just-entered "next
+        // number" is issued as-is instead of being reset to the start on its
+        // first use. Best-effort: a numbering hiccup must not fail a save.
+        if (Object.keys(payload).some((k) => k.startsWith('invoiceNumbering.'))) {
+          await this.invoiceNumbering?.stampCurrentPeriods().catch((e) => {
+            this.logger.warn(
+              `Could not stamp invoice-numbering periods: ${e instanceof Error ? e.message : 'Unknown error'}`,
+            );
+          });
+        }
       }
     } catch (error) {
       this.logger.warn(`Could not save system settings to DB: ${error instanceof Error ? error.message : 'Unknown error'}`);
