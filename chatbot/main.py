@@ -194,6 +194,14 @@ def search_products(query: str, max_price: Optional[float] = None, min_price: Op
     Returns name, manufacturer, description, category, selling price, live
     stock across active/approved seller offers, and average review rating.
     """
+    # Gemini has been observed sending numeric arguments as strings. Postgres
+    # has no numeric <= text operator, so coerce here rather than letting the
+    # database turn a valid budget into an error.
+    try:
+        max_price = float(max_price) if max_price is not None else None
+        min_price = float(min_price) if min_price is not None else None
+    except (TypeError, ValueError):
+        return "Error: max_price and min_price must be numbers (rupees)."
     conn = get_db_connection()
     if not conn: return "Error: Could not connect to database."
     has_price_bound = max_price is not None or min_price is not None
@@ -305,6 +313,9 @@ def search_products(query: str, max_price: Optional[float] = None, min_price: Op
                 return f"No products found matching '{query}' in that price range."
             return f"No products found matching '{query}'."
     except Exception as e:
+        # The error string goes back to the model, which paraphrases it away —
+        # log it too, or pm2 has no trace of what actually failed.
+        print(f"search_products failed: {e}", file=sys.stderr)
         return f"Error executing query: {str(e)}"
     finally:
         conn.close()

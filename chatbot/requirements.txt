@@ -1,7 +1,11 @@
 fastapi>=0.100.0
 uvicorn>=0.22.0
 pydantic>=2.0.0
-google-genai>=0.1.0
+# >=2.0.0: search_products declares Optional parameters with defaults
+# (max_price/min_price); early google-genai releases could not convert those
+# into a function declaration, so the tool call failed on any budget question.
+# Schema generation from the current signature is verified against 2.25.0.
+google-genai>=2.0.0
 
 psycopg2-binary>=2.9.0
 
