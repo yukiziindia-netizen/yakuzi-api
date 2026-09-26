@@ -1,3 +1,4 @@
+from decimal import Decimal
 from unittest.mock import MagicMock, patch
 
 from main import search_products
@@ -14,7 +15,7 @@ def _mock_conn_returning(rows):
 def test_search_products_queries_description_category_stock_and_rating():
     rows = [{
         "name": "Naruto Vol. 1", "slug": "naruto-vol-1", "manufacturer": "Viz Media",
-        "mrp": 499, "description": "First volume", "category": "Books",
+        "price": 499, "description": "First volume", "category": "Books",
         "stock": 12, "avg_rating": 4.5,
     }]
     mock_conn, mock_cursor = _mock_conn_returning(rows)
@@ -72,7 +73,7 @@ def test_search_tokens_falls_back_when_every_word_is_filler():
 def test_search_products_returns_a_ready_made_product_url():
     rows = [{
         "name": "Naruto Vol. 1", "slug": "naruto-vol-1", "manufacturer": "Viz Media",
-        "mrp": 499, "description": "First volume", "category": "Books",
+        "price": 499, "description": "First volume", "category": "Books",
         "stock": 12, "avg_rating": 4.5,
     }]
     mock_conn, _ = _mock_conn_returning(rows)
@@ -86,13 +87,60 @@ def test_search_products_returns_a_ready_made_product_url():
 def test_search_products_omits_url_when_a_product_has_no_slug():
     rows = [{
         "name": "Unslugged Figure", "slug": None, "manufacturer": "Banpresto",
-        "mrp": 1299, "description": "", "category": "Figurines",
+        "price": 1299, "description": "", "category": "Figurines",
         "stock": 3, "avg_rating": 0,
     }]
     mock_conn, _ = _mock_conn_returning(rows)
     with patch("main.get_db_connection", return_value=mock_conn):
         result = search_products("unslugged")
     assert "'url': None" in result
+
+
+def test_search_products_prices_from_the_cheapest_live_offer_not_catalog_mrp():
+    """catalog_products.mrp is nullable and unset for seller-priced products, so
+    reading it had the assistant telling customers it could not see prices at
+    all. The price must be what the storefront actually charges
+    (products.service.ts): take the cheapest live offer by MRP, then
+    finalCustomerPayable, falling back to the offer's MRP."""
+    mock_conn, mock_cursor = _mock_conn_returning([])
+    with patch("main.get_db_connection", return_value=mock_conn):
+        search_products("naruto")
+    executed_sql = mock_cursor.execute.call_args[0][0]
+    assert "cp.mrp" not in executed_sql
+    assert 'COALESCE(so."finalCustomerPayable", so.mrp)' in executed_sql
+    assert "ORDER BY so.mrp ASC LIMIT 1" in executed_sql
+    # Only offers a customer could actually buy from may set the price.
+    assert executed_sql.count("so.\"approvalStatus\" = 'APPROVED'") >= 2
+
+
+def test_search_products_casts_decimal_price_to_a_plain_float():
+    # RealDictCursor returns Decimal for numeric columns; str(Decimal(...))
+    # renders as "Decimal('1299.00')", which Gemini could echo to a customer.
+    rows = [{
+        "name": "Akaza Statue", "slug": "akaza-yukizi", "manufacturer": "Banpresto",
+        "price": Decimal("1299.00"), "description": "", "category": "Figurines",
+        "stock": 3, "avg_rating": Decimal("4.5"),
+    }]
+    mock_conn, _ = _mock_conn_returning(rows)
+    with patch("main.get_db_connection", return_value=mock_conn):
+        result = search_products("akaza")
+    assert "'price': 1299.0" in result
+    assert "Decimal" not in result
+
+
+def test_search_products_leaves_price_none_when_no_live_offer():
+    # No active approved offer means there is genuinely no price to quote;
+    # None must survive so the model sends the customer to the product page
+    # rather than inventing a number.
+    rows = [{
+        "name": "Retired Figure", "slug": "retired-figure", "manufacturer": "Banpresto",
+        "price": None, "description": "", "category": "Figurines",
+        "stock": 0, "avg_rating": 0,
+    }]
+    mock_conn, _ = _mock_conn_returning(rows)
+    with patch("main.get_db_connection", return_value=mock_conn):
+        result = search_products("retired")
+    assert "'price': None" in result
 
 
 def test_search_products_returns_no_results_message_when_empty():

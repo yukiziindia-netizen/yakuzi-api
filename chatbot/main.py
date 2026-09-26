@@ -195,9 +195,24 @@ def search_products(query: str) -> str:
     try:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute(
-                'SELECT cp.name, cp.slug, cp.manufacturer, cp.mrp, cp.description, '
+                'SELECT cp.name, cp.slug, cp.manufacturer, cp.description, '
                 'c.name AS category, '
                 f'({score_sql}) AS match_score, '
+                # Was cp.mrp: nullable, and unset for seller-priced products, so
+                # the assistant told customers it could not see prices at all.
+                # This is the storefront's own rule (products.service.ts):
+                # cheapest live offer by MRP, then charge finalCustomerPayable,
+                # falling back to the offer's MRP — so the number quoted here is
+                # the number on the product page. Only approved offers count, or
+                # the bot could quote a price no customer can actually pay.
+                '('
+                '  SELECT COALESCE(so."finalCustomerPayable", so.mrp) '
+                '  FROM seller_offers so '
+                '  WHERE so."catalogProductId" = cp.id AND so."isActive" = true '
+                '  AND so."deletedAt" IS NULL '
+                '  AND so."approvalStatus" = \'APPROVED\' '
+                '  ORDER BY so.mrp ASC LIMIT 1'
+                ') AS price, '
                 'COALESCE(('
                 '  SELECT SUM(pb.stock) FROM product_batches pb '
                 '  JOIN seller_offers so ON so.id = pb."sellerOfferId" '
@@ -223,12 +238,14 @@ def search_products(query: str) -> str:
                 tuple(params)
             )
             rows = cur.fetchall()
-            # RealDictCursor returns Decimal for numeric columns (mrp, avg_rating).
-            # str(Decimal(...)) renders as Python constructor syntax
+            # RealDictCursor returns Decimal for numeric columns (price,
+            # avg_rating). str(Decimal(...)) renders as Python constructor syntax
             # (e.g. "Decimal('499.00')"), which Gemini could echo verbatim into a
             # customer-facing reply, so cast to plain floats before stringifying.
+            # A None price survives as None: no live offer means there is no
+            # price to quote, and the model should say so, not invent one.
             for row in rows:
-                row['mrp'] = float(row['mrp']) if row['mrp'] is not None else None
+                row['price'] = float(row['price']) if row['price'] is not None else None
                 row['avg_rating'] = float(row['avg_rating']) if row['avg_rating'] is not None else None
                 # Hand the model a finished path rather than a slug it has to
                 # assemble -- the storefront route is /products/<slug>, and a
