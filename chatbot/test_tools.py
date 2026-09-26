@@ -196,6 +196,37 @@ def test_search_tokens_drops_price_words_and_bare_numbers():
     assert search_tokens("naruto under 2000") == ["naruto"]
 
 
+def test_search_products_coerces_string_price_bounds():
+    """Gemini has been observed sending numeric arguments as strings. A string
+    "2000" must become a numeric bound, not reach psycopg2 as text (numeric <=
+    text is an operator error in Postgres)."""
+    mock_conn, mock_cursor = _mock_conn_returning([])
+    with patch("main.get_db_connection", return_value=mock_conn):
+        search_products("naruto", max_price="2000", min_price="500")
+    params = mock_cursor.execute.call_args[0][1]
+    assert params[-2:] == (2000.0, 500.0)
+
+
+def test_search_products_rejects_unparseable_price_bounds():
+    mock_conn, _ = _mock_conn_returning([])
+    with patch("main.get_db_connection", return_value=mock_conn):
+        result = search_products("naruto", max_price="two thousand")
+    assert "must be numbers" in result
+
+
+def test_search_products_logs_query_errors_to_stderr(capsys):
+    """The error string goes back to the model, which paraphrases it away —
+    without a server-side trace there is nothing in pm2 logs to diagnose."""
+    mock_cursor = MagicMock()
+    mock_cursor.execute.side_effect = Exception("operator does not exist")
+    mock_conn = MagicMock()
+    mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
+    with patch("main.get_db_connection", return_value=mock_conn):
+        result = search_products("naruto")
+    assert "Error executing query" in result
+    assert "operator does not exist" in capsys.readouterr().err
+
+
 def test_search_products_no_results_mentions_the_price_range():
     mock_conn, _ = _mock_conn_returning([])
     with patch("main.get_db_connection", return_value=mock_conn):

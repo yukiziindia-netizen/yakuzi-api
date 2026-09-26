@@ -73,6 +73,16 @@ jobs:
             # SIGTERM (exit 143), which skipped the pm2 restart below and left
             # the API serving the previous build while the run looked merely
             # "failed". `|| true` cannot help: a signal is not an exit code.
+            # The venv is excluded from the rsync --delete above, so it is
+            # created once and then never touched: the sidecar was running
+            # whatever package versions existed the day the server was set up,
+            # regardless of what requirements.txt asks for. Re-resolve it on
+            # every deploy so a requirements change actually ships.
+            echo "Syncing chatbot sidecar dependencies..."
+            if [ -x chatbot/.venv/bin/pip ]; then
+              chatbot/.venv/bin/pip install -q -r chatbot/requirements.txt || true
+            fi
+
             echo "Stopping Python chatbot sidecar (the API relaunches it)..."
             if command -v fuser >/dev/null 2>&1; then
               fuser -k 5005/tcp >/dev/null 2>&1 || true
