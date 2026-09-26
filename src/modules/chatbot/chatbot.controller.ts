@@ -149,7 +149,10 @@ export class ChatbotController {
     // caller. Before this, a stranger could post an unbounded message with any
     // thinking budget they liked — straight onto the store's AI bill.
     const message = (dto.message || '').slice(0, config.maxMessageLength);
-    const history = (dto.history || []).slice(-Math.max(0, config.maxHistoryTurns));
+    // slice(-0) is slice(0): "keep no history" silently became "send all of
+    // it" — the most expensive reading of the cheapest setting.
+    const turns = Math.max(0, config.maxHistoryTurns);
+    const history = turns > 0 ? (dto.history || []).slice(-turns) : [];
     const runtime = await this.configService.buildRuntime(config);
 
     const result = await this.chatbotService.sendMessage(
@@ -168,6 +171,12 @@ export class ChatbotController {
         pageContext: dto.pageContext ? dto.pageContext.slice(0, 300) : undefined,
       },
     );
+    // The prompt already forbids the model from SAYING prices when the
+    // switch is off; the product cards were still showing ₹ regardless.
+    // One switch owns both surfaces or it owns neither.
+    if (!config.canQuotePrices && Array.isArray(result.products)) {
+      result.products = result.products.map((p) => ({ ...p, price: null }));
+    }
     return result;
   }
 

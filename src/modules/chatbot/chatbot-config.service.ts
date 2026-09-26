@@ -104,7 +104,11 @@ export class ChatbotConfigService {
   }
 
   async update(dto: UpdateChatbotConfigDto, updatedBy?: string) {
-    const data = { ...dto, updatedBy: updatedBy ?? null };
+    // The Studio sends the whole config row back, bookkeeping included.
+    // id is the singleton's, updatedAt is Prisma's, updatedBy is decided
+    // here from the authenticated admin — none of them are input.
+    const { id: _id, updatedAt: _updatedAt, updatedBy: _sentBy, ...editable } = dto;
+    const data = { ...editable, updatedBy: updatedBy ?? null };
     const saved = await this.prisma.chatbotConfig.upsert({
       where: { id: SINGLETON_ID },
       create: { id: SINGLETON_ID, ...data },

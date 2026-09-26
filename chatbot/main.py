@@ -47,7 +47,6 @@ async def validation_exception_handler(request, exc):
 # process CWD, so launching the sidecar from anywhere other than chatbot/ silently
 # created a second, empty set of state files instead of reading the real ones.
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-PROMPT_FILE = os.path.join(BASE_DIR, "system_prompt.txt")
 MODEL_FILE = os.path.join(BASE_DIR, "current_model.txt")
 
 DEFAULT_PROMPT = """You are an intelligent, versatile AI Assistant integrated into the Yukizi platform powered by Gemini Thinking.
@@ -72,7 +71,6 @@ def load_text_file(filename: str, default_val: str) -> str:
     return default_val
 
 # Initialize state
-ACTIVE_SYSTEM_INSTRUCTION = load_text_file(PROMPT_FILE, DEFAULT_PROMPT)
 ACTIVE_MODEL = load_text_file(MODEL_FILE, "gemini-2.5-flash")
 
 # ==========================================
@@ -619,32 +617,6 @@ def get_order_status(order_id: str) -> str:
     finally:
         conn.close()
 
-# ==========================================
-# LEARNED RULES (structured training)
-# ==========================================
-def get_active_rules() -> list:
-    """Reads active ChatbotRule rows fresh on every call — no caching, so an
-    admin toggling a rule off takes effect on the very next chat message.
-    Ordered the way the admin arranged them: CORE tier first (Postgres enum
-    order follows declaration order, CORE before SURFACE), then the manual
-    per-tier "order", then creation time as the tiebreak."""
-    conn = get_db_connection()
-    if not conn:
-        return []
-    try:
-        with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute(
-                'SELECT trigger, instruction, tier FROM chatbot_rules '
-                'WHERE "isActive" = true ORDER BY tier ASC, "order" ASC, "createdAt" ASC LIMIT 100'
-            )
-            return cur.fetchall()
-    except Exception as e:
-        print(f"Error fetching chatbot rules: {e}", file=sys.stderr)
-        return []
-    finally:
-        conn.close()
-
-
 #: Every tool the assistant could ever be given, by the name the Studio uses.
 ALL_TOOLS = {
     "search_products": search_products,
@@ -661,39 +633,26 @@ ALL_TOOLS = {
 def resolve_tools(names):
     """The tools this conversation is allowed to use.
 
-    None means the caller predates the Studio's access switches, so it gets
-    everything — that was the behaviour before, and silently taking tools away
-    from an old caller would look like the assistant had gone stupid.
+    Every caller (the NestJS API) sends exactly the tools the admin left
+    switched on. None therefore means a caller that bypassed the Studio, and
+    it gets nothing — the previous "None means all of them" default was the
+    one remaining way to sidestep every access switch, guarding a
+    back-compat caller that no longer exists.
 
-    An explicit empty list is a real choice: the admin switched everything off,
-    and the assistant must answer from what it was taught alone.
+    An explicit empty list is the same real choice it always was: the admin
+    switched everything off, and the assistant answers from what it was
+    taught alone.
     """
     if names is None:
-        return list(ALL_TOOLS.values())
+        return []
     return [ALL_TOOLS[n] for n in names if n in ALL_TOOLS]
 
 
-def build_system_instruction() -> str:
-    """Base persona (never modified by training) plus a bounded, structured
-    list of admin-taught rules — replaces the old model of appending raw
-    conversation transcripts directly into system_prompt.txt forever.
-    CORE rules are presented as foundational; SURFACE rules layer on top."""
-    base = load_text_file(PROMPT_FILE, DEFAULT_PROMPT)
-    rules = get_active_rules()
-    if not rules:
-        return base
-    core = [r for r in rules if r.get('tier') == 'CORE']
-    surface = [r for r in rules if r.get('tier') != 'CORE']
-    rules_block = "\n\nLEARNED RULES (store-specific behavior taught by an admin):"
-    if core:
-        rules_block += "\nCore rules (foundational — these take priority):\n" + "\n".join(
-            f"- {r['trigger']}: {r['instruction']}" for r in core
-        )
-    if surface:
-        rules_block += "\nAdditional rules:\n" + "\n".join(
-            f"- {r['trigger']}: {r['instruction']}" for r in surface
-        )
-    return base + rules_block
+def resolve_thinking_budget(requested):
+    """0 is a real choice ("do not think"), not an absent value. `or 2048`
+    treated them the same, so the dial the Studio calls the biggest lever on
+    cost per answer could never actually reach zero."""
+    return requested if requested is not None else 2048
 
 
 # ==========================================
@@ -746,17 +705,6 @@ def extract_rule(req: ConversationTrainRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to extract rule: {str(e)}")
 
-@app.post("/train/reset")
-def reset_training_memory():
-    global ACTIVE_SYSTEM_INSTRUCTION
-    ACTIVE_SYSTEM_INSTRUCTION = DEFAULT_PROMPT
-    with open(PROMPT_FILE, 'w', encoding='utf-8') as f:
-        f.write(DEFAULT_PROMPT)
-    return {
-        "message": "Training memory successfully cleared and reset to default system prompt.",
-        "active_prompt": ACTIVE_SYSTEM_INSTRUCTION
-    }
-
 @app.post("/chat")
 async def chat(request: ChatRequest):
     api_key = os.environ.get("GEMINI_API_KEY")
@@ -793,11 +741,13 @@ async def chat(request: ChatRequest):
         thinking_config = None
         if request.thinking_enabled:
             try:
-                thinking_config = types.ThinkingConfig(thinking_budget=request.thinking_budget or 2048)
+                thinking_config = types.ThinkingConfig(thinking_budget=resolve_thinking_budget(request.thinking_budget))
             except Exception as te:
                 print(f"ThinkingConfig setup notice: {te}", file=sys.stderr)
 
-        system_instruction = request.system_instruction or build_system_instruction()
+        # The NestJS API always sends the Studio-compiled instruction; the
+        # bare default only serves a caller that bypassed it (direct curl).
+        system_instruction = request.system_instruction or DEFAULT_PROMPT
         if request.page_context:
             system_instruction += (
                 '\n\nCONTEXT\nThe customer is currently on this page of the store: '

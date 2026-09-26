@@ -525,3 +525,29 @@ def test_get_store_info_survives_a_fetch_failure():
     with patch("main._fetch_store_info_text", side_effect=Exception("down")):
         result = get_store_info("returns")
     assert "unavailable" in result
+
+
+# ── Studio fix-now regressions ───────────────────────────────────────────────
+
+from main import resolve_tools, resolve_thinking_budget
+
+
+def test_resolve_tools_gives_nothing_to_callers_that_bypass_the_studio():
+    """None used to mean "all eight tools" — the one remaining way around
+    every access switch, guarding a back-compat caller that no longer
+    exists. The NestJS API always sends an explicit list."""
+    assert resolve_tools(None) == []
+
+
+def test_resolve_tools_honours_an_explicit_list_and_an_explicit_nothing():
+    from main import ALL_TOOLS
+    assert resolve_tools([]) == []
+    assert resolve_tools(['search_products']) == [ALL_TOOLS['search_products']]
+
+
+def test_thinking_budget_zero_means_zero_not_the_default():
+    """0 is "do not think", not an absent value. `or 2048` billed the full
+    default on the cheapest possible setting."""
+    assert resolve_thinking_budget(0) == 0
+    assert resolve_thinking_budget(None) == 2048
+    assert resolve_thinking_budget(512) == 512
