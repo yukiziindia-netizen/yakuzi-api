@@ -65,6 +65,14 @@ export class ChatMessageDto {
   @ValidateNested({ each: true })
   @Type(() => AttachmentDto)
   attachments?: AttachmentDto[];
+
+  /** Product cards the widget attached to an earlier assistant reply. The
+   *  widget replays its transcript as history; with forbidNonWhitelisted on,
+   *  leaving this undeclared turned every conversation that ever showed a
+   *  card into a 400 on the customer's next message. Accepted, not used. */
+  @IsArray()
+  @IsOptional()
+  products?: unknown[];
 }
 
 export class ChatRequestDto {
