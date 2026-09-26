@@ -406,3 +406,122 @@ def test_search_products_schema_declares_only_query():
     fd = types.FunctionDeclaration.from_callable_with_api_option(callable=search_products)
     assert sorted(fd.parameters.properties.keys()) == ["query"]
     assert fd.parameters.required == ["query"]
+
+
+# ── New catalogue tools & product-card collection ────────────────────────────
+
+from main import (
+    _collected_products, _record_products, list_categories,
+    get_new_arrivals, get_bestsellers, get_store_info,
+)
+
+
+def test_product_rows_include_the_first_gallery_image():
+    """The widget renders product cards from these rows; a card without an
+    image is a grey box, so every product tool selects the first gallery
+    image (lowest `order`, matching the storefront's own rule)."""
+    mock_conn, mock_cursor = _mock_conn_returning([])
+    with patch("main.get_db_connection", return_value=mock_conn):
+        search_products("naruto")
+    executed_sql = mock_cursor.execute.call_args[0][0]
+    assert 'catalog_product_images' in executed_sql
+    assert 'ORDER BY ci."order" ASC' in executed_sql
+
+
+def test_product_tools_collect_card_rows_per_request():
+    rows = [{
+        "name": "Akaza Statue", "slug": "akaza-yukizi", "manufacturer": "B",
+        "price": 1044.16, "description": "", "category": "Figurines",
+        "stock": 3, "avg_rating": 4.5, "image": "https://cdn/img.jpg",
+    }]
+    token = _collected_products.set([])
+    try:
+        mock_conn, _ = _mock_conn_returning([dict(r) for r in rows])
+        with patch("main.get_db_connection", return_value=mock_conn):
+            search_products("akaza")
+        bucket = _collected_products.get()
+        assert len(bucket) == 1
+        card = bucket[0]
+        assert card["url"] == "/products/akaza-yukizi"
+        assert card["image"] == "https://cdn/img.jpg"
+        assert card["price"] == 1044.16
+        # Same product surfacing from a second tool call must not duplicate.
+        _record_products([{**rows[0], "url": "/products/akaza-yukizi"}])
+        assert len(_collected_products.get()) == 1
+    finally:
+        _collected_products.reset(token)
+
+
+def test_record_products_is_inert_outside_a_chat_request():
+    # Tools also run from tests and scripts with no request bucket set;
+    # collection must never be a precondition for the tool working.
+    _record_products([{"url": "/products/x", "name": "X"}])  # must not raise
+
+
+def test_list_categories_counts_only_live_products():
+    mock_conn, mock_cursor = _mock_conn_returning([
+        {"name": "Figurines", "live_products": 40},
+    ])
+    with patch("main.get_db_connection", return_value=mock_conn):
+        result = list_categories()
+    assert "Figurines" in result
+    sql = mock_cursor.execute.call_args[0][0]
+    assert 'cp."isActive" = true' in sql
+    assert 'cp."deletedAt" IS NULL' in sql
+
+
+def test_get_new_arrivals_orders_by_creation_date():
+    mock_conn, mock_cursor = _mock_conn_returning([])
+    with patch("main.get_db_connection", return_value=mock_conn):
+        get_new_arrivals()
+    sql = mock_cursor.execute.call_args[0][0]
+    assert 'ORDER BY cp."createdAt" DESC' in sql
+    assert 'COALESCE(so."finalCustomerPayable", so.mrp)' in sql
+
+
+def test_get_bestsellers_ranks_by_units_actually_sold():
+    mock_conn, mock_cursor = _mock_conn_returning([{
+        "name": "Pain Statue", "slug": "pain", "manufacturer": "B",
+        "price": 1405.2, "description": "", "category": "Figurines",
+        "stock": 5, "avg_rating": 4.0, "image": None, "units_sold": 12,
+    }])
+    with patch("main.get_db_connection", return_value=mock_conn):
+        result = get_bestsellers()
+    sql = mock_cursor.execute.call_args[0][0]
+    assert "SUM(oi.quantity)" in sql
+    assert "ORDER BY units_sold DESC" in sql
+    assert "'units_sold': 12" in result
+
+
+FAKE_LLMS = """# Yukizi
+> Store one-liner.
+
+## Key facts
+- Shipping: free across India; 4-7 business days.
+- Returns: damaged items within 3 days with photos.
+
+## Guides
+- How to Spot a Fake Funko Pop: nine checks including box print.
+
+## Products
+- 200 products listed here that must never be dumped into an answer.
+"""
+
+
+def test_get_store_info_serves_the_matching_section():
+    with patch("main._fetch_store_info_text", return_value=FAKE_LLMS):
+        result = get_store_info("fake funko pop")
+    assert "Spot a Fake Funko" in result
+    assert "must never be dumped" not in result
+
+
+def test_get_store_info_falls_back_to_key_facts():
+    with patch("main._fetch_store_info_text", return_value=FAKE_LLMS):
+        result = get_store_info("zzz nothing matches this")
+    assert "Key facts" in result or "Shipping" in result
+
+
+def test_get_store_info_survives_a_fetch_failure():
+    with patch("main._fetch_store_info_text", side_effect=Exception("down")):
+        result = get_store_info("returns")
+    assert "unavailable" in result

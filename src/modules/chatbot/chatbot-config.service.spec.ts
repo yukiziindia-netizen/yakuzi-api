@@ -145,7 +145,14 @@ describe('ChatbotConfigService.buildRuntime', () => {
 
     expect(runtime.systemInstruction).toContain('You are Yuki');
     expect(runtime.systemInstruction).toContain('mention the 7-day window');
-    expect(runtime.tools).toEqual(['search_products', 'get_product_reviews']);
+    expect(runtime.tools).toEqual([
+      'search_products',
+      'list_categories',
+      'get_new_arrivals',
+      'get_bestsellers',
+      'get_product_reviews',
+      'get_store_info',
+    ]);
   });
 
   it('still answers when the taught rules cannot be read', async () => {

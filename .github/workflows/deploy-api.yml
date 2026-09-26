@@ -94,11 +94,24 @@ jobs:
               fi
             done
 
+            # Server hygiene, safe to re-run every deploy: the standalone pm2
+            # app `yukizi-chatbot` was registered long ago against chatbot/venv
+            # (no dot), which rsync --delete has since half-erased — the app
+            # crash-loops (pid N/A) and its interpreter no longer exists. The
+            # sidecar's one real home is the API's child process running from
+            # chatbot/.venv. Remove the zombie and the debris so deploys stop
+            # fighting both.
+            pm2 delete yukizi-chatbot >/dev/null 2>&1 || true
+            rm -rf chatbot/venv 2>/dev/null || true
+
             echo "Stopping Python chatbot sidecar (the API relaunches it)..."
             if command -v fuser >/dev/null 2>&1; then
               fuser -k 5005/tcp >/dev/null 2>&1 || true
+            else
+              # fuser (psmisc) is not on every image; find the listener via ss.
+              pid=$(ss -ltnp 2>/dev/null | sed -n 's/.*:5005 .*pid=\([0-9]*\).*/\1/p' | head -1)
+              if [ -n "$pid" ]; then kill "$pid" 2>/dev/null || true; fi
             fi
-            pm2 restart yukizi-chatbot >/dev/null 2>&1 || true
 
             echo "Restarting PM2..."
             pm2 restart yakuzi-api
