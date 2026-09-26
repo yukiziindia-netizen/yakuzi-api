@@ -1,7 +1,7 @@
 from decimal import Decimal
 from unittest.mock import MagicMock, patch
 
-from main import search_products
+from main import search_products, search_products_impl
 
 
 def _mock_conn_returning(rows):
@@ -149,7 +149,7 @@ def test_search_products_filters_by_max_price():
     the database as a bound on the live offer price."""
     mock_conn, mock_cursor = _mock_conn_returning([])
     with patch("main.get_db_connection", return_value=mock_conn):
-        search_products("naruto", max_price=2000)
+        search_products_impl("naruto", max_price=2000)
     executed_sql = mock_cursor.execute.call_args[0][0]
     assert "t.price <= %s" in executed_sql
     params = mock_cursor.execute.call_args[0][1]
@@ -159,7 +159,7 @@ def test_search_products_filters_by_max_price():
 def test_search_products_filters_by_min_and_max_price():
     mock_conn, mock_cursor = _mock_conn_returning([])
     with patch("main.get_db_connection", return_value=mock_conn):
-        search_products("figure", max_price=5000, min_price=1000)
+        search_products_impl("figure", max_price=5000, min_price=1000)
     executed_sql = mock_cursor.execute.call_args[0][0]
     assert "t.price <= %s" in executed_sql
     assert "t.price >= %s" in executed_sql
@@ -183,7 +183,7 @@ def test_search_products_budget_only_query_considers_the_whole_catalogue():
     for q in ("", "items below 2000"):
         mock_conn, mock_cursor = _mock_conn_returning([])
         with patch("main.get_db_connection", return_value=mock_conn):
-            search_products(q, max_price=2000)
+            search_products_impl(q, max_price=2000)
         executed_sql = mock_cursor.execute.call_args[0][0]
         assert "ILIKE" not in executed_sql, q
         assert "t.price <= %s" in executed_sql, q
@@ -202,7 +202,7 @@ def test_search_products_coerces_string_price_bounds():
     text is an operator error in Postgres)."""
     mock_conn, mock_cursor = _mock_conn_returning([])
     with patch("main.get_db_connection", return_value=mock_conn):
-        search_products("naruto", max_price="2000", min_price="500")
+        search_products_impl("naruto", max_price="2000", min_price="500")
     params = mock_cursor.execute.call_args[0][1]
     assert params[-2:] == (2000.0, 500.0)
 
@@ -210,7 +210,7 @@ def test_search_products_coerces_string_price_bounds():
 def test_search_products_rejects_unparseable_price_bounds():
     mock_conn, _ = _mock_conn_returning([])
     with patch("main.get_db_connection", return_value=mock_conn):
-        result = search_products("naruto", max_price="two thousand")
+        result = search_products_impl("naruto", max_price="two thousand")
     assert "must be numbers" in result
 
 
@@ -276,7 +276,7 @@ def test_search_products_budget_only_text_query_matches_whole_catalogue():
 def test_search_products_explicit_price_params_win_over_parsed_text():
     mock_conn, mock_cursor = _mock_conn_returning([])
     with patch("main.get_db_connection", return_value=mock_conn):
-        search_products("naruto under 5000", max_price=2000)
+        search_products_impl("naruto under 5000", max_price=2000)
     params = mock_cursor.execute.call_args[0][1]
     assert params[-1] == 2000.0
     assert 5000.0 not in params
@@ -295,7 +295,7 @@ def test_search_products_plain_query_parses_no_budget():
 def test_search_products_no_results_mentions_the_price_range():
     mock_conn, _ = _mock_conn_returning([])
     with patch("main.get_db_connection", return_value=mock_conn):
-        result = search_products("naruto", max_price=100)
+        result = search_products_impl("naruto", max_price=100)
     assert "price range" in result
 
 
@@ -395,3 +395,14 @@ def test_get_product_reviews_no_reviews_yet():
         result = get_product_reviews("prod-789")
 
     assert "No reviews yet" in result
+
+
+def test_search_products_schema_declares_only_query():
+    """The declared max_price/min_price parameters were rejected at the SDK's
+    argument-validation layer in production before the tool ever ran, and the
+    model turned that into refusals. The public tool must expose exactly one
+    string parameter; budgets travel inside the text."""
+    from google.genai import types
+    fd = types.FunctionDeclaration.from_callable_with_api_option(callable=search_products)
+    assert sorted(fd.parameters.properties.keys()) == ["query"]
+    assert fd.parameters.required == ["query"]
