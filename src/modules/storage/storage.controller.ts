@@ -164,7 +164,9 @@ export class StorageController {
   @Post('order-document')
   @UseGuards(JwtAuthGuard, RolesGuard, AdminAccessGuard)
   @Roles(Role.SELLER, Role.ADMIN)
-  @UseInterceptors(FileInterceptor('file'))
+  // multerOptions (5 MB cap) — this was the only upload route on the
+  // controller without it, so it accepted files of unbounded size.
+  @UseInterceptors(FileInterceptor('file', multerOptions))
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Upload order document/image (seller)' })
   @ApiConsumes('multipart/form-data')
@@ -175,14 +177,38 @@ export class StorageController {
     return { message: 'Order document uploaded', data: { url } };
   }
 
+  /**
+   * Presigned URL for a private file. ADMIN only.
+   *
+   * This takes a storage key from the caller and hands back a URL for it,
+   * and performs NO ownership check on that key. While BUYER and SELLER were
+   * allowed, any logged-in customer who knew or guessed a key could pull
+   * somebody else's KYC document, cancelled cheque or payment proof — a
+   * personal-data breach, and a reportable one under the DPDP Act.
+   *
+   * Narrowing to ADMIN closes it completely rather than partially, and costs
+   * nothing: every caller across all three front-ends is in the admin app
+   * (orders, payments, users, users/[id]). Neither the buyer storefront nor
+   * the seller portal references `getPresignedUrl` or `/storage/view` at all
+   * — verified across both codebases before changing this.
+   *
+   * Admin behaviour is unchanged. AdminAccessGuard already engaged here,
+   * because it keys off whether ADMIN appears in @Roles and ADMIN was
+   * already listed; the /storage route mapping (anyWrite) applied before this
+   * change and applies identically after it.
+   *
+   * If a buyer or seller ever needs to see their own documents, the fix is a
+   * per-record ownership check in this handler — not widening @Roles again.
+   */
   @Post('view')
   @UseGuards(JwtAuthGuard, RolesGuard, AdminAccessGuard)
-  @Roles(Role.BUYER, Role.SELLER, Role.ADMIN)
+  @Roles(Role.ADMIN)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
-    summary: 'Generate a temporary presigned URL for a private file',
+    summary: 'Generate a temporary presigned URL for a private file (admin)',
   })
   @ApiResponse({ status: 200, description: 'Temporary URL generated' })
+  @ApiResponse({ status: 403, description: 'Admin role required' })
   async getPresignedUrl(@Body('key') key: string) {
     const url = await this.storageService.getPresignedUrl(key);
     return { data: { url } };
