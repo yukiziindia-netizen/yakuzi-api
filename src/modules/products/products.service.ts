@@ -19,6 +19,7 @@ import { QueryProductDto } from './dto/query-product.dto';
 import { CreateProductRequestDto } from './dto/create-product-request.dto';
 import { BulkCreateProductDto } from './dto/bulk-create-product.dto';
 import { MailService } from '../mail/mail.service';
+import { OfferShipping, resolveOfferShipping } from '../../common/utils/shipping.util';
 
 /**
  * Match a catalog product by a condition on its seller offers.
@@ -161,6 +162,50 @@ export class ProductsService {
     if (!category) throw new NotFoundException('Category not found');
     if (!subCategory) throw new NotFoundException('Sub-category not found');
 
+    const masterProductId = dto.masterProductId;
+    let catalogProduct: any = null;
+    if (masterProductId) {
+      catalogProduct = await this.prisma.catalogProduct.findUnique({
+        where: { id: masterProductId },
+        include: { productVariants: true },
+      });
+    }
+
+    if (!catalogProduct && !normalized.variantId) {
+      catalogProduct = await this.prisma.catalogProduct.findFirst({
+        where: {
+          name: { equals: normalized.name, mode: 'insensitive' },
+          manufacturer: {
+            equals: normalized.manufacturer,
+            mode: 'insensitive',
+          },
+          deletedAt: null,
+        },
+        include: { productVariants: true },
+      });
+    }
+
+    // Yukizi ships for this seller, so Yukizi's shipping charge is the one that
+    // counts — the submitted figure is replaced before any of the write paths
+    // below read it, variants included. A self-shipping seller books their own
+    // courier and keeps whatever they typed.
+    //
+    // Resolved up here, ahead of the two upsert branches below, so a CSV import
+    // or a channel sync coming in by externalId or slug cannot set a shipping
+    // charge the seller's own form would not have been allowed to.
+    const catalogueShipping = this.shippingFromCatalogue(
+      seller.selfShipEnabled,
+      catalogProduct,
+    );
+    if (catalogueShipping) {
+      normalized.shippingCharges = catalogueShipping.shippingCharges;
+      normalized.finalShippingPrice = catalogueShipping.finalShippingPrice;
+      for (const v of dto.variants ?? []) {
+        (v as any).shippingCharges = catalogueShipping.shippingCharges;
+        (v as any).finalShippingPrice = catalogueShipping.finalShippingPrice;
+      }
+    }
+
     // Idempotent upsert: if externalId is provided and exists, update instead
     if (normalized.externalId) {
       const existing = await this.prisma.sellerOffer.findUnique({
@@ -200,29 +245,6 @@ export class ProductsService {
         }
         // Allow duplicate slugs for seller-specific listings
       }
-    }
-
-    const masterProductId = dto.masterProductId;
-    let catalogProduct: any = null;
-    if (masterProductId) {
-      catalogProduct = await this.prisma.catalogProduct.findUnique({
-        where: { id: masterProductId },
-        include: { productVariants: true },
-      });
-    }
-
-    if (!catalogProduct && !normalized.variantId) {
-      catalogProduct = await this.prisma.catalogProduct.findFirst({
-        where: {
-          name: { equals: normalized.name, mode: 'insensitive' },
-          manufacturer: {
-            equals: normalized.manufacturer,
-            mode: 'insensitive',
-          },
-          deletedAt: null,
-        },
-        include: { productVariants: true },
-      });
     }
 
     const isFromMaster = !!catalogProduct;
@@ -594,7 +616,10 @@ export class ProductsService {
 
     await this.inventoryService.updateDefaultBatch(productId, dto.stock);
 
-
+    // Every other write path does this; this one never did, so an import that
+    // changed the price or the shipping left the stored finalCustomerPayable --
+    // what the grid, the cart and checkout all quote -- on the old numbers.
+    await this.recalculateFinalCustomerPayable(productId);
 
     const batch = await this.prisma.productBatch.findFirst({
       where: { sellerOfferId: productId, batchNumber: 'DEFAULT' },
@@ -787,8 +812,38 @@ export class ProductsService {
     if (productData.description)
       productData.description = productData.description.trim();
 
+    // Same rule as create(): when Yukizi does the shipping, the catalogue
+    // product's charge is authoritative and replaces whatever the form sent.
+    // Resolved against the master this edit leaves the listing attached to —
+    // the one being connected now, or the one it already had.
+    const owner = await this.prisma.sellerProfile.findUnique({
+      where: { userId },
+      select: { selfShipEnabled: true },
+    });
+    const master = await this.prisma.catalogProduct.findFirst({
+      where: masterProductId
+        ? { id: masterProductId }
+        : {
+            OR: [
+              { sellerOffers: { some: { id: product.id } } },
+              { productVariants: { some: { sellerOffers: { some: { id: product.id } } } } },
+            ],
+          },
+      select: {
+        shippingCharges: true,
+        finalShippingPrice: true,
+        shippingGstPercent: true,
+        isTaxIncluded: true,
+      },
+    });
+    const catalogueShipping = this.shippingFromCatalogue(
+      owner?.selfShipEnabled === true,
+      master,
+    );
+
     const updateData: Prisma.SellerOfferUpdateInput = {
       ...productData,
+      ...(catalogueShipping ?? {}),
       ...(categoryId ? { category: { connect: { id: categoryId } } } : {}),
       ...(subCategoryId
         ? { subCategory: { connect: { id: subCategoryId } } }
@@ -1291,6 +1346,8 @@ export class ProductsService {
           select: {
             id: true,
             companyName: true,
+            // Decides whether this listing carries Yukizi shipping or the seller's own.
+            selfShipEnabled: true,
             rating: true,
             city: true,
             state: true,
@@ -1316,6 +1373,8 @@ export class ProductsService {
                   select: {
                     id: true,
                     companyName: true,
+                    // Decides whether this listing carries Yukizi shipping or the seller's own.
+                    selfShipEnabled: true,
                     rating: true,
                     city: true,
                     state: true,
@@ -1334,6 +1393,8 @@ export class ProductsService {
                       select: {
                         id: true,
                         companyName: true,
+                        // Decides whether this listing carries Yukizi shipping or the seller's own.
+                        selfShipEnabled: true,
                         rating: true,
                         city: true,
                         state: true,
@@ -1390,6 +1451,8 @@ export class ProductsService {
               select: {
                 id: true,
                 companyName: true,
+                // Decides whether this listing carries Yukizi shipping or the seller's own.
+                selfShipEnabled: true,
                 rating: true,
                 city: true,
                 state: true,
@@ -1408,6 +1471,8 @@ export class ProductsService {
                   select: {
                     id: true,
                     companyName: true,
+                    // Decides whether this listing carries Yukizi shipping or the seller's own.
+                    selfShipEnabled: true,
                     rating: true,
                     city: true,
                     state: true,
@@ -1636,6 +1701,10 @@ export class ProductsService {
       shippingCharges: sellerListing?.shippingCharges ?? bestListing?.shippingCharges ?? m.shippingCharges ?? 0,
       finalShippingPrice: sellerListing?.finalShippingPrice ?? bestListing?.finalShippingPrice ?? m.finalShippingPrice ?? null,
       shippingGstPercent: m.shippingGstPercent,
+      // The owner of the listing this payload quotes. The product form reads
+      // selfShipEnabled off it to decide whether the shipping field belongs to
+      // the seller or to Yukizi, and the admin's edit screen names them.
+      seller: sellerListing?.seller ?? bestListing?.seller ?? null,
       images: m.images,
       // The storefront emits schema.org dateModified from this. It was absent
       // from the payload, so the field was built (web#216) and could never
@@ -1939,6 +2008,8 @@ export class ProductsService {
                 seller: {
                   select: {
                     companyName: true,
+                    // Decides whether this listing carries Yukizi shipping or the seller's own.
+                    selfShipEnabled: true,
                     city: true,
                     state: true,
                     rating: true,
@@ -1957,6 +2028,8 @@ export class ProductsService {
                     seller: {
                       select: {
                         companyName: true,
+                        // Decides whether this listing carries Yukizi shipping or the seller's own.
+                        selfShipEnabled: true,
                         city: true,
                         state: true,
                         rating: true,
@@ -1983,6 +2056,30 @@ export class ProductsService {
   /**
    * Find a product owned by the current seller, or throw.
    */
+  /**
+   * The shipping a listing must carry, given who ships it.
+   *
+   * Yukizi ships (Self Ship off) → the catalogue product's charge wins, whatever
+   * the form submitted, so every listing of a product ships at the same platform
+   * rate and no seller can undercut or inflate it. The seller ships (Self Ship
+   * on) → they book their own courier and name their own price, including zero,
+   * so what they submitted stands.
+   *
+   * Returns null when nothing needs overriding — the seller self-ships, or the
+   * listing has no master product to inherit a figure from.
+   */
+  private shippingFromCatalogue(
+    sellerSelfShips: boolean,
+    master: { shippingCharges?: any; finalShippingPrice?: any; shippingGstPercent?: any; isTaxIncluded?: boolean } | null | undefined,
+  ): OfferShipping | null {
+    if (sellerSelfShips || !master) return null;
+    return resolveOfferShipping(
+      { shippingCharges: 0, finalShippingPrice: 0 },
+      master,
+      false,
+    );
+  }
+
   private async findOwnProduct(userId: string, productId: string) {
     const seller = await this.prisma.sellerProfile.findUnique({
       where: { userId },
