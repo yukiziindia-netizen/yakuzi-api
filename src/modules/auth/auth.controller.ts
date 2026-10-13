@@ -127,6 +127,11 @@ export class AuthController {
   }
 
   @Post('login-simple')
+  // 5 attempts per minute, matching every other credential endpoint on this
+  // controller. This one was left on the global default of 100/min, which is
+  // 144,000 guesses a day against a route that takes a password and NOTHING
+  // else — no username, no OTP — and returns a full admin token.
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Login with ONLY password (Blog Admin OTP-less)' })
   @ApiResponse({
