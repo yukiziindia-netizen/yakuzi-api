@@ -4,6 +4,7 @@ import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 // default import cannot also be used as a type namespace.
 import nodemailer, { type Transporter } from 'nodemailer';
 import { redactEmail } from './redact-email';
+import { usableOwnAddress, isRetiredDomain } from './retired-domains';
 import { PrismaService } from '../../database/prisma.service';
 
 export interface MailAttachment {
@@ -205,18 +206,46 @@ export class MailService implements OnModuleDestroy {
           where: { key: 'adminAlertEmail' },
         });
         const configured = setting?.value?.trim();
-        if (configured) return configured;
+        if (configured) return this.deliverable(configured, 'adminAlertEmail setting');
       } catch (error) {
         this.logger.warn(
           `Could not read adminAlertEmail setting, falling back to env: ${error instanceof Error ? error.message : 'Unknown error'}`,
         );
       }
     }
-    return (
+    const fromEnv =
       process.env.ADMIN_NOTIFICATION_EMAIL?.trim() ||
       process.env.SMTP_USER?.trim() ||
-      undefined
+      undefined;
+    return this.deliverable(fromEnv, 'ADMIN_NOTIFICATION_EMAIL/SMTP_USER');
+  }
+
+  /**
+   * Keeps platform alerts off a domain that cannot receive them.
+   *
+   * The alert recipient is typed into a settings box and never checked for
+   * deliverability, and yukizi.in — which every other Yukizi address used to
+   * sit on — has no MX record at all. An alert sent there does not error
+   * anywhere: it is accepted by our SMTP server, bounces later, and the first
+   * sign of trouble is a support ticket nobody answered for a week. Exactly
+   * the failure this whole alerting system exists to prevent.
+   *
+   * Only ever applied to addresses Yukizi owns. A buyer's or seller's address
+   * is theirs and is never rewritten, however broken — see retired-domains.ts.
+   */
+  private deliverable(
+    address: string | undefined,
+    source: string,
+  ): string | undefined {
+    if (!isRetiredDomain(address)) return address;
+
+    const fixed = usableOwnAddress(address);
+    this.logger.warn(
+      `Admin alert recipient from ${source} is ${redactEmail(address ?? '')}, ` +
+        `on a domain with no mail server. Sending to ${redactEmail(fixed ?? '')} ` +
+        `instead — correct it in Admin -> Settings -> Admin Alert Email.`,
     );
+    return fixed;
   }
 
   /**
